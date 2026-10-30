@@ -1,0 +1,27 @@
+local base = require("src/entities/vehicles/base")
+
+return base.define({
+  id = "rocket",
+  name = "ROCKET",
+  blurb = "Rear engined and very fast. The tail will bite if you let it.",
+  bodyStyle = "coupe",
+  color = { 0.95, 0.72, 0.1 },
+  mass = 1500,
+  weightFront = 0.39,
+  cgHeight = 0.46,
+  wheelbase = 2.45,
+  track = 1.62,
+  length = 4.45,
+  width = 1.88,
+  rollBalance = 0.47,
+  grip = 1.17,
+  peakSlip = 0.135,
+  peakTorque = 540,
+  redline = 7800,
+  gears = { 3.5, 2.3, 1.72, 1.33, 1.07, 0.88 },
+  finalDrive = 3.45,
+  dragArea = 0.6,
+  liftArea = 0.34,
+  brakeG = 1.45,
+  steerSpeed = math.rad(470),
+})

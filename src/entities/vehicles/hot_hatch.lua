@@ -1,0 +1,24 @@
+local base = require("src/entities/vehicles/base")
+
+return base.define({
+  id = "hot_hatch",
+  name = "HOT HATCH",
+  blurb = "Light, friendly, front driven. The best car to learn in.",
+  bodyStyle = "hatch",
+  color = { 0.93, 0.93, 0.95 },
+  mass = 1380,
+  weightFront = 0.59,
+  cgHeight = 0.5,
+  wheelbase = 2.6,
+  length = 4.3,
+  width = 1.82,
+  rollBalance = 0.62,
+  grip = 1.1,
+  drive = "FWD",
+  peakTorque = 400,
+  redline = 7000,
+  gears = { 3.5, 2.2, 1.65, 1.28, 1.02, 0.84 },
+  finalDrive = 3.9,
+  dragArea = 0.66,
+  boostPower = 110000,
+})

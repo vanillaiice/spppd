@@ -1,0 +1,23 @@
+local base = require("src/entities/vehicles/base")
+
+return base.define({
+  id = "4wd_monster",
+  name = "4WD MONSTER",
+  blurb = "Rally bred. Huge grip out of corners, short on top speed.",
+  bodyStyle = "sedan",
+  color = { 0.1, 0.25, 0.62 },
+  mass = 1540,
+  weightFront = 0.55,
+  cgHeight = 0.54,
+  grip = 1.17,
+  looseGrip = 1.2,
+  drive = "AWD",
+  awdFront = 0.42,
+  peakTorque = 470,
+  redline = 7000,
+  gears = { 3.3, 2.15, 1.6, 1.25, 1.0, 0.84 },
+  finalDrive = 4.1,
+  dragArea = 0.74,
+  liftArea = 0.28,
+  boostPower = 130000,
+})

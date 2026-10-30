@@ -1,0 +1,27 @@
+local base = require("src/entities/vehicles/base")
+
+return base.define({
+  id = "samurai",
+  name = "SAMURAI",
+  blurb = "A rugged off-roader. Barely notices grass and gravel.",
+  bodyStyle = "offroad",
+  color = { 0.32, 0.36, 0.26 },
+  mass = 1950,
+  weightFront = 0.54,
+  cgHeight = 0.7,
+  wheelbase = 2.85,
+  track = 1.68,
+  length = 4.9,
+  width = 1.98,
+  grip = 1.02,
+  looseGrip = 1.6,
+  drive = "AWD",
+  awdFront = 0.5,
+  peakTorque = 660,
+  redline = 6200,
+  gears = { 3.5, 2.25, 1.65, 1.27, 1.0, 0.8 },
+  finalDrive = 3.5,
+  dragArea = 1.0,
+  brakeG = 1.25,
+  boostPower = 130000,
+})

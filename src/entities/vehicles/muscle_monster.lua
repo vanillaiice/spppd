@@ -1,0 +1,26 @@
+local base = require("src/entities/vehicles/base")
+
+return base.define({
+  id = "muscle_monster",
+  name = "MUSCLE MONSTER",
+  blurb = "Too much engine, not enough tyre. A smoke machine.",
+  bodyStyle = "muscle",
+  color = { 0.55, 0.05, 0.08 },
+  mass = 1980,
+  weightFront = 0.55,
+  cgHeight = 0.54,
+  wheelbase = 2.95,
+  track = 1.65,
+  length = 5.0,
+  width = 1.95,
+  rollBalance = 0.6,
+  grip = 0.99,
+  peakTorque = 860,
+  redline = 6400,
+  gears = { 3.2, 2.1, 1.55, 1.2, 0.95, 0.76 },
+  finalDrive = 3.1,
+  dragArea = 0.8,
+  brakeG = 1.25,
+  handbrakeForce = 12000,
+  boostPower = 190000,
+})

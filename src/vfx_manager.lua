@@ -1,0 +1,137 @@
+-- Particle effects. Each one is tuned to read clearly and then get out of
+-- the way: short-lived, soft, and capped so a pile-up can't fill the screen.
+local textures = require("src/render/textures")
+
+local vfx = {}
+
+local function newSystem(image, buffer)
+  local ps = love.graphics.newParticleSystem(image, buffer)
+  ps:setEmissionRate(0)
+  ps:setInsertMode("random")
+  return ps
+end
+
+function vfx.load(dustColor)
+  textures.load()
+  local dust = dustColor or { 0.5, 0.42, 0.28 }
+
+  local smoke = newSystem(textures.smoke, 700)
+  smoke:setParticleLifetime(0.8, 1.9)
+  smoke:setSizes(0.22, 0.62, 1.15)
+  smoke:setSizeVariation(0.5)
+  smoke:setSpin(-0.6, 0.6)
+  smoke:setRotation(0, math.pi * 2)
+  smoke:setLinearDamping(1.6, 2.6)
+  smoke:setColors(0.82, 0.82, 0.84, 0.0, 0.8, 0.8, 0.82, 0.17, 0.7, 0.7, 0.72, 0.09, 0.62, 0.62, 0.64, 0)
+  vfx.smoke = smoke
+
+  local dirt = newSystem(textures.smoke, 500)
+  dirt:setParticleLifetime(0.5, 1.3)
+  dirt:setSizes(0.18, 0.5, 0.82)
+  dirt:setSizeVariation(0.6)
+  dirt:setLinearDamping(1.8, 3)
+  dirt:setRotation(0, math.pi * 2)
+  dirt:setColors(dust[1], dust[2], dust[3], 0.0, dust[1], dust[2], dust[3], 0.3, dust[1], dust[2], dust[3], 0)
+  vfx.dirt = dirt
+
+  local sparks = newSystem(textures.spark, 400)
+  sparks:setParticleLifetime(0.12, 0.42)
+  sparks:setSizes(0.4, 0.22, 0.05)
+  sparks:setSpeed(140, 520)
+  sparks:setSpread(math.pi * 0.7)
+  sparks:setLinearDamping(2, 4)
+  sparks:setColors(1, 0.95, 0.75, 1, 1, 0.68, 0.22, 1, 1, 0.3, 0.05, 0)
+  vfx.sparks = sparks
+
+  local flame = newSystem(textures.smoke, 500)
+  flame:setParticleLifetime(0.06, 0.2)
+  flame:setSizes(0.34, 0.24, 0.04)
+  flame:setSizeVariation(0.4)
+  flame:setSpeed(160, 340)
+  flame:setSpread(0.2)
+  flame:setColors(0.72, 0.84, 1, 0.9, 0.42, 0.6, 1, 0.8, 1, 0.5, 0.15, 0.45, 1, 0.2, 0.05, 0)
+  vfx.flame = flame
+
+  local pop = newSystem(textures.smoke, 60)
+  pop:setParticleLifetime(0.04, 0.1)
+  pop:setSizes(0.14, 0.24, 0.02)
+  pop:setSpeed(40, 120)
+  pop:setSpread(0.5)
+  pop:setColors(1, 0.8, 0.4, 0.9, 1, 0.35, 0.08, 0)
+  vfx.pop = pop
+
+  vfx.density = 1
+end
+
+local function aim(ps, x, y, vx, vy, jitter)
+  ps:setPosition(x, y)
+  local speed = math.sqrt(vx * vx + vy * vy)
+  ps:setDirection(math.atan2(vy, vx))
+  ps:setSpeed(speed * (1 - jitter), speed * (1 + jitter))
+  ps:setSpread(0.5)
+end
+
+function vfx.tyreSmoke(x, y, vx, vy, amount)
+  if love.math.random() > amount * vfx.density then return end
+  aim(vfx.smoke, x, y, vx * 0.2, vy * 0.2, 0.5)
+  vfx.smoke:emit(1)
+end
+
+function vfx.dust(x, y, vx, vy, amount)
+  if love.math.random() > amount * vfx.density then return end
+  aim(vfx.dirt, x, y, vx * 0.3, vy * 0.3, 0.6)
+  vfx.dirt:emit(1)
+end
+
+function vfx.scrape(x, y, nx, ny, strength)
+  vfx.sparks:setPosition(x, y)
+  vfx.sparks:setDirection(math.atan2(ny, nx))
+  vfx.sparks:emit(math.min(26, math.floor(4 + strength * 10)))
+end
+
+-- Emits along the path since the last frame, so at speed the flame stays one
+-- continuous tongue instead of a row of puffs.
+function vfx.burn(x, y, angle, lastX, lastY)
+  lastX, lastY = lastX or x, lastY or y
+  vfx.flame:setDirection(angle)
+  local distance = math.sqrt((x - lastX) ^ 2 + (y - lastY) ^ 2)
+  local steps = math.min(10, math.floor(distance / 7) + 1)
+  for i = 1, steps do
+    local t = i / steps
+    vfx.flame:setPosition(lastX + (x - lastX) * t, lastY + (y - lastY) * t)
+    vfx.flame:emit(2)
+  end
+end
+
+function vfx.backfire(x, y, angle)
+  vfx.pop:setPosition(x, y)
+  vfx.pop:setDirection(angle)
+  vfx.pop:emit(4)
+end
+
+function vfx.update(dt)
+  vfx.smoke:update(dt)
+  vfx.dirt:update(dt)
+  vfx.sparks:update(dt)
+  vfx.flame:update(dt)
+  vfx.pop:update(dt)
+end
+
+-- Ground-hugging smoke and dust.
+function vfx.draw()
+  love.graphics.setColor(1, 1, 1, 1)
+  love.graphics.draw(vfx.dirt)
+  love.graphics.draw(vfx.smoke)
+end
+
+-- Anything that emits its own light, drawn into the scene and the glow pass.
+function vfx.drawEmissive()
+  love.graphics.setColor(1, 1, 1, 1)
+  love.graphics.setBlendMode("add")
+  love.graphics.draw(vfx.flame)
+  love.graphics.draw(vfx.pop)
+  love.graphics.draw(vfx.sparks)
+  love.graphics.setBlendMode("alpha")
+end
+
+return vfx

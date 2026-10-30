@@ -1,0 +1,28 @@
+local base = require("src/entities/vehicles/base")
+
+return base.define({
+  id = "big_bull",
+  name = "BIG BULL",
+  blurb = "A super SUV. Massive power, massive weight, late on the brakes.",
+  bodyStyle = "suv",
+  color = { 0.72, 0.84, 0.16 },
+  mass = 2250,
+  weightFront = 0.53,
+  cgHeight = 0.66,
+  wheelbase = 3.0,
+  track = 1.72,
+  length = 5.1,
+  width = 2.02,
+  rollBalance = 0.58,
+  grip = 1.02,
+  looseGrip = 1.2,
+  drive = "AWD",
+  awdFront = 0.45,
+  peakTorque = 780,
+  redline = 6800,
+  gears = { 3.6, 2.3, 1.7, 1.3, 1.03, 0.82 },
+  finalDrive = 3.4,
+  dragArea = 0.95,
+  brakeG = 1.25,
+  handbrakeForce = 14000,
+})
