@@ -99,6 +99,23 @@ function view.drawShadow(car, x, y, angle, env, alpha)
     angle, sprite.scale * 1.04, sprite.scale * 1.04, sprite.ox, sprite.oy)
 end
 
+-- Air rushing down both sides of a car that is being towed.
+local function drawSlipstream(car, alpha)
+  local amount = car.model.slipstream
+  if amount < 0.05 then return end
+  local hl, hw = car.length / 2, car.width / 2
+  local time = love.timer.getTime()
+  love.graphics.setLineWidth(0.14 * M)
+  for i = 1, 8 do
+    local phase = (time * 2.4 + i * 0.37) % 1
+    local side = (i % 2 == 0 and 1 or -1) * (hw + (0.3 + (i % 3) * 0.4) * M)
+    local front = hl * 1.5 - phase * car.length * 2.6
+    local len = (1.4 + (i % 3) * 0.6) * M
+    love.graphics.setColor(1, 1, 1, 0.9 * amount * alpha * math.sin(phase * math.pi))
+    love.graphics.line(front, side, front - len, side)
+  end
+end
+
 function view.draw(car, x, y, angle, alpha)
   alpha = alpha or 1
   if car.ghostTimer > 0 then alpha = alpha * (0.4 + 0.25 * math.sin(car.ghostTimer * 22)) end
@@ -110,6 +127,7 @@ function view.draw(car, x, y, angle, alpha)
   love.graphics.rotate(angle)
 
   if model.boostState == "active" then drawFlame(car, alpha) end
+  drawSlipstream(car, alpha)
   for i = 1, 4 do drawWheel(model.wheels[i], model.steer, sprite) end
 
   -- The body leans a pixel or two against the suspension.

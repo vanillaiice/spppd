@@ -131,6 +131,22 @@ local function drawDash(car, sw, sh, s)
   if model.escActive > 0.15 then ui.text("ESC", x + 4 * s, tagY + 14 * s, 5 * s, colors.marshal) end
 end
 
+-- Sits on top of the dash while the car is being towed.
+local function drawSlipstream(car, sw, sh, s)
+  local amount = car.model.slipstream
+  if amount < 0.03 then return end
+  local w, h = 112 * s, 12 * s
+  local x, y = sw - w - 8 * s, sh - 44 * s - 8 * s - h - 2 * s
+  local alpha = math.min(1, amount * 4)
+  local panel = colors.asphaltDeep
+  love.graphics.setColor(panel[1], panel[2], panel[3], 0.8 * alpha)
+  love.graphics.rectangle("fill", x, y, w, h)
+  local c = colors.marshal
+  love.graphics.setColor(c[1], c[2], c[3], alpha)
+  love.graphics.rectangle("fill", x + 4 * s, y + h - 3 * s, (w - 8 * s) * amount, 2 * s)
+  ui.text("SLIPSTREAM", x + 4 * s, y + 2 * s, 5 * s, { c[1], c[2], c[3], alpha })
+end
+
 -- Five red lights, then lights out.
 local function drawStartLights(race, sw, sh, s)
   if race.phase ~= "countdown" and not (race.time < 1.2 and race.phase == "racing") then return end
@@ -221,6 +237,7 @@ function hud.draw(sw, sh, race, ctx)
   end
 
   drawDash(car, sw, sh, s)
+  drawSlipstream(car, sw, sh, s)
   drawPaceNote(ctx, sw, s)
   drawStartLights(race, sw, sh, s)
   drawToast(ctx, sw, sh, s)

@@ -57,6 +57,17 @@ local SCENES = {
       car.input.boost = rc.time > 7
     end }
   end,
+  slipstream = function()
+    race({ time = "day", mode = "freestyle", opponents = 0 })
+    local r = rm.race()
+    local M = require("src/config").METER
+    local rival = require("src/entities/car").new(garage[1], 0, -12 * M, -math.pi / 2, { name = "RIVAL" })
+    r.cars[2] = rival
+    r:initProgress(rival)
+    for _, car in ipairs(r.cars) do
+      car.driver = { update = function(_, c) c.input.throttle = 1 end }
+    end
+  end,
   pause = function() race({ track = "lusail", time = "day" }) autopilot() end,
   results = function() race({ track = "boat", time = "day", opponents = 3 }) autopilot() end,
 }

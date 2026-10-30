@@ -151,6 +151,7 @@ function Car:teleport(x, y, angle, ghostTime)
   self.model.ax, self.model.ay = 0, 0
   self.model.steer = 0
   self.model.drift = 0
+  self.model.slipstream = 0
   self.model.gear = 1
   self.model.reverse = false
   if ghostTime then

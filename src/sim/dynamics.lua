@@ -27,6 +27,7 @@ local DRIFT_MAX_BETA = 0.7      -- stability control lets a drift get this far
 local REVERSE_DELAY = 0.25      -- hold the brake this long at a stop to back up
 local REVERSE_THROTTLE = 0.6
 local REVERSE_TOP_SPEED = 11
+local SLIPSTREAM_DRAG_CUT = 0.45  -- share of aero drag a full slipstream removes
 
 local ASPHALT_ROLL = 0.014
 
@@ -53,9 +54,10 @@ dynamics.SURFACES = {
 --   offroad   how much of the grass and gravel penalty is forgiven
 --   brake     multiplies brake force
 --   shift     multiplies gearshift time
+--   tow       extra pull from a full slipstream under power (m/s^2)
 local NEUTRAL = {
   grip = 1, tyreC = TYRE_C, transfer = 1, keyRate = 1, turn = 0, carry = 0,
-  drift = 0, offroad = 0, brake = 1, shift = 1,
+  drift = 0, offroad = 0, brake = 1, shift = 1, tow = 0,
 }
 
 local function tier(values)
@@ -70,7 +72,7 @@ dynamics.ASSISTS = {
   arcade = tier({
     tc = 1.0, abs = 1.0, esc = 0.7, steer = 1.0, caster = 0.85,
     grip = 1.3, tyreC = 1.15, transfer = 0.6, keyRate = 1.9, turn = 7, carry = 0.75,
-    drift = 1, offroad = 0.6, brake = 1.25, shift = 0.5,
+    drift = 1, offroad = 0.6, brake = 1.25, shift = 0.5, tow = 1.8,
   }),
   full  = tier({ tc = 1.0, abs = 1.0, esc = 1.0, steer = 1.0, caster = 0.85 }),
   sport = tier({ tc = 0.8, abs = 1.0, esc = 0.5, steer = 0.9, caster = 0.75 }),
@@ -127,6 +129,7 @@ function dynamics.new(spec, assist)
     absActive = 0,
     escActive = 0,
     drift = 0,      -- 0..1 how far into a handbrake drift the car is
+    slipstream = 0, -- 0..1 how far into another car's wake, set by the race
 
     boostState = "ready",
     boostTimer = 0,
@@ -608,12 +611,14 @@ function dynamics.step(c, input, vx, vy, r, dt)
   end
 
   -- Aero drag acts through the centre of the car
-  local dragForce = 0.5 * 1.2 * spec.dragArea * speed
+  local dragForce = 0.5 * 1.2 * spec.dragArea * speed * (1 - c.slipstream * SLIPSTREAM_DRAG_CUT)
   fxTotal = fxTotal - dragForce * vx
   fyTotal = fyTotal - dragForce * vy
 
   mzTotal = mzTotal + escMoment
-  if vx > 0 then fxTotal = fxTotal + scrub * assist.carry end
+  if vx > 0 then
+    fxTotal = fxTotal + scrub * assist.carry + spec.mass * assist.tow * c.slipstream * pedal
+  end
 
   c.slip = slipSum / accSum
   c.tcActive = tcHit

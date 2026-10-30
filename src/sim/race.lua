@@ -5,6 +5,7 @@ local Car = require("src/entities/car")
 local AI = require("src/ai_controller")
 local dynamics = require("src/sim/dynamics")
 local RemoteDriver = require("src/sim/remote_driver")
+local slipstream = require("src/sim/slipstream")
 local garage = require("src/entities/garage")
 local world = require("src/world")
 
@@ -259,7 +260,11 @@ function Race:step(dt)
     end
   end
 
-  for _, car in ipairs(self.cars) do car:step(dt, self.track) end
+  for _, car in ipairs(self.cars) do
+    -- A remote car's own game works out its slipstream.
+    if not car.remote then slipstream.update(car, self.cars, dt) end
+    car:step(dt, self.track)
+  end
   world.step(dt)
   for _, car in ipairs(self.cars) do
     car:afterStep()

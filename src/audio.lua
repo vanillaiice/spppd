@@ -197,8 +197,8 @@ function audio.update(dt, car, rival, rivalDistance)
   fadeTo(audio.road, math.min(0.26, speed / 120), dt, 3)
   audio.loose:setPitch(0.7 + math.min(0.6, speed / 40))
   fadeTo(audio.loose, offRoad * math.min(0.5, speed / 25), dt, 6)
-  audio.wind:setPitch(0.7 + math.min(1, speed / 70))
-  fadeTo(audio.wind, math.max(0, (speed - 18) / 110) * 0.45, dt, 2)
+  audio.wind:setPitch(0.7 + math.min(1, speed / 70) + model.slipstream * 0.25)
+  fadeTo(audio.wind, math.max(0, (speed - 18) / 110) * 0.45 + model.slipstream * 0.2, dt, 2)
   fadeTo(audio.nitro, model.boostState == "active" and 0.34 or 0, dt, 5)
 
   if rival then

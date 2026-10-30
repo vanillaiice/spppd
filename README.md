@@ -32,6 +32,10 @@ Arcade's grip when you pick it. Online races always use Arcade.
 - **Sport**: realistic grip, with driver aids as a safety net.
 - **Sim**: no aids at all. The car will spin if you ask it to.
 
+**Slipstream**: sit close behind another car at speed and its wake cuts your
+drag, and on Arcade it pulls you along too. A meter appears above the dash. The
+effect lasts about a second after you pull out, so time it to slingshot past.
+
 **Zoom** in Settings moves the camera between Near, Mid and Far.
 
 The arrow at the top of the screen is a pace note: the direction of the next
