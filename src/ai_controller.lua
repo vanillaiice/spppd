@@ -28,11 +28,12 @@ function AI.new(track, car, opts)
   local spec = car.spec
   local top = min(95, dynamics.gearingTopSpeed(spec))
   local accel = dynamics.peakPower(spec) / (spec.mass * 28)
-  local mu = spec.grip * 0.92 * self.skill
+  local handling = car.model.assist
+  local mu = spec.grip * handling.grip * 0.92 * self.skill
   self.profile = track:speedProfile({
     mu = mu,
     vmax = top,
-    brake = (opts.brakeG or 0.72) * spec.grip * config.GRAVITY,
+    brake = (opts.brakeG or 0.72) * spec.grip * handling.grip * config.GRAVITY,
     accel = accel,
   })
   return self

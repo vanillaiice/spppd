@@ -30,7 +30,7 @@ local function botLaps(entry, spec, laps, opts)
   opts = opts or {}
   local track = Track.new(entry.def)
   local race = Race.new({ mode = "race", track = track, laps = laps, opponents = 0,
-    spec = spec, assist = opts.assist or "sport", seed = 7, startDelay = 0.5 })
+    spec = spec, assist = opts.assist or "arcade", seed = 7, startDelay = 0.5 })
   race.player.driver = AI.new(track, race.player, {
     skill = opts.skill or 1.0, digital = opts.digital, reaction = opts.reaction,
   })
@@ -53,16 +53,18 @@ end
 
 h.describe("race", function()
   for _, entry in ipairs(catalog.builtin()) do
-    h.it("the AI laps " .. entry.name .. " in every car", function()
-      for _, spec in ipairs(garage) do
-        local r = botLaps(entry, spec, 2, { assist = "full", skill = 0.98 })
-        print(string.format("        %-10s %-15s lap %.1fs  off %.1fs  respawns %d",
-          entry.name, spec.name, r.last or -1, r.offSeconds, r.respawns))
-        h.assertTrue(r.finished, spec.name .. " did not finish, laps " .. r.laps)
-        h.assertEq(r.respawns, 0, spec.name .. " needed respawns")
-        h.assertTrue(r.offSeconds < 3, spec.name .. " spent too long off the road")
-      end
-    end)
+    for _, assist in ipairs({ "arcade", "full" }) do
+      h.it("the AI laps " .. entry.name .. " in every car on " .. assist, function()
+        for _, spec in ipairs(garage) do
+          local r = botLaps(entry, spec, 2, { assist = assist, skill = 0.98 })
+          print(string.format("        %-10s %-15s lap %.1fs  off %.1fs  respawns %d",
+            entry.name, spec.name, r.last or -1, r.offSeconds, r.respawns))
+          h.assertTrue(r.finished, spec.name .. " did not finish, laps " .. r.laps)
+          h.assertEq(r.respawns, 0, spec.name .. " needed respawns")
+          h.assertTrue(r.offSeconds < 3, spec.name .. " spent too long off the road")
+        end
+      end)
+    end
 
     h.it("a keyboard player can lap " .. entry.name .. " on default assists", function()
       for _, spec in ipairs(garage) do
@@ -104,6 +106,29 @@ h.describe("race", function()
       race:destroy()
     end)
   end
+
+  h.it("opponents race on the same grip as the player", function()
+    local track = Track.new(catalog.builtin()[1].def)
+    local function gripOf(assist)
+      local race = Race.new({ mode = "race", track = track, laps = 1, opponents = 1, seed = 3, assist = assist })
+      local player, rival = race.player.model.assist.grip, race.cars[2].model.assist.grip
+      race:destroy()
+      return player, rival
+    end
+    for _, assist in ipairs({ "arcade", "sport", "sim" }) do
+      local player, rival = gripOf(assist)
+      h.assertEq(rival, player, assist .. " grid grip")
+    end
+  end)
+
+  h.it("online races ignore the local handling tier", function()
+    local track = Track.new(catalog.builtin()[1].def)
+    local race = Race.new({ mode = "race", track = track, laps = 1, seed = 3, assist = "sim",
+      online = { slot = 1, peerSpec = garage[2], state = {} } })
+    h.assertEq(race.handling, "arcade")
+    h.assertEq(race.player.model.assist.grip, require("src/sim/dynamics").ASSISTS.arcade.grip)
+    race:destroy()
+  end)
 
   h.it("cars wait for the lights", function()
     local track = Track.new(catalog.builtin()[1].def)

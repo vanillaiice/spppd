@@ -3,6 +3,7 @@
 local config = require("src/config")
 local Car = require("src/entities/car")
 local AI = require("src/ai_controller")
+local dynamics = require("src/sim/dynamics")
 local RemoteDriver = require("src/sim/remote_driver")
 local garage = require("src/entities/garage")
 local world = require("src/world")
@@ -24,6 +25,8 @@ local AI_COLORS = {
   { 0.08, 0.36, 0.72 }, { 0.86, 0.46, 0.07 }, { 0.07, 0.52, 0.34 },
   { 0.46, 0.14, 0.62 }, { 0.82, 0.82, 0.86 },
 }
+-- Arcade tyres grip harder, so a grid only matches the player's car on them.
+local AI_ASSIST = { arcade = "arcade" }
 local WRONG_WAY_TIME = 1.2
 local SHORTCUT_JUMP = 45 * M
 local FINISH_GRACE = 25
@@ -46,6 +49,9 @@ function Race.new(opts)
 
   local spec = opts.spec or garage[1]
   local online = opts.online
+  -- Tiers change how much grip a car has, so an online race has to share one.
+  local handling = online and dynamics.DEFAULT_ASSIST or opts.assist or dynamics.DEFAULT_ASSIST
+  self.handling = handling
   local slot = 1
   if self.mode == "race" and self.track then slot = online and online.slot or (opts.opponents or 0) + 1 end
   local x, y, angle, index = 0, 0, opts.spawnAngle or -math.pi / 2, nil
@@ -54,7 +60,7 @@ function Race.new(opts)
   self.player = Car.new(spec, x, y, angle, {
     isPlayer = true,
     color = opts.color,
-    assist = opts.assist,
+    assist = handling,
     name = opts.playerName or "YOU",
   })
   self.player.input.manual = opts.manualGearbox or false
@@ -86,7 +92,7 @@ function Race:spawnOpponents(opts, playerSlot)
     local car = Car.new(spec, x, y, angle, {
       name = AI_NAMES[(i - 1) % #AI_NAMES + 1],
       color = AI_COLORS[(i - 1) % #AI_COLORS + 1],
-      assist = "full",
+      assist = AI_ASSIST[self.handling] or "full",
     })
     -- Better starters are further up the grid.
     local skill = diff.skill + diff.spread * (grid <= playerSlot / 2 and 1 or -1)

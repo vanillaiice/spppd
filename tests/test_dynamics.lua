@@ -30,7 +30,35 @@ local function input(t)
   return {
     throttle = t.throttle or 0, brake = t.brake or 0, steer = t.steer or 0,
     handbrake = t.handbrake or false, boost = t.boost or false,
+    keyboard = t.keyboard or false,
   }
+end
+
+local function surface(s, name)
+  for _, w in ipairs(s.c.wheels) do w.surface = name end
+end
+
+local function speedOf(s)
+  return math.sqrt(s.vx ^ 2 + s.vy ^ 2)
+end
+
+-- Seconds to reach a yaw rate from a keyboard press at 30 m/s.
+local function turnIn(spec, assist)
+  local s = sim(spec, assist)
+  s.vx = 30
+  for i = 1, 2 / DT do
+    s:step(input({ steer = 1, throttle = 0.4, keyboard = true }))
+    if math.abs(s.r) >= 0.3 then return i * DT end
+  end
+  return math.huge
+end
+
+-- Speed kept after coasting through a long full-lock corner.
+local function cornerCarry(spec, assist)
+  local s = sim(spec, assist)
+  s.vx = 30
+  for _ = 1, 2.5 / DT do s:step(input({ steer = 1 })) end
+  return speedOf(s) / 30
 end
 
 local function launch(spec, assist, targetSpeed, limit)
@@ -91,6 +119,120 @@ h.describe("dynamics", function()
       h.assertTrue(maxBeta < math.rad(22), "spun out in a slalom: " .. math.deg(maxBeta))
     end)
   end
+
+  for _, spec in ipairs(garage) do
+    h.it(spec.name .. " corners harder and carries more speed on arcade", function()
+      local g = function(assist)
+        local s = sim(spec, assist)
+        s.vx = 30
+        local peak = 0
+        for i = 1, 6 / DT do
+          local v = speedOf(s)
+          s:step(input({ steer = 1, throttle = v < 30 and 0.5 or 0 }))
+          if i > 2 / DT then peak = math.max(peak, math.abs(s.c.ay)) end
+        end
+        return peak / G
+      end
+      local arcade, sport = g("arcade"), g("sport")
+      local carry = cornerCarry(spec, "arcade")
+      print(string.format("        %-15s %.2f g (sport %.2f)  keeps %.0f%% through a corner",
+        spec.name, arcade, sport, carry * 100))
+      h.assertTrue(arcade >= sport * 1.2, "arcade should out-grip sport")
+      h.assertBetween(arcade, 1.15, 1.7, "arcade lateral g")
+      h.assertTrue(carry >= 0.85, "lost too much speed in a corner: " .. carry)
+      h.assertTrue(carry > cornerCarry(spec, "sport"), "arcade should carry more speed than sport")
+    end)
+
+    h.it(spec.name .. " turns in faster on arcade", function()
+      local arcade, sport = turnIn(spec, "arcade"), turnIn(spec, "sport")
+      h.assertTrue(arcade < sport * 0.75, string.format("arcade %.2fs, sport %.2fs", arcade, sport))
+    end)
+
+    h.it(spec.name .. " drifts on a handbrake flick and gathers itself up", function()
+      local s = sim(spec, "arcade")
+      s.vx = 30
+      local slide = 0
+      for _ = 1, 0.45 / DT do
+        s:step(input({ steer = 1, handbrake = true, keyboard = true }))
+        slide = math.max(slide, math.abs(s.c.beta))
+      end
+      for _ = 1, 1 / DT do
+        s:step(input({ steer = 1, throttle = 1, keyboard = true }))
+        slide = math.max(slide, math.abs(s.c.beta))
+      end
+      local kept = speedOf(s) / 30
+      local recovered
+      for i = 1, 2 / DT do
+        s:step(input({ throttle = 1, keyboard = true }))
+        if math.abs(s.c.beta) < math.rad(5) and math.abs(s.r) < 0.3 then recovered = i * DT break end
+      end
+      print(string.format("        %-15s %.0f deg, keeps %.0f%%, straight in %.2fs",
+        spec.name, math.deg(slide), kept * 100, recovered or -1))
+      h.assertBetween(math.deg(slide), 25, 65, "drift angle")
+      h.assertTrue(kept >= 0.85, "scrubbed too much speed: " .. kept)
+      h.assertTrue(recovered ~= nil and recovered < 1, "did not straighten up by itself")
+      h.assertTrue(s.vx > 0, "ended up going backwards")
+    end)
+
+    h.it(spec.name .. " can hold a long arcade drift without spinning", function()
+      for _, start in ipairs({ 15, 30, 55 }) do
+        local s = sim(spec, "arcade")
+        s.vx = start
+        local slide = 0
+        for _ = 1, 4 / DT do
+          s:step(input({ steer = 1, throttle = 1, handbrake = true, keyboard = true }))
+          slide = math.max(slide, math.abs(s.c.beta))
+        end
+        print(string.format("        %-15s from %d m/s: %.0f deg", spec.name, start, math.deg(slide)))
+        h.assertTrue(slide < math.rad(60), "spun at " .. start .. " m/s: " .. math.deg(slide))
+        h.assertTrue(s.vx > 0, "ended up going backwards from " .. start .. " m/s")
+      end
+    end)
+
+    h.it(spec.name .. " stays planted in an arcade slalom", function()
+      local s = sim(spec, "arcade")
+      s.vx = 40
+      local maxBeta = 0
+      for i = 1, 5 / DT do
+        local steer = (i * DT) % 1.2 < 0.6 and 1 or -1
+        s:step(input({ steer = steer, throttle = 1, keyboard = true }))
+        maxBeta = math.max(maxBeta, math.abs(s.c.beta))
+      end
+      h.assertTrue(maxBeta < math.rad(22), "spun out in a slalom: " .. math.deg(maxBeta))
+    end)
+
+    h.it(spec.name .. " shrugs off the grass on arcade", function()
+      local s = sim(spec, "arcade")
+      surface(s, "grass")
+      s.vx = 40
+      for _ = 1, 2 / DT do s:step(input({ throttle = 1 })) end
+      h.assertTrue(speedOf(s) / 40 >= 0.88, "too slow on grass: " .. speedOf(s))
+    end)
+  end
+
+  h.it("SPORT and SIM keep the realistic physics", function()
+    for _, name in ipairs({ "sport", "sim" }) do
+      local assist = dynamics.ASSISTS[name]
+      for _, field in ipairs({ "grip", "transfer", "keyRate", "brake", "shift" }) do
+        h.assertEq(assist[field], 1, name .. " " .. field)
+      end
+      for _, field in ipairs({ "turn", "carry", "drift", "offroad" }) do
+        h.assertEq(assist[field], 0, name .. " " .. field)
+      end
+      local s = sim(garage[1], name)
+      s.vx = 30
+      for _ = 1, 1 / DT do s:step(input({ steer = 1, handbrake = true })) end
+      h.assertEq(s.c.drift, 0, name .. " should lock the rear, not drift")
+    end
+  end)
+
+  h.it("the handbrake still stops an arcade car at low speed", function()
+    local s = sim(garage[1], "arcade")
+    s.vx = 8
+    for _ = 1, 3 / DT do s:step(input({ handbrake = true })) end
+    h.assertEq(s.c.drift, 0, "no drift at parking speed")
+    h.assertBetween(s.vx, 0, 2, "speed after handbrake")
+  end)
 
   h.it("stops dead on the brakes and doesn't creep or jitter", function()
     local spec = garage[1]

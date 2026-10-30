@@ -1,6 +1,6 @@
 -- Everything the game remembers between sessions.
 local settings = {
-  assists = "sport",
+  assists = "arcade",
   camera = "chase",
   zoom = "near",
   units = "kmh",
@@ -71,6 +71,8 @@ function settings.load()
       if type(settings[k]) == type(v) then settings[k] = v end
     end
   end
+  -- FULL was replaced by ARCADE as the easiest handling tier.
+  if settings.assists == "full" then settings.assists = "arcade" end
   records = loadTable(RECORDS) or {}
 end
 

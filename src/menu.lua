@@ -37,11 +37,11 @@ local TIMES = { "day", "dusk", "night" }
 local TIME_NAMES = { day = "DAY", dusk = "DUSK", night = "NIGHT" }
 local DIFFICULTIES = { "rookie", "pro", "ace" }
 local DIFFICULTY_NAMES = { rookie = "ROOKIE", pro = "PRO", ace = "ACE" }
-local ASSISTS = { "full", "sport", "sim" }
-local ASSIST_NAMES = { full = "FULL", sport = "SPORT", sim = "SIM (NONE)" }
+local ASSISTS = { "arcade", "sport", "sim" }
+local ASSIST_NAMES = { arcade = "ARCADE", sport = "SPORT", sim = "SIM" }
 local ASSIST_HINTS = {
-  full = "Hard to spin. Traction, ABS and stability all on.",
-  sport = "The default. Quick and realistic, with a safety net.",
+  arcade = "Big grip and easy drifts. Hold the handbrake to slide.",
+  sport = "Realistic grip, with driver aids as a safety net.",
   sim = "No aids. The car does exactly what you ask.",
 }
 local QUALITY = { "high", "low" }
@@ -219,7 +219,7 @@ local function setupRows()
   end
   rows[#rows + 1] = stepper("TIME", function() return settings.time end,
     function(v) settings.time = v end, TIMES, TIME_NAMES)
-  rows[#rows + 1] = stepper("ASSISTS", function() return settings.assists end,
+  rows[#rows + 1] = stepper("HANDLING", function() return settings.assists end,
     function(v) settings.assists = v end, ASSISTS, ASSIST_NAMES)
   rows[#rows + 1] = { label = "START", activate = function() menu.startRace() end }
   rows[#rows + 1] = { label = "BACK", activate = function() menu.go("main") end }
@@ -435,7 +435,7 @@ function menu.draw(sw, sh)
     local focused = ui.list(menu.screen, rows, x, y, listW, rowH, size, s)
     if menu.screen == "setup" then
       drawSetupPreview(sw, sh, w, s)
-      if focused.label == "ASSISTS" then
+      if focused.label == "HANDLING" then
         ui.text(ASSIST_HINTS[settings.assists], 14 * s, sh - 34 * s, 5 * s, colors.muted, "left", w - 28 * s)
       end
     end

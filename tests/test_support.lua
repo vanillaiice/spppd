@@ -20,6 +20,16 @@ h.describe("settings", function()
     settings.save()
   end)
 
+  h.it("moves a saved FULL handling tier to ARCADE", function()
+    settings.assists = "full"
+    settings.save()
+    settings.assists = "sim"
+    settings.load()
+    h.assertEq(settings.assists, "arcade")
+    settings.assists = "sport"
+    settings.save()
+  end)
+
   h.it("survives a corrupted settings file", function()
     love.filesystem.write("settings.lua", "this is not lua (")
     settings.load()
