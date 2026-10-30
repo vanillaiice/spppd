@@ -8,13 +8,13 @@ local renderer = {}
 
 local M = config.METER
 local KERB = config.KERB_WIDTH * M
+local INK = { 0.15, 0.15, 0.22 }  -- outline colour for anything solid
 
 local ROAD_SHADER = [[
   varying vec3 v_edge;
   varying float v_s;
   varying vec2 v_kerb;
-  varying vec2 v_world;
-  uniform Image noise;
+  uniform vec3 roadColor;
   uniform float trackLength;
 
   #ifdef VERTEX
@@ -24,7 +24,6 @@ local ROAD_SHADER = [[
     v_edge = Edge;
     v_s = VertexTexCoord.x;
     v_kerb = KerbFlags;
-    v_world = vertex_position.xy;
     return transform_projection * vertex_position;
   }
   #endif
@@ -32,43 +31,27 @@ local ROAD_SHADER = [[
   #ifdef PIXEL
   vec4 effect(vec4 color, Image tex, vec2 uv, vec2 sc) {
     const float M = 12.0;
-    float dL = v_edge.x, dR = v_edge.y, dLine = v_edge.z;
+    const vec3 PAINT = vec3(0.98, 0.98, 0.95);
+    float dL = v_edge.x, dR = v_edge.y;
     float d = min(dL, dR);
-
-    vec4 n1 = Texel(noise, v_world / 610.0);
-    vec4 n2 = Texel(noise, v_world / 58.0);
 
     if (d < 0.0) {
       float kerb = dL < dR ? v_kerb.x : v_kerb.y;
-      float w = -d / 19.2;
       if (kerb > 0.5) {
-        float band = mod(v_s, 4.0 * M) < 2.0 * M ? 1.0 : 0.0;
-        vec3 c = mix(vec3(0.80, 0.11, 0.13), vec3(0.93, 0.92, 0.88), band);
-        float bump = 0.84 + 0.2 * sin(w * 3.14159);
-        float ribs = 0.94 + 0.06 * sin(v_s * 1.3);
-        c *= bump * ribs * (0.92 + n2.r * 0.14);
-        return vec4(c, 1.0);
+        float block = mod(v_s, 4.0 * M) < 2.0 * M ? 1.0 : 0.0;
+        return vec4(mix(vec3(0.95, 0.12, 0.16), PAINT, block), 1.0);
       }
-      // Asphalt crumbles into the verge instead of ending on a hard line.
-      float edge = 1.0 - smoothstep(0.0, 1.0, (-d + (n1.g + n2.r - 1.0) * 5.0) / 9.0);
-      vec3 dirt = vec3(0.24, 0.23, 0.2) * (0.85 + n2.g * 0.3);
-      return vec4(dirt, edge * edge * 0.8);
+      // A thin dark outline stops the road melting into the ground.
+      return -d < 7.0 ? vec4(0.15, 0.15, 0.22, 1.0) : vec4(0.0);
     }
 
-    // Fine stone aggregate over a very gentle large-scale variation
-    vec4 grit = Texel(noise, v_world / 11.0);
-    float base = 0.285 + (n1.r - 0.5) * 0.022 + (n2.r - 0.5) * 0.022;
-    base += (grit.g - 0.5) * 0.07 + (grit.r - 0.5) * 0.04;
-    vec3 c = vec3(base * 0.98, base, base * 1.04);
+    // Bands across the road strobe past and show how fast you are going.
+    float band = mod(v_s, 10.0 * M) < 5.0 * M ? 1.0 : 0.0;
+    vec3 c = roadColor * (1.0 + band * 0.1);
 
-    // Rubber laid down along the racing line
-    float rubber = exp(-(dLine * dLine) / (2.0 * 26.0 * 26.0));
-    c *= 1.0 - rubber * (0.14 + n2.r * 0.08);
-
-    // Painted edge lines, worn where the noise says so
-    float line = smoothstep(4.0, 4.8, d) * (1.0 - smoothstep(9.4, 10.2, d));
-    float wear = smoothstep(0.1, 0.48, n2.b + n1.g * 0.14);
-    c = mix(c, vec3(0.86, 0.85, 0.8) * (0.85 + n2.g * 0.15), line * wear * 0.92);
+    float dash = mod(v_s, 12.0 * M) < 5.0 * M ? 1.0 : 0.0;
+    if (abs(dL - dR) < 10.0) c = mix(c, PAINT, dash * 0.8);
+    if (d > 5.0 && d < 15.0) c = PAINT;
 
     // Start line chequers
     float s = v_s;
@@ -77,7 +60,7 @@ local ROAD_SHADER = [[
       float cell = M * 1.0;
       float across = floor(dL / cell), along = floor((s + 100.0 * cell) / cell);
       float check = mod(across + along, 2.0);
-      c = mix(c, vec3(check * 0.9 + 0.04), 0.94);
+      c = vec3(check * 0.94 + 0.04);
     }
     return vec4(c, 1.0);
   }
@@ -89,7 +72,7 @@ local GROUND_SHADER = [[
   uniform Image noise;
   uniform vec3 colorA;
   uniform vec3 colorB;
-  uniform float stripes;
+  uniform float pattern;
 
   #ifdef VERTEX
   vec4 position(mat4 transform_projection, vec4 vertex_position) {
@@ -100,22 +83,29 @@ local GROUND_SHADER = [[
 
   #ifdef PIXEL
   vec4 effect(vec4 color, Image tex, vec2 uv, vec2 sc) {
-    vec4 big = Texel(noise, v_world / 2600.0);
-    vec4 mid = Texel(noise, v_world / 420.0);
-    vec4 fine = Texel(noise, v_world / 64.0);
-    float blend = clamp(big.r * 0.9 + mid.r * 0.5 - 0.2, 0.0, 1.0);
-    vec3 c = mix(colorA, colorB, blend);
-    c *= 0.86 + fine.g * 0.1 + fine.r * 0.14 + (mid.b - 0.5) * 0.22;
-    float rows = step(0.5, fract(v_world.y / 340.0));
-    c *= 1.0 + (rows - 0.5) * stripes;
-    return vec4(c, 1.0);
+    float shape = Texel(noise, v_world / 2600.0).r;
+    float mix2;
+    float shade = 1.0;
+    if (pattern < 0.5) {
+      mix2 = step(0.5, fract((v_world.x + v_world.y) / 480.0));
+      shade = 1.0 + step(0.52, shape) * 0.05;
+    } else if (pattern < 1.5) {
+      float wave = sin((v_world.x * 0.8 + v_world.y * 0.6) / 62.0 + shape * 16.0);
+      mix2 = smoothstep(-0.03, 0.03, wave);
+    } else {
+      vec2 cell = v_world / 192.0;
+      mix2 = mod(floor(cell.x) + floor(cell.y), 2.0);
+      vec2 joint = fract(cell);
+      shade = joint.x < 0.03 || joint.y < 0.03 ? 0.86 : 1.0;
+    }
+    return vec4(mix(colorA, colorB, mix2) * shade, 1.0);
   }
   #endif
 ]]
 
+-- Sand traps are a flat colour with a polka dot of pebbles.
 local GRAVEL_SHADER = [[
   varying vec2 v_world;
-  uniform Image noise;
 
   #ifdef VERTEX
   vec4 position(mat4 transform_projection, vec4 vertex_position) {
@@ -126,10 +116,10 @@ local GRAVEL_SHADER = [[
 
   #ifdef PIXEL
   vec4 effect(vec4 color, Image tex, vec2 uv, vec2 sc) {
-    vec4 n = Texel(noise, v_world / 90.0);
-    vec4 m = Texel(noise, v_world / 12.0);
-    vec3 c = color.rgb * (0.78 + m.g * 0.26 + n.r * 0.16);
-    return vec4(c, color.a * smoothstep(0.0, 0.5, uv.y));
+    vec2 cell = v_world / 36.0;
+    vec2 p = fract(cell + vec2(0.5 * mod(floor(cell.y), 2.0), 0.0)) - 0.5;
+    float dot2 = step(dot(p, p), 0.03);
+    return vec4(color.rgb * (1.0 - dot2 * 0.09), color.a * step(0.02, uv.y));
   }
   #endif
 ]]
@@ -241,13 +231,13 @@ local function barrierMesh(points, theme, halfWidth, shift)
       segment = segment + 1
       local base = #verts
       local ox, oy = shift and shift[1] or 0, shift and shift[2] or 0
-      local function add(x, y, shade)
-        verts[#verts + 1] = { x + ox, y + oy, 0, 0, band[1] * shade, band[2] * shade, band[3] * shade, 1 }
+      local function add(x, y)
+        verts[#verts + 1] = { x + ox, y + oy, 0, 0, band[1], band[2], band[3], 1 }
       end
-      add(a.x + nx, a.y + ny, 0.72)
-      add(a.x - nx, a.y - ny, 1.0)
-      add(b.x - nx, b.y - ny, 1.0)
-      add(b.x + nx, b.y + ny, 0.72)
+      add(a.x + nx, a.y + ny)
+      add(a.x - nx, a.y - ny)
+      add(b.x - nx, b.y - ny)
+      add(b.x + nx, b.y + ny)
       for _, k in ipairs({ 1, 2, 3, 1, 3, 4 }) do indices[#indices + 1] = base + k end
     end
   end
@@ -269,14 +259,14 @@ local function scatter(track, theme, rng)
   local b = track.bounds
   local margin = 80 * M
   local items = {}
-  local attempts = theme.scenery == "containers" and 320 or 1500
+  local attempts = theme.scenery == "containers" and 320 or 3000
   for _ = 1, attempts do
     local x = rng:random(b.minX - margin, b.maxX + margin)
     local y = rng:random(b.minY - margin, b.maxY + margin)
     -- Clumps read as woodland; a pure random spread reads as confetti.
     local clump = love.math.noise(x / 1400, y / 1400)
-    if clump > 0.42 and outsideRoad(track, x, y, 3 * M) then
-      items[#items + 1] = { x = x, y = y, r = rng:random() * math.pi * 2, s = 0.75 + rng:random() * 0.7 }
+    if clump > 0.34 and outsideRoad(track, x, y, 3 * M) then
+      items[#items + 1] = { x = x, y = y, spin = rng:random() * math.pi * 2, s = 0.75 + rng:random() * 0.7 }
     end
   end
   return items
@@ -285,11 +275,12 @@ end
 local function buildScenery(track, theme, rng)
   local items = scatter(track, theme, rng)
   local batches = {}
-  local function add(image, item, size)
-    batches[image] = batches[image] or love.graphics.newSpriteBatch(image, 1800, "static")
+  -- Canopies have the sun painted on, so only palms may spin.
+  local function add(image, item, size, angle)
+    batches[image] = batches[image] or love.graphics.newSpriteBatch(image, 3000, "static")
     local w, h = image:getDimensions()
     local scale = size * item.s / w
-    batches[image]:add(item.x, item.y, item.r, scale, scale, w / 2, h / 2)
+    batches[image]:add(item.x, item.y, angle or 0, scale, scale, w / 2, h / 2)
   end
 
   local boxes = {}
@@ -297,12 +288,12 @@ local function buildScenery(track, theme, rng)
     for i, item in ipairs(items) do add(textures.tree[i % 3 + 1], item, 8.5 * M) end
   elseif theme.scenery == "palms" then
     for i, item in ipairs(items) do
-      if i % 3 == 0 then add(textures.palm, item, 6 * M)
-      elseif i % 3 == 1 then add(textures.shrub, item, 2.6 * M) end
+      if i % 2 == 0 then add(textures.palm, item, 7 * M, item.spin)
+      else add(textures.shrub, item, 3 * M) end
     end
   else
     -- Stacks of shipping containers, squared up with the quay.
-    local colors = { { 0.55, 0.16, 0.13 }, { 0.14, 0.32, 0.5 }, { 0.7, 0.45, 0.13 }, { 0.2, 0.38, 0.3 }, { 0.5, 0.5, 0.52 } }
+    local colors = { { 0.93, 0.2, 0.2 }, { 0.1, 0.5, 0.92 }, { 0.98, 0.72, 0.1 }, { 0.12, 0.72, 0.5 }, { 0.95, 0.95, 0.97 } }
     for i, item in ipairs(items) do
       if i % 2 == 0 then
         local stack = math.floor(item.x / 240) * 240 + 120
@@ -348,6 +339,9 @@ function renderer.load(track, timeName)
   self.gravel = buildGravel(track, self.theme)
   self.barrierL = barrierMesh(track.barrierL, self.theme, config.BARRIER_THICKNESS * M / 2)
   self.barrierR = barrierMesh(track.barrierR, self.theme, config.BARRIER_THICKNESS * M / 2)
+  local ink = { barrierA = INK, barrierB = INK }
+  self.barrierEdgeL = barrierMesh(track.barrierL, ink, config.BARRIER_THICKNESS * M / 2 + 2.5)
+  self.barrierEdgeR = barrierMesh(track.barrierR, ink, config.BARRIER_THICKNESS * M / 2 + 2.5)
 
   local sun = self.env.sun
   local len = self.env.shadowLength
@@ -390,8 +384,8 @@ function renderer.loadApron(timeName)
   textures.load()
   local self = {}
   self.theme = {
-    groundA = { 0.26, 0.265, 0.27 }, groundB = { 0.31, 0.31, 0.31 }, stripes = 0,
-    dust = { 0.6, 0.6, 0.58 },
+    groundA = { 0.42, 0.46, 0.58 }, groundB = { 0.38, 0.42, 0.54 }, pattern = 2,
+    dust = { 0.8, 0.82, 0.86 },
   }
   self.env = environment.time(timeName)
   self.groundShader = renderer.groundShader or love.graphics.newShader(GROUND_SHADER)
@@ -414,7 +408,7 @@ function renderer.loadApron(timeName)
     shader:send("noise", textures.noise)
     shader:send("colorA", self.theme.groundA)
     shader:send("colorB", self.theme.groundB)
-    shader:send("stripes", 0)
+    shader:send("pattern", self.theme.pattern)
     love.graphics.setShader(shader)
     love.graphics.setColor(1, 1, 1)
     love.graphics.draw(self.ground)
@@ -426,7 +420,7 @@ function renderer.loadApron(timeName)
     local reach = 5
     local cx, cy = math.floor(tx / cell), math.floor(ty / cell)
     love.graphics.setLineWidth(5)
-    love.graphics.setColor(0.86, 0.72, 0.22, 0.42)
+    love.graphics.setColor(0.98, 0.82, 0.12, 0.9)
     for i = -reach, reach do
       local x, y = (cx + i) * cell, (cy + i) * cell
       love.graphics.line(x, (cy - reach) * cell, x, (cy + reach) * cell)
@@ -464,10 +458,9 @@ local function drawBoxes(self)
     local c = box.color
     love.graphics.setColor(c[1], c[2], c[3])
     love.graphics.rectangle("fill", box.x - w / 2, box.y - h / 2, w, h)
-    love.graphics.setColor(1, 1, 1, 0.1)
-    for rib = 0, 22 do
-      love.graphics.line(box.x - w / 2 + rib * w / 22, box.y - h / 2, box.x - w / 2 + rib * w / 22, box.y + h / 2)
-    end
+    love.graphics.setColor(INK)
+    love.graphics.setLineWidth(3)
+    love.graphics.rectangle("line", box.x - w / 2, box.y - h / 2, w, h)
   end
 end
 
@@ -480,7 +473,7 @@ local function drawStand(self)
   local w, h = 62 * M, 8 * M
   love.graphics.setColor(0, 0, 0, env.shadowAlpha)
   love.graphics.rectangle("fill", -w / 2 + 12, -h / 2 + 12, w, h)
-  love.graphics.setColor(0.24, 0.25, 0.28)
+  love.graphics.setColor(0.32, 0.36, 0.5)
   love.graphics.rectangle("fill", -w / 2, -h / 2, w, h)
   -- Rows of crowd
   local rng = love.math.newRandomGenerator(5)
@@ -489,7 +482,7 @@ local function drawStand(self)
       local r = rng:random()
       if r > 0.2 then
         local hue = rng:random(1, 5)
-        local c = ({ { 0.78, 0.25, 0.2 }, { 0.2, 0.4, 0.7 }, { 0.85, 0.75, 0.3 }, { 0.8, 0.8, 0.8 }, { 0.2, 0.2, 0.25 } })[hue]
+        local c = ({ { 0.98, 0.25, 0.25 }, { 0.2, 0.55, 0.98 }, { 0.99, 0.85, 0.2 }, { 0.98, 0.98, 0.98 }, { 0.98, 0.45, 0.75 } })[hue]
         love.graphics.setColor(c)
         love.graphics.rectangle("fill", -w / 2 + 6 + col * (w - 12) / 150, -h / 2 + 5 + row * (h - 8) / 10, 3, 3)
       end
@@ -504,14 +497,13 @@ function renderer:drawGround()
   shader:send("noise", textures.noise)
   shader:send("colorA", self.theme.groundA)
   shader:send("colorB", self.theme.groundB)
-  shader:send("stripes", self.theme.stripes)
+  shader:send("pattern", self.theme.pattern)
   love.graphics.setShader(shader)
   love.graphics.setColor(1, 1, 1)
   love.graphics.draw(self.ground)
   love.graphics.setShader()
 
   if self.gravel then
-    self.gravelShader:send("noise", textures.noise)
     love.graphics.setShader(self.gravelShader)
     love.graphics.setColor(1, 1, 1)
     love.graphics.draw(self.gravel)
@@ -519,7 +511,7 @@ function renderer:drawGround()
   end
 
   local road = self.roadShader
-  road:send("noise", textures.noise)
+  road:send("roadColor", self.theme.road)
   road:send("trackLength", self.track.length)
   love.graphics.setShader(road)
   love.graphics.setColor(1, 1, 1)
@@ -532,6 +524,8 @@ function renderer:drawGround()
   love.graphics.draw(self.barrierShadowL)
   love.graphics.draw(self.barrierShadowR)
   love.graphics.setColor(1, 1, 1)
+  love.graphics.draw(self.barrierEdgeL)
+  love.graphics.draw(self.barrierEdgeR)
   love.graphics.draw(self.barrierL)
   love.graphics.draw(self.barrierR)
 

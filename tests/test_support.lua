@@ -5,6 +5,21 @@ local catalog = require("src/tracks/catalog")
 local Track = require("src/sim/track")
 local audio = require("src/audio")
 
+h.describe("environment", function()
+  h.it("every theme gives the shaders what they need", function()
+    local environment = require("src/render/environment")
+    for name, theme in pairs(environment.THEMES) do
+      for _, field in ipairs({ "groundA", "groundB", "road", "gravel", "dust", "barrierA", "barrierB" }) do
+        h.assertTrue(type(theme[field]) == "table", name .. " is missing " .. field)
+      end
+      h.assertBetween(theme.pattern, 0, 2, name .. " pattern")
+    end
+    for name, time in pairs(environment.TIMES) do
+      h.assertTrue(time.saturation > 0, name .. " saturation")
+    end
+  end)
+end)
+
 h.describe("settings", function()
   h.it("round-trips through a file", function()
     settings.laps = 7

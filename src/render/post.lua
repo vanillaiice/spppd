@@ -20,6 +20,7 @@ local COMPOSITE = [[
   uniform float useLight;
   uniform float glowAmount;
   uniform vec3 grade;
+  uniform float saturation;
   uniform float vignette;
   uniform float punch;
   uniform float speedBlur;
@@ -31,7 +32,7 @@ local COMPOSITE = [[
     // and the road ahead, and those must never be smeared.
     if (speedBlur > 0.0005) {
       vec2 toEdge = uv - vec2(0.5, 0.5);
-      float mask = smoothstep(0.2, 0.46, abs(toEdge.x));
+      float mask = smoothstep(0.32, 0.5, abs(toEdge.x));
       // A per-pixel offset turns would-be ghost images into fine grain.
       float jitter = fract(sin(dot(sc, vec2(12.9898, 78.233))) * 43758.5453);
       for (int i = 0; i < 10; i++) {
@@ -44,9 +45,9 @@ local COMPOSITE = [[
     }
     c += Texel(glow, uv).rgb * glowAmount;
 
-    // Gentle filmic shoulder, then a touch of contrast and white balance.
+    // Bright, saturated colour: nothing here should look filmed.
     c = c * grade;
-    c = mix(c, c * c * (3.0 - 2.0 * c), 0.28);
+    c = mix(vec3(dot(c, vec3(0.3, 0.59, 0.11))), c, saturation);
 
     vec2 p = uv - 0.5;
     float v = 1.0 - dot(p, p) * (vignette + punch);
@@ -136,6 +137,7 @@ function post.present(opts)
   shader:send("glow", post.blurA)
   shader:send("glowAmount", opts.glow or 1)
   shader:send("grade", opts.grade or { 1, 1, 1 })
+  shader:send("saturation", opts.saturation or 1)
   shader:send("vignette", opts.vignette or 0.45)
   shader:send("punch", opts.punch or 0)
   shader:send("speedBlur", opts.speedBlur or 0)

@@ -530,11 +530,12 @@ function rm.drawScene(sw, sh)
   post.present({
     lights = env.lights,
     grade = env.grade,
+    saturation = env.saturation,
     glow = env.glow,
     vignette = env.vignette,
     punch = boosting and 0.25 or 0,
     speedBlur = settings.quality == "low" and 0
-      or math.max(0, math.min(1, (race.player:getSpeed() - 28) / 55)) * 0.022 + (boosting and 0.03 or 0),
+      or math.max(0, math.min(1, (race.player:getSpeed() - 45) / 45)) * 0.01 + (boosting and 0.014 or 0),
   })
 end
 

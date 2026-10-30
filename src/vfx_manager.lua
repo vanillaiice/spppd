@@ -43,15 +43,6 @@ function vfx.load(dustColor)
   sparks:setColors(1, 0.95, 0.75, 1, 1, 0.68, 0.22, 1, 1, 0.3, 0.05, 0)
   vfx.sparks = sparks
 
-  local flame = newSystem(textures.smoke, 500)
-  flame:setParticleLifetime(0.06, 0.2)
-  flame:setSizes(0.34, 0.24, 0.04)
-  flame:setSizeVariation(0.4)
-  flame:setSpeed(160, 340)
-  flame:setSpread(0.2)
-  flame:setColors(0.72, 0.84, 1, 0.9, 0.42, 0.6, 1, 0.8, 1, 0.5, 0.15, 0.45, 1, 0.2, 0.05, 0)
-  vfx.flame = flame
-
   local pop = newSystem(textures.smoke, 60)
   pop:setParticleLifetime(0.04, 0.1)
   pop:setSizes(0.14, 0.24, 0.02)
@@ -89,20 +80,6 @@ function vfx.scrape(x, y, nx, ny, strength)
   vfx.sparks:emit(math.min(26, math.floor(4 + strength * 10)))
 end
 
--- Emits along the path since the last frame, so at speed the flame stays one
--- continuous tongue instead of a row of puffs.
-function vfx.burn(x, y, angle, lastX, lastY)
-  lastX, lastY = lastX or x, lastY or y
-  vfx.flame:setDirection(angle)
-  local distance = math.sqrt((x - lastX) ^ 2 + (y - lastY) ^ 2)
-  local steps = math.min(10, math.floor(distance / 7) + 1)
-  for i = 1, steps do
-    local t = i / steps
-    vfx.flame:setPosition(lastX + (x - lastX) * t, lastY + (y - lastY) * t)
-    vfx.flame:emit(2)
-  end
-end
-
 function vfx.backfire(x, y, angle)
   vfx.pop:setPosition(x, y)
   vfx.pop:setDirection(angle)
@@ -113,7 +90,6 @@ function vfx.update(dt)
   vfx.smoke:update(dt)
   vfx.dirt:update(dt)
   vfx.sparks:update(dt)
-  vfx.flame:update(dt)
   vfx.pop:update(dt)
 end
 
@@ -128,7 +104,6 @@ end
 function vfx.drawEmissive()
   love.graphics.setColor(1, 1, 1, 1)
   love.graphics.setBlendMode("add")
-  love.graphics.draw(vfx.flame)
   love.graphics.draw(vfx.pop)
   love.graphics.draw(vfx.sparks)
   love.graphics.setBlendMode("alpha")

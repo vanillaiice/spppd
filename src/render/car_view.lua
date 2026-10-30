@@ -48,12 +48,6 @@ function view.updateFx(car, dt)
   local back = a + math.pi
   local ex = x + math.cos(back) * (car.length / 2 + 2)
   local ey = y + math.sin(back) * (car.length / 2 + 2)
-  if model.boostState == "active" then
-    vfx.burn(ex, ey, back, fx.burnX, fx.burnY)
-    fx.burnX, fx.burnY = ex, ey
-  else
-    fx.burnX, fx.burnY = nil, nil
-  end
 
   -- A lifted throttle at high revs pops through the exhaust.
   fx.popTimer = fx.popTimer - dt
@@ -78,6 +72,25 @@ local function drawWheel(wheel, steer, sprite)
   love.graphics.pop()
 end
 
+-- Nitro is one solid cartoon flame, so it can never break up at speed.
+local FLAME = {
+  { length = 3.4, width = 0.62, color = { 0.98, 0.2, 0.08 } },
+  { length = 2.5, width = 0.44, color = { 1, 0.62, 0.05 } },
+  { length = 1.4, width = 0.24, color = { 1, 0.96, 0.7 } },
+}
+
+local function drawFlame(car, alpha)
+  local tail = -car.length / 2 + 1
+  for _, layer in ipairs(FLAME) do
+    local length = layer.length * M * (0.8 + love.math.random() * 0.35)
+    local width = layer.width * M
+    local c = layer.color
+    love.graphics.setColor(c[1], c[2], c[3], alpha)
+    love.graphics.polygon("fill", tail, -width * 0.7, tail - length * 0.35, -width,
+      tail - length, 0, tail - length * 0.35, width, tail, width * 0.7)
+  end
+end
+
 function view.drawShadow(car, x, y, angle, env, alpha)
   local sprite = sprites.get(car.spec)
   local len = env.shadowLength
@@ -96,6 +109,7 @@ function view.draw(car, x, y, angle, alpha)
   love.graphics.translate(x, y)
   love.graphics.rotate(angle)
 
+  if model.boostState == "active" then drawFlame(car, alpha) end
   for i = 1, 4 do drawWheel(model.wheels[i], model.steer, sprite) end
 
   -- The body leans a pixel or two against the suspension.
@@ -123,6 +137,9 @@ function view.drawLamps(car, x, y, angle)
   local model = car.model
   local braking = model.brake > 0.05
   local reversing = model.reverse
+  if model.boostState == "active" then
+    lamp(x, y, angle, -hl - 1.5 * M, 0, 1, 0.5, 0.12, 0.9, 8 * M)
+  end
   if braking then
     lamp(x, y, angle, -hl, -hw * 0.62, 1, 0.08, 0.05, 1, 3.4 * M)
     lamp(x, y, angle, -hl, hw * 0.62, 1, 0.08, 0.05, 1, 3.4 * M)
