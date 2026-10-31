@@ -17,6 +17,7 @@ local DEFAULTS = {
   grip = 1.1,
   peakSlip = 0.15,      -- slip angle at peak grip (rad)
   looseGrip = 1.0,      -- multiplier on grass and gravel
+  looseDrag = 1.0,      -- share of the off-road speed penalty this car pays, 1 at most
   -- Drivetrain
   engineType = "na",    -- or "turbo", "supercharged", "electric"; sets the sound only
   motor = false,        -- electric motor torque curve instead of a piston engine's

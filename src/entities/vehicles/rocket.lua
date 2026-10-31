@@ -15,6 +15,7 @@ return base.define({
   width = 1.88,
   rollBalance = 0.47,
   grip = 1.17,
+  looseDrag = 1.0,
   peakSlip = 0.135,
   engineType = "turbo",
   peakTorque = 540,

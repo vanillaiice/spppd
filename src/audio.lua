@@ -8,6 +8,8 @@ local audio = { voices = {}, ready = false, spool = 0 }
 
 local RATE = 44100
 local SCRUB_MAX = 0.14
+local LOOSE_MAX = 0.2      -- off-road layer at full speed with all four wheels off
+local LOOSE_IN, LOOSE_OUT = 1.2, 0.8  -- its fade per second: about 0.2 s, 0.25 s
 local IMPACT_GAP = 0.12    -- seconds; a car grinding along a wall is one noise
 local SPOOL_UP, SPOOL_DOWN = 1.8, 7  -- how fast the turbo fills and dumps (per s)
 local BLOWOFF_SPOOL = 0.55 -- turbo pressure needed to be heard venting
@@ -166,6 +168,11 @@ function audio.nitroData()
   return crossfade(chip(NITRO), 1.7, 0.25)
 end
 
+-- Dark enough to read as a soft rumble of dirt under the tyres, not a hiss.
+function audio.looseData()
+  return noiseLoop(1.2, 0.11, 1.7)
+end
+
 local function looping(data)
   local source = love.audio.newSource(data, "static")
   source:setLooping(true)
@@ -181,7 +188,7 @@ function audio.load()
     audio.rivalEngine = looping(audio.engineData(82, 0.4))
     audio.scrub = looping(audio.scrubData())
     audio.road = looping(noiseLoop(1.5, 0.08, 1.8))
-    audio.loose = looping(noiseLoop(1.2, 0.5, 0.8))
+    audio.loose = looping(audio.looseData())
     audio.wind = looping(noiseLoop(1.8, 0.2, 0.8))
     audio.nitro = looping(audio.nitroData())
     audio.intake = looping(audio.engineData(220, 1))
@@ -238,6 +245,11 @@ end
 function audio.scrubLevel(slide, braking)
   if braking then return 0 end
   return math.max(0, math.min(SCRUB_MAX, (slide - 0.25) * 0.3))
+end
+
+-- offRoad is the share of the car on loose ground, 0..1.
+function audio.looseLevel(offRoad, speed)
+  return offRoad * LOOSE_MAX * math.min(1, speed / 25)
 end
 
 local function fadeTo(source, target, dt, rate)
@@ -326,8 +338,9 @@ function audio.update(dt, car, rival, rivalDistance)
   fadeTo(audio.scrub, audio.scrubLevel(slide, model.brake > 0.05), dt, 3)
   audio.road:setPitch(0.6 + math.min(1.2, speed / 40))
   fadeTo(audio.road, math.min(0.26, speed / 120), dt, 3)
-  audio.loose:setPitch(0.7 + math.min(0.6, speed / 40))
-  fadeTo(audio.loose, offRoad * math.min(0.5, speed / 25), dt, 6)
+  audio.loose:setPitch(0.75 + math.min(0.35, speed / 70))
+  local looseLevel = audio.looseLevel(offRoad, speed)
+  fadeTo(audio.loose, looseLevel, dt, looseLevel > audio.loose:getVolume() and LOOSE_IN or LOOSE_OUT)
   audio.wind:setPitch(0.7 + math.min(1, speed / 70) + model.slipstream * 0.25)
   fadeTo(audio.wind, math.max(0, (speed - 18) / 110) * 0.45 + model.slipstream * 0.2, dt, 2)
   fadeTo(audio.nitro, model.boostState == "active" and 0.35 or 0, dt, 3)

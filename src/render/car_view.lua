@@ -80,45 +80,26 @@ local function warpAmount(car)
   return car.fx and car.fx.warp or 0
 end
 
-local WARP_TINTS = { { 1, 1, 1 }, { 1, 0.6, 0.1 }, { 0.98, 0.18, 0.08 } }
-local WARP_RING_STEPS = 12
-
--- A bow wave the car punches through, sweeping back over it.
-local function drawWarpRing(car, phase, amount)
-  local x = car.length * (0.95 - phase * 1.7)
-  local rise = car.width * (0.75 + phase * 0.9)
-  local depth = rise * 0.45
-  local points = {}
-  for i = 0, WARP_RING_STEPS do
-    local t = (i / WARP_RING_STEPS - 0.5) * math.pi
-    points[#points + 1] = x + math.cos(t) * depth
-    points[#points + 1] = math.sin(t) * rise
-  end
-  local c = WARP_TINTS[phase < 0.5 and 2 or 3]
-  love.graphics.setColor(c[1], c[2], c[3], amount * math.sin(phase * math.pi))
-  love.graphics.line(points)
+-- A thin pointed wisp of air running along the car, fading in and out as it
+-- passes. Plain white and faint: it should read as moving air, not as an effect.
+local function drawWisp(front, y, len, width, a)
+  love.graphics.setColor(1, 1, 1, a)
+  love.graphics.polygon("fill", front, y, front - len * 0.3, y - width, front - len, y, front - len * 0.3, y + width)
 end
 
--- Nitro is the slipstream turned up to a warp: needles of light tear past both
--- sides, opening out from the nose, with red and orange among the white.
+-- Nitro is the slipstream at a harder pace: more air, moving faster.
 local function drawWarp(car, alpha)
   local amount = warpAmount(car) * alpha
   if amount < 0.02 then return end
   local hl, hw = car.length / 2, car.width / 2
   local time = love.timer.getTime()
-  love.graphics.setLineWidth(0.22 * M)
-  for i = 1, 3 do drawWarpRing(car, (time * 1.7 + i / 3) % 1, amount) end
-  for i = 1, 20 do
+  for i = 1, 12 do
     local phase = (time * 3.4 + i * 0.618) % 1
     local side = i % 2 == 0 and 1 or -1
-    local offset = (hw + (0.3 + (i * 7 % 5) * 0.5) * M) * (0.6 + phase * 0.8)
-    local front = hl * 2.2 - phase * car.length * 3.6
-    local len = (2.4 + (i % 4) * 1.1) * M
-    local width = (i % 3 == 1 and 0.16 or 0.26) * M
-    local c = WARP_TINTS[i % 3 + 1]
-    love.graphics.setColor(c[1], c[2], c[3], amount * math.sin(phase * math.pi))
-    love.graphics.polygon("fill", front, side * offset, front - len * 0.3, side * offset - width,
-      front - len, side * offset, front - len * 0.3, side * offset + width)
+    local offset = (hw + (0.3 + (i * 7 % 5) * 0.4) * M) * (0.8 + phase * 0.4)
+    local front = hl * 1.6 - phase * car.length * 3
+    local len = (2 + (i % 4) * 0.9) * M
+    drawWisp(front, side * offset, len, 0.07 * M, 0.55 * amount * math.sin(phase * math.pi))
   end
 end
 
@@ -130,21 +111,19 @@ function view.drawShadow(car, x, y, angle, env, alpha)
     angle, sprite.scale * 1.04, sprite.scale * 1.04, sprite.ox, sprite.oy)
 end
 
--- Air rushing down both sides of a car that is being towed.
+-- Air sliding down both sides of a car that is being towed.
 local function drawSlipstream(car, alpha)
   -- The warp takes over from these while nitro is on.
   local amount = car.model.slipstream * (1 - warpAmount(car))
   if amount < 0.05 then return end
   local hl, hw = car.length / 2, car.width / 2
   local time = love.timer.getTime()
-  love.graphics.setLineWidth(0.14 * M)
-  for i = 1, 8 do
-    local phase = (time * 2.4 + i * 0.37) % 1
-    local side = (i % 2 == 0 and 1 or -1) * (hw + (0.3 + (i % 3) * 0.4) * M)
-    local front = hl * 1.5 - phase * car.length * 2.6
-    local len = (1.4 + (i % 3) * 0.6) * M
-    love.graphics.setColor(1, 1, 1, 0.9 * amount * alpha * math.sin(phase * math.pi))
-    love.graphics.line(front, side, front - len, side)
+  for i = 1, 6 do
+    local phase = (time * 1.6 + i * 0.37) % 1
+    local side = (i % 2 == 0 and 1 or -1) * (hw + (0.2 + (i % 3) * 0.3) * M)
+    local front = hl * 0.9 - phase * car.length * 2.2
+    local len = (1.6 + (i % 3) * 0.6) * M
+    drawWisp(front, side, len, 0.06 * M, 0.4 * amount * alpha * math.sin(phase * math.pi))
   end
 end
 
@@ -187,8 +166,6 @@ function view.drawLamps(car, x, y, angle)
   local model = car.model
   local braking = model.brake > 0.05
   local reversing = model.reverse
-  local warp = warpAmount(car)
-  if warp > 0.02 then lamp(x, y, angle, 0, 0, 1, 0.3, 0.08, 0.45 * warp, 11 * M) end
   if braking then
     lamp(x, y, angle, -hl, -hw * 0.62, 1, 0.08, 0.05, 1, 3.4 * M)
     lamp(x, y, angle, -hl, hw * 0.62, 1, 0.08, 0.05, 1, 3.4 * M)

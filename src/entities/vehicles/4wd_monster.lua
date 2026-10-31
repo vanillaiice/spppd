@@ -11,6 +11,7 @@ return base.define({
   cgHeight = 0.54,
   grip = 1.17,
   looseGrip = 1.2,
+  looseDrag = 0.65,
   engineType = "turbo",
   drive = "AWD",
   awdFront = 0.42,

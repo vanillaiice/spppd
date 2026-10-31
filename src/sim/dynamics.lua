@@ -88,7 +88,7 @@ dynamics.ASSISTS = {
     drift = 1, offroad = 0.6, brake = 1.25, shift = 0.5, tow = 0.9,
   }),
   full  = tier({ tc = 1.0, abs = 1.0, esc = 1.0, steer = 1.0, caster = 0.85 }),
-  sport = tier({ tc = 0.8, abs = 1.0, esc = 0.5, steer = 0.9, caster = 0.75 }),
+  sport = tier({ tc = 0.8, abs = 1.0, esc = 0.5, steer = 0.9, caster = 0.75, offroad = 0.14 }),
   sim   = tier({ tc = 0.0, abs = 0.0, esc = 0.0, steer = 0.0, caster = 0.35 }),
 }
 
@@ -559,8 +559,9 @@ function dynamics.step(c, input, vx, vy, r, dt)
       if spec.looseGrip then grip = grip * spec.looseGrip end
       local forgiven = assist.offroad
       grip = grip + (spec.grip * assist.grip - grip) * forgiven
-      roll = roll + (ASPHALT_ROLL - roll) * forgiven
-      drag = drag * (1 - forgiven)
+      local penalty = (1 - forgiven) * spec.looseDrag
+      roll = ASPHALT_ROLL + (roll - ASPHALT_ROLL) * penalty
+      drag = drag * penalty
     end
     -- A drifting tail keeps enough grip to hold the angle, not to stop it.
     if not w.front then grip = grip * (1 - drift * 0.45) end

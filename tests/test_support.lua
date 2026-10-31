@@ -205,6 +205,28 @@ h.describe("audio", function()
     h.assertBetween(peakOf(data), 0.1, 0.95, "peak level")
   end)
 
+  h.it("off-road noise is a soft rumble that loops", function()
+    local data = audio.looseData()
+    local n = data:getSampleCount()
+    h.assertTrue(math.abs(data:getSample(0) - data:getSample(n - 1)) < 0.2, "loop point")
+    h.assertBetween(peakOf(data), 0.1, 0.95, "peak level")
+    -- Sample-to-sample movement against level: white noise is about 1.4.
+    local energy, change = 0, 0
+    for i = 1, n - 1 do
+      local v = data:getSample(i)
+      energy = energy + v * v
+      change = change + (v - data:getSample(i - 1)) ^ 2
+    end
+    h.assertTrue(math.sqrt(change / energy) < 0.55, "too bright, it will sound rough")
+  end)
+
+  h.it("off-road noise stays under the road and grows with speed", function()
+    h.assertEq(audio.looseLevel(0, 40), 0, "silent on the road")
+    h.assertEq(audio.looseLevel(1, 0), 0, "silent at a standstill")
+    h.assertTrue(audio.looseLevel(1, 10) < audio.looseLevel(1, 25), "speed brings it up")
+    h.assertBetween(audio.looseLevel(1, 80), 0.1, 0.26, "no louder than road noise")
+  end)
+
   h.it("synthesises tones that loop without clipping", function()
     local data = audio.toneData(210, { [2] = 0.14, [4] = 0.06, [7] = 0.3, [10] = 0.09 })
     local n = data:getSampleCount()

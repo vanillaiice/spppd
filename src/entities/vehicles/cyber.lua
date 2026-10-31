@@ -15,6 +15,7 @@ return base.define({
   width = 1.96,
   rollBalance = 0.52,
   grip = 1.2,
+  looseDrag = 0.85,
   engineType = "electric",
   motor = true,
   drive = "AWD",

@@ -15,6 +15,7 @@ return base.define({
   width = 1.98,
   grip = 1.02,
   looseGrip = 1.6,
+  looseDrag = 0.6,
   drive = "AWD",
   awdFront = 0.5,
   peakTorque = 660,

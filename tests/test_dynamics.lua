@@ -228,6 +228,45 @@ h.describe("dynamics", function()
     end)
   end
 
+  h.it("off-road speed loss depends on the car", function()
+    local function lostOnGravel(spec)
+      local s = sim(spec, "arcade")
+      surface(s, "gravel")
+      s.vx = 40
+      for _ = 1, 3 / DT do s:step(input()) end
+      return 40 - speedOf(s)
+    end
+    local samurai = lostOnGravel(garage.byId("samurai"))
+    local monster = lostOnGravel(garage.byId("4wd_monster"))
+    local hatch = lostOnGravel(garage.byId("hot_hatch"))
+    local rocket = lostOnGravel(garage.byId("rocket"))
+    h.assertTrue(samurai < monster and monster < hatch and hatch < rocket,
+      string.format("%.1f %.1f %.1f %.1f", samurai, monster, hatch, rocket))
+  end)
+
+  h.it("sport takes about 30% off the off-road penalty across the garage", function()
+    local total = 0
+    for _, spec in ipairs(garage) do
+      h.assertTrue(spec.looseDrag <= 1, spec.name .. " would pay more than the full penalty")
+      total = total + (1 - dynamics.ASSISTS.sport.offroad) * spec.looseDrag
+    end
+    h.assertBetween(total / #garage, 0.68, 0.72, "average penalty left")
+  end)
+
+  h.it("every car still pays for leaving the road", function()
+    for _, spec in ipairs(garage) do
+      local function speedAfter(name)
+        local s = sim(spec, "arcade")
+        surface(s, name)
+        s.vx = 40
+        for _ = 1, 3 / DT do s:step(input()) end
+        return speedOf(s)
+      end
+      h.assertTrue(speedAfter("grass") < speedAfter("asphalt"), spec.name .. " on grass")
+      h.assertTrue(speedAfter("gravel") < speedAfter("grass"), spec.name .. " on gravel")
+    end
+  end)
+
   -- Everything measured over the 3 s after letting go of a handbrake turn.
   local function afterDrift(spec, steer, throttle)
     local s = sim(spec, "arcade")
@@ -319,7 +358,7 @@ h.describe("dynamics", function()
       for _, field in ipairs({ "grip", "transfer", "keyRate", "brake", "shift" }) do
         h.assertEq(assist[field], 1, name .. " " .. field)
       end
-      for _, field in ipairs({ "turn", "carry", "drift", "offroad" }) do
+      for _, field in ipairs({ "turn", "carry", "drift" }) do
         h.assertEq(assist[field], 0, name .. " " .. field)
       end
       local s = sim(garage[1], name)

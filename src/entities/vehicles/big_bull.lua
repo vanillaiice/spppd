@@ -16,6 +16,7 @@ return base.define({
   rollBalance = 0.58,
   grip = 1.02,
   looseGrip = 1.2,
+  looseDrag = 0.75,
   engineType = "turbo",
   drive = "AWD",
   awdFront = 0.45,
