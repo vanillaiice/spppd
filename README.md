@@ -121,3 +121,15 @@ need that track installed.
 
 The simulation steps at a fixed 120 Hz, so the car behaves the same at any frame
 rate. World units are pixels at 12 px per metre; the vehicle model is in SI units.
+
+## License
+
+Copyright (C) 2026 vanillaiice
+
+- The game is licensed under the [GNU General Public License, version 3](LICENSE).
+- The relay server in `server/` is licensed under the
+  [GNU Affero General Public License, version 3](server/LICENSE). If you run a
+  modified copy for others to use over a network, you must offer them its source.
+- The Press Start 2P font is not covered by either. It stays under the
+  [SIL Open Font License 1.1](assets/fonts/OFL.txt).
+- `src/lib/sfxr.lua` keeps its own MIT license, in the file's header.

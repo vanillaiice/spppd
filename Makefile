@@ -30,10 +30,10 @@ server:
 clean:
 	rm -rf dist/
 
-# Tests stay out of the build, and so do the old unused sprites.
+# Tests stay out of the build.
 zip:
 	mkdir -p dist/
-	zip -9 -r dist/${name}-${ver}.love main.lua conf.lua assets src -x 'assets/sprites/*'
+	zip -9 -r dist/${name}-${ver}.love main.lua conf.lua LICENSE assets src
 
 dist/love-binaries/love-11.5-win64.zip:
 	mkdir -p dist/love-binaries
@@ -51,6 +51,8 @@ win64: zip dist/love-binaries/love-11.5-win64.zip
 	cp dist/love-binaries/love-11.5-win64/*.dll dist/win64/
 	cp dist/love-binaries/love-11.5-win64/*.txt dist/win64/
 	cp dist/love-binaries/love-11.5-win64/*.ico dist/win64/
+	cp LICENSE dist/win64/LICENSE.txt
+	cp assets/fonts/OFL.txt dist/win64/
 	cat dist/love-binaries/love-11.5-win64/love.exe dist/${name}-${ver}.love > dist/win64/${name}.exe
 	cd dist/win64/ && zip -9 -r ../${name}-${ver}-win64.zip .
 
@@ -60,6 +62,8 @@ win32: zip dist/love-binaries/love-11.5-win32.zip
 	cp dist/love-binaries/love-11.5-win32/*.dll dist/win32/
 	cp dist/love-binaries/love-11.5-win32/*.txt dist/win32/
 	cp dist/love-binaries/love-11.5-win32/*.ico dist/win32/
+	cp LICENSE dist/win32/LICENSE.txt
+	cp assets/fonts/OFL.txt dist/win32/
 	cat dist/love-binaries/love-11.5-win32/love.exe dist/${name}-${ver}.love > dist/win32/${name}.exe
 	cd dist/win32/ && zip -9 -r ../${name}-${ver}-win32.zip .
 
