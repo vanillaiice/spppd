@@ -1,4 +1,6 @@
 -- Everything the game remembers between sessions.
+local ui = require("src/ui")
+
 local settings = {
   assists = "arcade",
   camera = "chase",
@@ -11,6 +13,8 @@ local settings = {
   paceNotes = true,
   showFps = false,
   fullscreen = false,
+  touch = "auto",
+  autoGas = true,
 
   -- Last race setup
   mode = "race",
@@ -70,6 +74,8 @@ function settings.load()
     for k, v in pairs(data) do
       if type(settings[k]) == type(v) then settings[k] = v end
     end
+  elseif ui.mobile then
+    settings.quality = "low"
   end
   -- FULL was replaced by ARCADE as the easiest handling tier.
   if settings.assists == "full" then settings.assists = "arcade" end

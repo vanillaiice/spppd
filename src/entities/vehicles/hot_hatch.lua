@@ -14,6 +14,7 @@ return base.define({
   width = 1.82,
   rollBalance = 0.62,
   grip = 1.1,
+  engineType = "turbo",
   drive = "FWD",
   peakTorque = 400,
   redline = 7000,

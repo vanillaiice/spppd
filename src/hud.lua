@@ -4,8 +4,18 @@ local ui = require("src/ui")
 local colors = require("src/colors")
 local settings = require("src/settings")
 local minimap = require("src/minimap")
+local touch = require("src/touch")
+local dynamics = require("src/sim/dynamics")
 
 local hud = {}
+
+local DASH_W, DASH_H = 112, 44
+
+-- The dash moves out from under the right thumb when touch controls are up.
+local function dashX(sw, s)
+  if touch.shown() then return (sw - DASH_W * s) / 2 end
+  return sw - DASH_W * s - 8 * s
+end
 
 function hud.formatTime(t)
   if not t then return "--:--.---" end
@@ -85,8 +95,8 @@ end
 local function drawDash(car, sw, sh, s)
   local model = car.model
   local spec = car.spec
-  local w, h = 112 * s, 44 * s
-  local x, y = sw - w - 8 * s, sh - h - 8 * s
+  local w, h = DASH_W * s, DASH_H * s
+  local x, y = dashX(sw, s), sh - h - 8 * s
   ui.panel(x, y, w, h, 0.8)
 
   -- Rev lights, the way a real wheel shows them
@@ -100,6 +110,13 @@ local function drawDash(car, sw, sh, s)
     love.graphics.setColor(c[1], c[2], c[3], lit and 1 or 0.14)
     love.graphics.rectangle("fill", x + 4 * s + (i - 1) * bw, y + 4 * s, bw - s, 5 * s)
   end
+  -- At the lights, a bar marks where the revs should be for the launch.
+  if model.rev then
+    local span = blocks * bw
+    love.graphics.setColor(colors.paint)
+    love.graphics.rectangle("fill", x + 4 * s + span * dynamics.LAUNCH_LOW, y + 10 * s,
+      span * (dynamics.LAUNCH_HIGH - dynamics.LAUNCH_LOW), 2 * s)
+  end
 
   local speed, unit = speedText(car)
   ui.text(tostring(speed), x, y + 14 * s, 16 * s, colors.paint, "right", w - 28 * s)
@@ -112,11 +129,11 @@ local function drawDash(car, sw, sh, s)
   ui.text(gear, boxX, y + 15 * s, 16 * s, colors.asphaltDeep, "center", 20 * s + 2)
 
   -- Nitro gauge
-  local fill, c = 1, colors.sectorGreen
+  local fill, c = model.boostTank / spec.boostTime, colors.sectorGreen
   if model.boostState == "active" then
-    fill, c = model.boostTimer / spec.boostTime, colors.sectorPurple
+    c = colors.sectorPurple
   elseif model.boostState == "cooldown" then
-    fill, c = 1 - model.boostCooldown / spec.boostCooldown, colors.muted
+    c = colors.muted
   end
   local bx, by, bwidth = x + 4 * s, y + 36 * s, 56 * s
   love.graphics.setColor(1, 1, 1, 0.12)
@@ -135,8 +152,8 @@ end
 local function drawSlipstream(car, sw, sh, s)
   local amount = car.model.slipstream
   if amount < 0.03 then return end
-  local w, h = 112 * s, 12 * s
-  local x, y = sw - w - 8 * s, sh - 44 * s - 8 * s - h - 2 * s
+  local w, h = DASH_W * s, 12 * s
+  local x, y = dashX(sw, s), sh - DASH_H * s - 8 * s - h - 2 * s
   local alpha = math.min(1, amount * 4)
   local panel = colors.asphaltDeep
   love.graphics.setColor(panel[1], panel[2], panel[3], 0.8 * alpha)
@@ -166,6 +183,10 @@ local function drawStartLights(race, sw, sh, s)
       love.graphics.setColor(0.2, 0.05, 0.06)
     end
     love.graphics.circle("fill", cx, y, r)
+  end
+  if race.phase == "countdown" then
+    ui.panel((sw - 200 * s) / 2, y + 15 * s, 200 * s, 12 * s, 0.8)
+    ui.text("HOLD THE REVS ON THE WHITE BAR", 0, y + 18 * s, 6 * s, colors.paint, "center", sw)
   end
 end
 
@@ -232,8 +253,11 @@ function hud.draw(sw, sh, race, ctx)
 
   if settings.minimap and race.track then
     local size = 84 * s
-    ui.panel(8 * s, sh - size - 16 * s, size + 8 * s, size + 8 * s, 0.55)
-    minimap.draw(12 * s, sh - size - 12 * s, size, race.cars, car)
+    local x, y = 8 * s, sh - size - 16 * s
+    -- The left thumb lives bottom left, so the map moves under the top buttons.
+    if touch.shown() then x, y = sw - size - 16 * s, 46 * s end
+    ui.panel(x, y, size + 8 * s, size + 8 * s, 0.55)
+    minimap.draw(x + 4 * s, y + 4 * s, size, race.cars, car)
   end
 
   drawDash(car, sw, sh, s)
@@ -248,8 +272,11 @@ function hud.draw(sw, sh, race, ctx)
   end
 
   if settings.showFps then
-    ui.text(love.timer.getFPS() .. " FPS", sw - 72 * s, 8 * s, 6 * s, colors.muted, "right", 64 * s)
+    local x = touch.shown() and sw - 158 * s or sw - 72 * s
+    ui.text(love.timer.getFPS() .. " FPS", x, 8 * s, 6 * s, colors.muted, "right", 64 * s)
   end
+
+  if not ctx.paused and race.phase ~= "finished" then touch.draw(sw, sh, car) end
 end
 
 return hud

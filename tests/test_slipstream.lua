@@ -22,7 +22,7 @@ local function duel(gap, side, opts)
   for _, car in ipairs(race.cars) do
     race:initProgress(car)
     car.body:setLinearVelocity(0, -(opts.speed or SPEED) * M)
-    car.model.gear = #spec.gears - 1
+    car.model.gear = math.max(1, #spec.gears - 1)
     car.input.throttle = 1
   end
   rival.body:setLinearVelocity((opts.rivalSide or 0) * M, -(opts.rivalSpeed or opts.speed or SPEED) * M)
@@ -108,7 +108,7 @@ h.describe("slipstream", function()
   h.it("does not push a car that is braking", function()
     local spec = garage[1]
     local braking = { throttle = 0, brake = 1, steer = 0 }
-    local drag = 0.5 * 1.2 * spec.dragArea * SPEED * SPEED * 0.45
+    local drag = 0.5 * 1.2 * spec.dragArea * SPEED * SPEED * 0.3
     h.assertNear(pull("arcade", 1, braking) - pull("arcade", 0, braking), drag, 1, "drag only")
   end)
 
@@ -126,13 +126,22 @@ h.describe("slipstream", function()
       local clear = gapAfter(24, 12, 4, { spec = spec })
       print(string.format("        %-15s gap after 4 s: %.1f m towed, %.1f m clear", spec.name, towed, clear))
       h.assertTrue(clear > 23, spec.name .. " should hold station without a wake")
-      h.assertTrue(towed < clear - 8, spec.name .. " should close at least 8 m in 4 s")
+      h.assertBetween(clear - towed, 2.5, 6, spec.name .. " metres gained in 4 s")
     end
   end)
 
+  h.it("takes a couple of seconds of following to build", function()
+    local race, player = duel(16, 0)
+    stepFor(race, 0.5)
+    h.assertBetween(player.model.slipstream, 0.2, 0.3, "half a second in")
+    stepFor(race, 0.5)
+    h.assertBetween(player.model.slipstream, 0.45, 0.55, "one second in")
+    race:destroy()
+  end)
+
   h.it("keeps pulling for a moment after leaving the wake", function()
-    local race, player, rival = duel(12, 0)
-    stepFor(race, 0.6)
+    local race, player, rival = duel(16, 0)
+    stepFor(race, 2.2)
     h.assertEq(player.model.slipstream, 1, "fully towed")
     local x, y = player.body:getPosition()
     player.body:setPosition(x + 8 * M, y)
@@ -145,8 +154,9 @@ h.describe("slipstream", function()
   end)
 
   h.it("is cleared by a respawn", function()
-    local race, player = duel(12, 0)
-    stepFor(race, 0.6)
+    local race, player = duel(16, 0)
+    stepFor(race, 2.2)
+    h.assertTrue(player.model.slipstream > 0.9, "towed first")
     player:teleport(0, 0, 0)
     h.assertEq(player.model.slipstream, 0, "after a teleport")
     race:destroy()

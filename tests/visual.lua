@@ -25,15 +25,33 @@ local function autopilot()
   r.player.driver = AI.new(r.track, r.player, { skill = 0.92 })
 end
 
+-- Lay the game out as a phone would. Pair with SPPPD_SIZE=800x360.
+local function phone()
+  ui.mobile = true
+  settings.touch = "auto"
+  require("src/touch").active = true
+end
+
 local SCENES = {
   menu = function() state.screen = "splash" require("src/splash").timer = 99 end,
   setup = function() menu.enter() settings.mode = "race" menu.go("setup") end,
+  newestcar = function() settings.car = #garage menu.enter() settings.mode = "race" menu.go("setup") end,
   settings = function() menu.enter() menu.go("settings") end,
+  -- Any one car, by id: SPPPD_CAR=cyber.
+  car = function()
+    race({ track = "lusail", time = "day", spec = garage.byId(os.getenv("SPPPD_CAR") or "cyber"), opponents = 2 })
+    autopilot()
+  end,
   day = function() race({ track = "lusail", time = "day" }) autopilot() end,
   dusk = function() race({ track = "highlands", time = "dusk" }) autopilot() end,
   night = function() race({ track = "harbour", time = "night" }) autopilot() end,
   marina = function() race({ track = "harbour", time = "day" }) autopilot() end,
-  start = function() race({ track = "lusail", time = "day" }) rm.race().startDelay = 100 end,
+  start = function()
+    race({ track = "lusail", time = "day" })
+    local r = rm.race()
+    r.startDelay = 100
+    r.player.driver = { revs = function() return 0.68 end }
+  end,
   trial = function() race({ track = "highlands", time = "day", mode = "trial", opponents = 0 }) autopilot() end,
   free = function()
     race({ time = "day", mode = "freestyle", opponents = 0 })
@@ -54,7 +72,9 @@ local SCENES = {
     local ai = r.player.driver
     r.player.driver = { update = function(self, car, rc, dt)
       ai:update(car, rc, dt)
-      car.input.boost = rc.time > 7
+      -- Keeps the power on, since braking for a corner would cancel the nitro.
+      if rc.time > 7 then car.input.throttle, car.input.brake = 1, 0 end
+      car.input.boost = rc.time > 7 and car.model.boostState ~= "active"
     end }
   end,
   slipstream = function()
@@ -68,6 +88,21 @@ local SCENES = {
       car.driver = { update = function(_, c) c.input.throttle = 1 end }
     end
   end,
+  touch = function()
+    phone()
+    race({ track = "lusail", time = "day" })
+    autopilot()
+    local touch = require("src/touch")
+    local sw, sh = love.graphics.getDimensions()
+    local layout = touch.layout(sw, sh)
+    touch.pressed(1, 150, sh * 0.7, sw, sh)
+    touch.moved(1, 150 + layout.radius * 0.7, sh * 0.7 + layout.radius * 0.5)
+  end,
+  phonemain = function() phone() menu.enter() end,
+  phonesetup = function() phone() menu.enter() settings.mode = "race" menu.go("setup") end,
+  phonesettings = function() phone() menu.enter() menu.go("settings") end,
+  controls = function() menu.enter() menu.go("controls") end,
+  phonecontrols = function() phone() menu.enter() menu.go("controls") end,
   pause = function() race({ track = "lusail", time = "day" }) autopilot() end,
   results = function() race({ track = "boat", time = "day", opponents = 3 }) autopilot() end,
 }
@@ -83,7 +118,8 @@ function visual.start(args)
   local size = os.getenv("SPPPD_SIZE")
   if size then
     local w, h = size:match("(%d+)x(%d+)")
-    love.window.setMode(tonumber(w), tonumber(h), { resizable = true })
+    -- A resizable window gets resized by a tiling desktop.
+    love.window.setMode(tonumber(w), tonumber(h), { resizable = false })
   end
   SCENES[scene]()
   visual.scene = scene
@@ -94,6 +130,8 @@ function visual.start(args)
     frame = frame + 1
     -- Fast-forward at the simulation's own step, whatever the frame rate.
     update(1 / 30)
+    -- Real time, for recording the mix (SPPPD_PACE=1).
+    if os.getenv("SPPPD_PACE") then love.timer.sleep(1 / 30) end
     if scene == "results" and rm.race() and frame == 5 then
       local r = rm.race()
       for _, car in ipairs(r.cars) do

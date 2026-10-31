@@ -27,7 +27,17 @@ local DRIFT_MAX_BETA = 0.7      -- stability control lets a drift get this far
 local REVERSE_DELAY = 0.25      -- hold the brake this long at a stop to back up
 local REVERSE_THROTTLE = 0.6
 local REVERSE_TOP_SPEED = 11
-local SLIPSTREAM_DRAG_CUT = 0.45  -- share of aero drag a full slipstream removes
+local SLIPSTREAM_DRAG_CUT = 0.3  -- share of aero drag a full slipstream removes
+local ESC_LAG = 0.06            -- seconds stability control takes to lean in or let go
+local HANDBRAKE_RELEASE = 0.15  -- seconds for the rear wheels to free up again
+local DRIFT_CATCH = 0.5         -- share of the anti-spin moment left after the handbrake is let go
+local DRIFT_SETTLE = 3          -- how firmly a released drift gives up its rotation (per s)
+local REV_RISE, REV_FALL = 3, 1.5  -- how quickly a free engine gains and sheds rpm (per s)
+local LAUNCH_FADE = 0.15        -- share of redline over which a launch goes from full to none
+local LAUNCH_PUSH = 7.5           -- extra pull from a perfect launch (m/s^2), fading away
+local LAUNCH_TIME = 1.2
+local BOOST_RATED_SPEED = 22    -- speed (m/s) at which the push equals boostPower
+local BOOST_MIN_TANK = 0.25     -- seconds of nitro needed to light it again
 
 local ASPHALT_ROLL = 0.014
 
@@ -67,12 +77,15 @@ local function tier(values)
   return values
 end
 
+-- Where the revs should sit when the lights go out, as a share of redline.
+dynamics.LAUNCH_LOW, dynamics.LAUNCH_HIGH = 0.62, 0.82
+
 dynamics.DEFAULT_ASSIST = "arcade"
 dynamics.ASSISTS = {
   arcade = tier({
     tc = 1.0, abs = 1.0, esc = 0.7, steer = 1.0, caster = 0.85,
     grip = 1.3, tyreC = 1.15, transfer = 0.6, keyRate = 1.9, turn = 7, carry = 0.75,
-    drift = 1, offroad = 0.6, brake = 1.25, shift = 0.5, tow = 1.8,
+    drift = 1, offroad = 0.6, brake = 1.25, shift = 0.5, tow = 0.9,
   }),
   full  = tier({ tc = 1.0, abs = 1.0, esc = 1.0, steer = 1.0, caster = 0.85 }),
   sport = tier({ tc = 0.8, abs = 1.0, esc = 0.5, steer = 0.9, caster = 0.75 }),
@@ -85,15 +98,22 @@ local TORQUE_CURVE = {
   { 0.80, 0.97 }, { 0.95, 0.86 }, { 1.05, 0.62 },
 }
 
-local function torqueShape(ratio)
-  if ratio <= TORQUE_CURVE[1][1] then return TORQUE_CURVE[1][2] end
-  for i = 1, #TORQUE_CURVE - 1 do
-    local a, b = TORQUE_CURVE[i], TORQUE_CURVE[i + 1]
+-- A motor pulls flat out from a standstill, then holds constant power.
+local MOTOR_CURVE = {
+  { 0.00, 1.00 }, { 0.30, 1.00 }, { 0.40, 0.75 }, { 0.50, 0.60 }, { 0.60, 0.50 },
+  { 0.70, 0.43 }, { 0.80, 0.375 }, { 0.90, 0.333 }, { 1.05, 0.286 },
+}
+
+local function torqueShape(ratio, spec)
+  local curve = spec.motor and MOTOR_CURVE or TORQUE_CURVE
+  if ratio <= curve[1][1] then return curve[1][2] end
+  for i = 1, #curve - 1 do
+    local a, b = curve[i], curve[i + 1]
     if ratio <= b[1] then
       return a[2] + (b[2] - a[2]) * (ratio - a[1]) / (b[1] - a[1])
     end
   end
-  return TORQUE_CURVE[#TORQUE_CURVE][2]
+  return curve[#curve][2]
 end
 
 function dynamics.new(spec, assist)
@@ -122,6 +142,12 @@ function dynamics.new(spec, assist)
     throttle = 0,
     brake = 0,
     handbrake = false,
+    handbrakeHold = 0,  -- 0..1 how hard the handbrake is still biting
+    escMoment = 0,
+    rev = nil,          -- 0..1 throttle at the start lights; nil once racing
+    launch = 0,         -- 0..1 how good the launch was
+    launchTimer = 0,
+    revCut = false,     -- the rev limiter is holding the engine back
     ax = 0, ay = 0,
     slip = 0,
     beta = 0,
@@ -132,8 +158,8 @@ function dynamics.new(spec, assist)
     slipstream = 0, -- 0..1 how far into another car's wake, set by the race
 
     boostState = "ready",
-    boostTimer = 0,
-    boostCooldown = 0,
+    boostTank = spec.boostTime,  -- seconds of nitro left
+    boostHeld = false,
 
     wheels = {
       { x = a, y = -t, front = true, driven = spec.drive ~= "RWD" },
@@ -169,7 +195,7 @@ function dynamics.peakPower(spec)
   local best = 0
   for ratio = 0.3, 1.0, 0.02 do
     local rpm = ratio * spec.redline
-    best = max(best, spec.peakTorque * torqueShape(ratio) * rpm / RPM_PER_RADS)
+    best = max(best, spec.peakTorque * torqueShape(ratio, spec) * rpm / RPM_PER_RADS)
   end
   return best
 end
@@ -178,6 +204,19 @@ end
 function dynamics.gearingTopSpeed(spec)
   local top = spec.gears[#spec.gears]
   return spec.redline / RPM_PER_RADS * spec.wheelRadius / (top * spec.finalDrive)
+end
+
+-- 0..1, from where the revs sit against the launch window.
+function dynamics.launchQuality(c)
+  local ratio = c.rpm / c.spec.redline
+  local miss = max(dynamics.LAUNCH_LOW - ratio, ratio - dynamics.LAUNCH_HIGH, 0)
+  return max(0, 1 - miss / LAUNCH_FADE)
+end
+
+-- Called as the lights go out.
+function dynamics.launch(c)
+  c.launch = dynamics.launchQuality(c)
+  c.launchTimer = LAUNCH_TIME
 end
 
 -- Steering --------------------------------------------------------------
@@ -219,7 +258,7 @@ local function updateDrift(c, input, vx, dt)
   if input.handbrake and vx > DRIFT_MIN_SPEED then
     target, rate = 1, 9
   elseif abs(c.beta) < 0.15 or input.throttle < 0.5 then
-    rate = 4
+    rate = 2.5
   end
   local delta = max(-rate * dt, min(rate * dt, target - c.drift))
   c.drift = c.drift + delta
@@ -259,22 +298,26 @@ end
 
 -- Powertrain ------------------------------------------------------------
 
+-- Each press switches the nitro on or off, so a tank can be spent in sips. It
+-- only refills while off, and braking shuts it so it can't fight the brakes.
 local function updateBoost(c, input, dt)
   local spec = c.spec
-  if c.boostState == "ready" then
-    if input.boost then
-      c.boostState = "active"
-      c.boostTimer = spec.boostTime
-    end
-  elseif c.boostState == "active" then
-    c.boostTimer = c.boostTimer - dt
-    if c.boostTimer <= 0 then
-      c.boostState = "cooldown"
-      c.boostCooldown = spec.boostCooldown
-    end
+  local pressed = input.boost and not c.boostHeld
+  local braking = input.brake > 0.05
+  c.boostHeld = input.boost
+  if c.boostState == "active" then
+    c.boostTank = max(0, c.boostTank - dt)
+    if pressed or braking or c.boostTank == 0 then c.boostState = "ready" end
   else
-    c.boostCooldown = c.boostCooldown - dt
-    if c.boostCooldown <= 0 then c.boostState = "ready" end
+    local refill = spec.boostTime / spec.boostCooldown * dt
+    c.boostTank = min(spec.boostTime, c.boostTank + refill)
+    if c.boostTank < BOOST_MIN_TANK then
+      c.boostState = "cooldown"
+    elseif pressed and not braking then
+      c.boostState = "active"
+    else
+      c.boostState = "ready"
+    end
   end
 end
 
@@ -357,19 +400,26 @@ local function driveForce(c, pedal, wheelSpeed, dt)
   local coupled = wheelOmega * ratio * RPM_PER_RADS
 
   -- Clutch slips off the line so the engine stays in its power band.
-  local launch = spec.idleRpm + pedal * (spec.redline * 0.48 - spec.idleRpm)
+  -- A motor has no clutch and needs no revs: it is geared straight to the wheels.
+  local launch = spec.idleRpm + (spec.motor and 0 or pedal * (spec.redline * 0.48 - spec.idleRpm))
   local target = max(coupled, launch)
-  local follow = 1 - math.exp(-dt * 14)
+  local rate = 14
+  if c.rev then
+    if c.rpm > spec.redline * 0.97 then c.revCut = true
+    elseif c.rpm < spec.redline * 0.88 then c.revCut = false end
+    target = spec.idleRpm
+    if not c.revCut then target = target + c.rev * (spec.redline - spec.idleRpm) end
+    -- Slow enough that the revs can be held in the launch window by ear.
+    rate = target > c.rpm and REV_RISE or REV_FALL
+  end
+  local follow = 1 - math.exp(-dt * rate)
   c.rpm = c.rpm + (target - c.rpm) * follow
   c.clutch = coupled < launch and 1 - coupled / launch or 0
 
   if c.shiftTimer > 0 then return 0 end
 
-  local rpm = max(c.rpm, spec.idleRpm)
-  local torque = spec.peakTorque * torqueShape(rpm / spec.redline) * pedal
-  if c.boostState == "active" then
-    torque = torque + spec.boostPower / (rpm / RPM_PER_RADS) * max(pedal, 0.4)
-  end
+  local rpm = max(spec.motor and coupled or c.rpm, spec.idleRpm)
+  local torque = spec.peakTorque * torqueShape(rpm / spec.redline, spec) * pedal
   if rpm > spec.redline * 1.02 then torque = 0 end
   if c.reverse and abs(wheelSpeed) > REVERSE_TOP_SPEED then torque = 0 end
 
@@ -389,7 +439,13 @@ function dynamics.step(c, input, vx, vy, r, dt)
   updateSteering(c, input, vx, vy, r, dt)
 
   local pedal, brakeInput = resolvePedals(c, input, vx, dt)
-  c.throttle, c.brake, c.handbrake = pedal, brakeInput, input.handbrake and true or false
+  c.rev = input.rev
+  c.throttle, c.brake, c.handbrake = max(pedal, c.rev or 0), brakeInput, input.handbrake and true or false
+  if input.handbrake then
+    c.handbrakeHold = 1
+  else
+    c.handbrakeHold = max(0, c.handbrakeHold - dt / HANDBRAKE_RELEASE)
+  end
 
   local boosting = c.boostState == "active"
   if boosting then pedal = max(pedal, 0.75) end
@@ -410,9 +466,9 @@ function dynamics.step(c, input, vx, vy, r, dt)
     local yawErr = r - yawRef
 
     -- Arcade cars rotate on to the line sooner than their tyres alone would.
-    if assist.turn > 0 and yawRef * yawErr < 0 and drift == 0 then
+    if assist.turn > 0 and yawRef * yawErr < 0 then
       local help = spec.inertia * abs(yawErr) * assist.turn
-      help = min(help, spec.mass * G * spec.wheelbase * 0.5)
+      help = min(help, spec.mass * G * spec.wheelbase * 0.5) * (1 - drift)
       escMoment = yawRef > 0 and help or -help
     end
 
@@ -422,15 +478,24 @@ function dynamics.step(c, input, vx, vy, r, dt)
     if over > 0 or slide > 0 then
       local amount = min(1, over * 1.1 + slide)
       local moment = spec.mass * G * spec.wheelbase * 0.42 * amount * assist.esc
-      if input.handbrake and drift == 0 then moment = moment * 0.15 end
+      if drift == 0 then moment = moment * (1 - c.handbrakeHold * 0.85) end
       escMoment = yawErr > 0 and -moment or moment
       -- Past the drift limit, turn the nose back towards the direction of travel.
       if drift > 0 and slide > 0 then
-        moment = spec.mass * G * spec.wheelbase * min(1, slide * 3)
+        local catch = DRIFT_CATCH + (1 - DRIFT_CATCH) * c.handbrakeHold
+        moment = spec.mass * G * spec.wheelbase * min(1, slide * 3) * catch
         escMoment = beta > 0 and moment or -moment
       end
       pedal = pedal * (1 - min(0.8, slide * 1.4) * assist.esc)
       c.escActive = amount * assist.esc
+    end
+
+    -- Letting go of a drift bleeds its rotation off gradually, which stops the
+    -- tail swinging straight past the middle and out the other way.
+    if drift > 0 and not input.handbrake then
+      local settle = spec.inertia * yawErr * DRIFT_SETTLE * drift
+      local limit = spec.mass * G * spec.wheelbase * 0.4
+      escMoment = escMoment - max(-limit, min(limit, settle))
     end
   end
 
@@ -525,8 +590,8 @@ function dynamics.step(c, input, vx, vy, r, dt)
     -- Longitudinal demand
     local fx = totalDrive * (w.front and frontShare or rearShare)
     local braking = brakeForce * (w.front and spec.brakeBias or (1 - spec.brakeBias)) / 2
-    if input.handbrake and not w.front then
-      braking = braking + spec.handbrakeForce / 2 * (1 - drift * 0.85)
+    if c.handbrakeHold > 0 and not w.front then
+      braking = braking + spec.handbrakeForce / 2 * (1 - drift * 0.85) * c.handbrakeHold
     end
 
     local brakeF = 0
@@ -538,7 +603,7 @@ function dynamics.step(c, input, vx, vy, r, dt)
     end
 
     -- ABS keeps enough circle spare to steer; a locked wheel has none.
-    local lockedRear = input.handbrake and not w.front and drift == 0
+    local lockedRear = c.handbrakeHold > 0 and not w.front and drift == 0
     if brakeF ~= 0 and assist.abs > 0 and not lockedRear then
       local spare = sqrt(max(maxForce * maxForce - fy * fy * 0.75, (maxForce * 0.5) ^ 2))
       if abs(brakeF) > spare then
@@ -615,9 +680,27 @@ function dynamics.step(c, input, vx, vy, r, dt)
   fxTotal = fxTotal - dragForce * vx
   fyTotal = fyTotal - dragForce * vy
 
-  mzTotal = mzTotal + escMoment
+  -- Corrections ease in and out, so the car is steered back and never snapped.
+  -- Mid-drift they stay instant, or a fast drift would spin before they arrive.
+  local ease = input.handbrake and 1 or 1 - math.exp(-dt / ESC_LAG)
+  c.escMoment = c.escMoment + (escMoment - c.escMoment) * ease
+  mzTotal = mzTotal + c.escMoment
   if vx > 0 then
     fxTotal = fxTotal + scrub * assist.carry + spec.mass * assist.tow * c.slipstream * pedal
+  end
+  -- A launch is a shove, not more torque, so it isn't lost to wheelspin. It only
+  -- lasts while the driver stays on the throttle.
+  if c.launchTimer > 0 then
+    c.launchTimer = max(0, c.launchTimer - dt)
+    if not c.reverse then
+      local fade = c.launchTimer / LAUNCH_TIME
+      fxTotal = fxTotal + spec.mass * LAUNCH_PUSH * c.launch * fade * pedal
+    end
+  end
+  -- Nitro pushes the car itself. Sent through the tyres it would be cut by
+  -- traction control just where it's wanted, in low gears and out of corners.
+  if boosting and not c.reverse then
+    fxTotal = fxTotal + spec.boostPower / BOOST_RATED_SPEED
   end
 
   c.slip = slipSum / accSum

@@ -5,6 +5,7 @@ local Race = require("src/sim/race")
 local Track = require("src/sim/track")
 local world = require("src/world")
 local input = require("src/input")
+local touch = require("src/touch")
 local settings = require("src/settings")
 local vfx = require("src/vfx_manager")
 local skids = require("src/skid_manager")
@@ -35,8 +36,13 @@ local ZOOM = {
 }
 
 local playerDriver = {}
+function playerDriver:revs()
+  return math.max(input.throttle(), touch.revs())
+end
+
 function playerDriver:update(car)
   input.applyTo(car.input, settings.gearbox == "manual")
+  touch.applyTo(car.input)
 end
 
 local function lightsForTime(car, time)
@@ -108,6 +114,7 @@ function rm.start(opts)
     end
   end
   input.clear()
+  touch.reset()
   rm.syncCamera(1)
 end
 
@@ -141,6 +148,7 @@ function rm.setPaused(paused)
   if paused then
     audio.silence()
     require("src/ui").focus.pause = 1
+    touch.reset()
   end
   input.pressedOnce = {}
 end
@@ -223,7 +231,7 @@ local function processImpacts()
     local strength = e.impulse / 9000
     if strength > 0.02 then
       vfx.scrape(e.x, e.y, e.nx, e.ny, math.min(2.5, strength * 3))
-      if mine then
+      if mine and not session.demo then
         session.cam.trauma = math.min(1, session.cam.trauma + math.min(0.6, strength * 0.8))
         audio.impact(math.min(1, 0.25 + strength), strength < 0.15)
         if session.drift then session.drift.combo = 0 end
@@ -382,6 +390,12 @@ function rm.update(dt)
       if race.justStarted then
         race.justStarted = false
         audio.play("go", 0.7)
+        local launch = race.player.model.launch
+        if launch >= 0.85 then
+          rm.setToast("PERFECT START", colors.sectorGreen, 1.6)
+        elseif launch >= 0.25 then
+          rm.setToast("GOOD START", colors.marshal, 1.6)
+        end
       end
     end
     if not session then return end
@@ -423,9 +437,11 @@ function rm.update(dt)
       player.fx.backfired = false
       audio.play("pop", 0.4, 0.8 + love.math.random() * 0.5)
     end
-    if player.model.gear ~= (session.lastGear or 1) then
-      session.lastGear = player.model.gear
-      audio.play("shift", 0.25)
+    -- Downshifts stay silent: a hard stop would rattle through every gear.
+    local gear, lastGear = player.model.gear, session.lastGear or 1
+    if gear ~= lastGear then
+      session.lastGear = gear
+      if gear > lastGear then audio.play("shift", 0.25) end
     end
     if race.phase == "finished" then audio.silence() end
   end

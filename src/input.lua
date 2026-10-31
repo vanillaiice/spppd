@@ -1,4 +1,7 @@
--- Keyboard and gamepad, merged into one set of driving controls.
+-- Keyboard and gamepad, merged into one set of driving controls. Touch sits on
+-- top of this in src/touch.lua. The pad borrows R1 handbrake and L1 nitro from
+-- Need for Speed: Most Wanted on PS2, with the triggers kept for partial gas
+-- and braking.
 local input = {
   binds = {
     throttle = { "w", "up" },
@@ -16,13 +19,13 @@ local input = {
     pause = { "escape", "p" },
   },
   pads = {
-    handbrake = "x",
-    boost = "a",
-    shiftUp = "rightshoulder",
-    shiftDown = "leftshoulder",
-    respawn = "y",
-    camera = "back",
-    pause = "start",
+    handbrake = { "rightshoulder" },
+    boost = { "leftshoulder" },
+    shiftUp = { "x" },
+    shiftDown = { "a" },
+    respawn = { "y" },
+    camera = { "back" },
+    pause = { "start" },
   },
   held = {},
   pressedOnce = {},
@@ -34,7 +37,9 @@ for action, keys in pairs(input.binds) do
   for _, key in ipairs(keys) do byKey[key] = action end
 end
 local byButton = {}
-for action, button in pairs(input.pads) do byButton[button] = action end
+for action, buttons in pairs(input.pads) do
+  for _, button in ipairs(buttons) do byButton[button] = action end
+end
 
 function input.press(key)
   local action = byKey[key]
@@ -73,8 +78,10 @@ function input.isDown(action)
   for _, key in ipairs(input.binds[action] or {}) do
     if input.held[key] then return true end
   end
-  local button = input.pads[action]
-  return button ~= nil and input.held["pad:" .. button] == true
+  for _, button in ipairs(input.pads[action] or {}) do
+    if input.held["pad:" .. button] then return true end
+  end
+  return false
 end
 
 -- True once per press; reading it uses the press up.
@@ -94,30 +101,42 @@ local function deadzone(v)
   return (v - (v > 0 and 0.08 or -0.08)) / 0.92
 end
 
+-- A curved response gives fine control around the centre.
+function input.curve(v)
+  local axis = deadzone(v)
+  return axis * math.abs(axis) ^ 0.6
+end
+
+-- How far the throttle is pressed, on any device.
+function input.throttle()
+  local amount = input.isDown("throttle") and 1 or 0
+  local pad = input.gamepad
+  if pad and pad:isConnected() then
+    amount = math.max(amount, pad:getGamepadAxis("triggerright"))
+  end
+  return amount
+end
+
 -- Fill a car's input table from the player's hands.
 function input.applyTo(target, manualGearbox)
-  local steer, throttle, brake = 0, 0, 0
+  local steer, brake = 0, 0
   if input.isDown("steerLeft") then steer = steer - 1 end
   if input.isDown("steerRight") then steer = steer + 1 end
-  if input.isDown("throttle") then throttle = 1 end
   if input.isDown("brake") then brake = 1 end
   target.keyboard = true
 
   local pad = input.gamepad
   if pad and pad:isConnected() then
-    local axis = deadzone(pad:getGamepadAxis("leftx"))
-    local right = pad:getGamepadAxis("triggerright")
+    local axis = input.curve(pad:getGamepadAxis("leftx"))
     local left = pad:getGamepadAxis("triggerleft")
     if axis ~= 0 then
-      -- A curved response gives fine control around the centre.
-      steer = axis * math.abs(axis) ^ 0.6
+      steer = axis
       target.keyboard = false
     end
-    throttle = math.max(throttle, right)
     brake = math.max(brake, left)
   end
 
-  target.steer, target.throttle, target.brake = steer, throttle, brake
+  target.steer, target.throttle, target.brake = steer, input.throttle(), brake
   target.handbrake = input.isDown("handbrake")
   -- Checking the press too means a tap shorter than a frame still counts.
   local boostTapped = input.consume("boost")

@@ -14,8 +14,8 @@ local ROAD_SHADER = [[
   varying vec3 v_edge;
   varying float v_s;
   varying vec2 v_kerb;
-  uniform vec3 roadColor;
-  uniform float trackLength;
+  uniform highp vec3 roadColor;
+  uniform highp float trackLength;
 
   #ifdef VERTEX
   attribute vec3 Edge;
@@ -70,9 +70,9 @@ local ROAD_SHADER = [[
 local GROUND_SHADER = [[
   varying vec2 v_world;
   uniform Image noise;
-  uniform vec3 colorA;
-  uniform vec3 colorB;
-  uniform float pattern;
+  uniform highp vec3 colorA;
+  uniform highp vec3 colorB;
+  uniform highp float pattern;
 
   #ifdef VERTEX
   vec4 position(mat4 transform_projection, vec4 vertex_position) {

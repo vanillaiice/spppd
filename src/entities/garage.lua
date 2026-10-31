@@ -1,4 +1,5 @@
--- The selectable cars, in menu order.
+-- The selectable cars, in menu order. Settings save a position in this list,
+-- so new cars go on the end.
 local garage = {
   require("src/entities/vehicles/hot_hatch"),
   require("src/entities/vehicles/4wd_monster"),
@@ -6,6 +7,7 @@ local garage = {
   require("src/entities/vehicles/samurai"),
   require("src/entities/vehicles/big_bull"),
   require("src/entities/vehicles/muscle_monster"),
+  require("src/entities/vehicles/cyber"),
 }
 
 function garage.byId(id)

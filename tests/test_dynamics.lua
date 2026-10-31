@@ -72,6 +72,24 @@ local function launch(spec, assist, targetSpeed, limit)
 end
 
 h.describe("dynamics", function()
+  h.it("CYBER matches a Model S Plaid", function()
+    local spec = garage.byId("cyber")
+    local s = sim(spec, "arcade")
+    s.c.rpm = spec.redline * 0.72
+    dynamics.launch(s.c)
+    local t = 0
+    while s.vx < 100 / 3.6 and t < 30 do
+      s:step(input({ throttle = 1 }))
+      t = t + DT
+    end
+    h.assertBetween(t, 1.9, 2.3, "0-100 km/h with a launch")
+    h.assertBetween(dynamics.peakPower(spec) / 1000, 730, 800, "kW")
+    h.assertBetween(dynamics.gearingTopSpeed(spec) * 3.6, 315, 335, "top speed")
+    for _, other in ipairs(garage) do
+      if other ~= spec then h.assertTrue(dynamics.peakPower(other) < dynamics.peakPower(spec), other.name) end
+    end
+  end)
+
   for _, spec in ipairs(garage) do
     h.it(spec.name .. " has believable performance", function()
       local t100 = launch(spec, "sport", 100 / 3.6, 30)
@@ -88,7 +106,7 @@ h.describe("dynamics", function()
       end
       print(string.format("        %-15s 0-100 %.1fs  top %3.0f km/h  100-0 %.1f m  %.0f kW",
         spec.name, t100, top * 3.6, dist, dynamics.peakPower(spec) / 1000))
-      h.assertBetween(t100, 2.8, 8.5, "0-100 km/h")
+      h.assertBetween(t100, 2.0, 8.5, "0-100 km/h")
       h.assertBetween(top * 3.6, 185, 340, "top speed")
       h.assertBetween(dist, 28, 52, "100-0 braking")
     end)
@@ -210,6 +228,91 @@ h.describe("dynamics", function()
     end)
   end
 
+  -- Everything measured over the 3 s after letting go of a handbrake turn.
+  local function afterDrift(spec, steer, throttle)
+    local s = sim(spec, "arcade")
+    s.vx = 35
+    for _ = 1, 0.6 / DT do s:step(input({ steer = 0.6, throttle = 0.5, keyboard = true })) end
+    for _ = 1, 0.5 / DT do s:step(input({ steer = 1, handbrake = true, keyboard = true })) end
+    local side = s.c.beta > 0 and 1 or -1
+    local swing, jump, last = 0, 0, nil
+    for _ = 1, 3 / DT do
+      local r = s.r
+      s:step(input({ steer = steer, throttle = throttle, keyboard = true }))
+      local yawAccel = (s.r - r) / DT
+      if last then jump = math.max(jump, math.abs(yawAccel - last)) end
+      last = yawAccel
+      if s.c.beta * side < 0 then swing = math.max(swing, math.abs(s.c.beta)) end
+    end
+    return swing, jump
+  end
+
+  for _, spec in ipairs(garage) do
+    h.it(spec.name .. " comes out of a drift without a snap or a fishtail", function()
+      for _, case in ipairs({ { 0, 0 }, { 0, 1 }, { 0.5, 1 } }) do
+        local swing, jump = afterDrift(spec, case[1], case[2])
+        local label = string.format("steer %.1f throttle %d", case[1], case[2])
+        h.assertTrue(swing < math.rad(8), label .. " swung " .. math.deg(swing))
+        h.assertTrue(jump < 4, label .. " yaw kick in one step " .. jump)
+      end
+    end)
+  end
+
+  h.it("revving spins the engine against a limiter and doesn't move the car", function()
+    local spec = garage[1]
+    local s = sim(spec, "arcade")
+    local lowest, highest = math.huge, 0
+    for i = 1, 2 / DT do
+      s:step({ throttle = 0, brake = 0, steer = 0, rev = 1 })
+      if i > 1 / DT then
+        lowest = math.min(lowest, s.c.rpm)
+        highest = math.max(highest, s.c.rpm)
+      end
+    end
+    h.assertEq(s.vx, 0, "the clutch is in")
+    h.assertBetween(highest, spec.redline * 0.95, spec.redline * 1.02, "reaches the limiter")
+    h.assertTrue(lowest < spec.redline * 0.93, "and bounces off it: " .. lowest)
+    h.assertEq(s.c.throttle, 1, "the engine sounds loaded")
+    for _ = 1, 1 / DT do s:step(input()) end
+    h.assertTrue(s.c.rpm < spec.idleRpm * 1.2, "falls back to idle: " .. s.c.rpm)
+  end)
+
+  h.it("a launch is judged by the revs when the lights go out", function()
+    local spec = garage[1]
+    local c = dynamics.new(spec, "arcade")
+    local function at(ratio)
+      c.rpm = spec.redline * ratio
+      return dynamics.launchQuality(c)
+    end
+    h.assertEq(at(0.7), 1, "in the window")
+    h.assertEq(at(dynamics.LAUNCH_LOW), 1, "bottom of the window")
+    h.assertEq(at(dynamics.LAUNCH_HIGH), 1, "top of the window")
+    h.assertEq(at(0.2), 0, "bogged down")
+    h.assertTrue(at(0.9) < 1, "sitting on the limiter isn't perfect")
+    h.assertTrue(at(0.9) > at(0.95), "and it gets worse towards redline")
+  end)
+
+  -- Speed after two seconds on full throttle from a launch at these revs.
+  local function launched(spec, ratio, throttle)
+    local s = sim(spec, "arcade")
+    s.c.rpm = spec.redline * ratio
+    dynamics.launch(s.c)
+    for _ = 1, 2 / DT do s:step(input({ throttle = throttle })) end
+    return s.vx
+  end
+
+  for _, spec in ipairs(garage) do
+    h.it(spec.name .. " gets a real shove from a perfect launch", function()
+      local gain = launched(spec, 0.72, 1) - launched(spec, 0.2, 1)
+      print(string.format("        %-15s perfect launch +%.1f m/s after 2s", spec.name, gain))
+      h.assertBetween(gain, 2.5, 6, "speed gained")
+    end)
+  end
+
+  h.it("a launch needs the throttle down", function()
+    h.assertTrue(launched(garage[1], 0.72, 0) < 0.5, "the car stays put without gas")
+  end)
+
   h.it("SPORT and SIM keep the realistic physics", function()
     for _, name in ipairs({ "sport", "sim" }) do
       local assist = dynamics.ASSISTS[name]
@@ -293,18 +396,61 @@ h.describe("dynamics", function()
     h.assertTrue(s.vx < 26, "grass should scrub speed: " .. s.vx)
   end)
 
-  h.it("nitrous fires once on a press and has a cooldown", function()
+  h.it("nitrous switches on and off with each press and saves what's left", function()
     local spec = garage[1]
     local s = sim(spec, "sport")
     s:step(input({ boost = true }))
     h.assertEq(s.c.boostState, "active")
+    for _ = 1, 0.5 / DT do s:step(input({ boost = true })) end
+    h.assertEq(s.c.boostState, "active", "holding the button is still one press")
+    s:step(input())
+    s:step(input({ boost = true }))
+    h.assertEq(s.c.boostState, "ready", "second press turns it off")
+    h.assertBetween(s.c.boostTank, spec.boostTime - 0.6, spec.boostTime - 0.4, "tank kept")
+  end)
+
+  h.it("an empty tank locks nitrous out until it has refilled a little", function()
+    local spec = garage[1]
+    local s = sim(spec, "sport")
+    s:step(input({ boost = true }))
     for _ = 1, (spec.boostTime + 0.1) / DT do s:step(input()) end
     h.assertEq(s.c.boostState, "cooldown", "after burn")
-    for _ = 1, 1 / DT do s:step(input({ boost = true })) end
-    h.assertEq(s.c.boostState, "cooldown", "no refire during cooldown")
+    s:step(input({ boost = true }))
+    h.assertEq(s.c.boostState, "cooldown", "no refire on an empty tank")
+    s:step(input())
     for _ = 1, (spec.boostCooldown + 0.1) / DT do s:step(input()) end
     h.assertEq(s.c.boostState, "ready", "refilled")
+    h.assertNear(s.c.boostTank, spec.boostTime, 0.001, "full tank")
   end)
+
+  h.it("braking shuts the nitrous off", function()
+    local s = sim(garage[1], "sport")
+    s.vx = 30
+    s:step(input({ boost = true }))
+    s:step(input({ brake = 1 }))
+    h.assertEq(s.c.boostState, "ready")
+    s:step(input({ brake = 1, boost = true }))
+    h.assertEq(s.c.boostState, "ready", "can't light it on the brakes")
+  end)
+
+  -- Speed gained in 1.5 s on full throttle, after settling into a gear.
+  local function pull(spec, startSpeed, steer, boost)
+    local s = sim(spec, "arcade")
+    s.vx = startSpeed
+    for _ = 1, 0.5 / DT do s:step(input({ throttle = 1, steer = steer })) end
+    local before = speedOf(s)
+    for _ = 1, 1.5 / DT do s:step(input({ throttle = 1, steer = steer, boost = boost })) end
+    return speedOf(s) - before
+  end
+
+  for _, spec in ipairs(garage) do
+    h.it(spec.name .. " feels nitrous in low gears and out of corners", function()
+      for _, case in ipairs({ { 0, 0 }, { 12, 0 }, { 20, 0.5 } }) do
+        local gain = pull(spec, case[1], case[2], true) - pull(spec, case[1], case[2], false)
+        h.assertTrue(gain > 3, string.format("%d m/s, steer %.1f: only %.1f", case[1], case[2], gain))
+      end
+    end)
+  end
 
   h.it("nitrous actually accelerates the car harder", function()
     local spec = garage[2]

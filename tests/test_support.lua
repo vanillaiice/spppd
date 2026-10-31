@@ -93,7 +93,7 @@ h.describe("input", function()
     h.assertTrue(not input.consume("respawn"))
   end)
 
-  h.it("nitro only fires while the key is held (the old toggle bug)", function()
+  h.it("the nitro input follows the key, so the car can see each press", function()
     input.clear()
     local t = {}
     input.press("space")
@@ -113,6 +113,34 @@ h.describe("input", function()
     h.assertTrue(t.boost, "tap fires")
     input.applyTo(t)
     h.assertTrue(not t.boost, "and only once")
+  end)
+
+  h.it("uses the pad layout", function()
+    input.clear()
+    local t = {}
+    for _, button in ipairs({ "x", "a", "rightshoulder", "leftshoulder" }) do input.gamepadPress(nil, button) end
+    input.applyTo(t)
+    h.assertTrue(t.shiftUp, "square changes up")
+    h.assertTrue(t.shiftDown, "cross changes down")
+    h.assertTrue(t.handbrake, "R1 is the handbrake")
+    h.assertTrue(t.boost, "L1 is the nitro")
+    input.clear()
+  end)
+
+  h.it("the triggers give partial gas and braking", function()
+    input.clear()
+    input.gamepad = {
+      isConnected = function() return true end,
+      getGamepadAxis = function(_, axis)
+        return axis == "triggerright" and 0.4 or axis == "triggerleft" and 0.25 or 0
+      end,
+    }
+    local t = {}
+    input.applyTo(t)
+    h.assertEq(t.throttle, 0.4, "R2")
+    h.assertEq(t.brake, 0.25, "L2")
+    input.gamepad = nil
+    input.clear()
   end)
 
   h.it("opposite steering keys cancel out", function()
@@ -157,9 +185,94 @@ h.describe("audio", function()
     h.assertTrue(jump < 0.12, "click at the loop point: " .. jump)
   end)
 
-  h.it("synthesises a tyre squeal that loops", function()
-    local data = audio.squealData()
+  local function peakOf(data)
+    local peak = 0
+    for i = 0, data:getSampleCount() - 1 do peak = math.max(peak, math.abs(data:getSample(i))) end
+    return peak
+  end
+
+  h.it("synthesises a tyre scrub that loops", function()
+    local data = audio.scrubData()
     local n = data:getSampleCount()
     h.assertTrue(math.abs(data:getSample(0) - data:getSample(n - 1)) < 0.2, "loop point")
+    h.assertBetween(peakOf(data), 0.1, 0.95, "peak level, clipping sounds harsh")
+  end)
+
+  h.it("synthesises a nitro rumble that loops", function()
+    local data = audio.nitroData()
+    local n = data:getSampleCount()
+    h.assertTrue(math.abs(data:getSample(0) - data:getSample(n - 1)) < 0.2, "loop point")
+    h.assertBetween(peakOf(data), 0.1, 0.95, "peak level")
+  end)
+
+  h.it("synthesises tones that loop without clipping", function()
+    local data = audio.toneData(210, { [2] = 0.14, [4] = 0.06, [7] = 0.3, [10] = 0.09 })
+    local n = data:getSampleCount()
+    h.assertTrue(math.abs(data:getSample(0) - data:getSample(n - 1)) < 0.3, "loop point")
+    h.assertBetween(peakOf(data), 0.1, 0.95, "peak level")
+  end)
+
+  h.it("a turbo builds pressure with a lag and vents it once", function()
+    local spool, vented = 0, false
+    for _ = 1, 10 do spool, vented = audio.spoolStep(spool, true, 1, 1 / 60) end
+    h.assertBetween(spool, 0.1, 0.5, "still spooling")
+    h.assertTrue(not vented)
+    for _ = 1, 60 do spool = audio.spoolStep(spool, true, 1, 1 / 60) end
+    h.assertEq(spool, 1, "full pressure")
+    spool, vented = audio.spoolStep(spool, false, 1, 1 / 60)
+    h.assertTrue(vented, "lifting vents it")
+  end)
+
+  h.it("a turbo with no pressure stays quiet on a lift", function()
+    local spool, vented = audio.spoolStep(0.2, false, 1, 1 / 60)
+    h.assertTrue(not vented)
+    h.assertTrue(spool < 0.2)
+  end)
+
+  h.it("no car has an unknown engine type", function()
+    local garage = require("src/entities/garage")
+    local types = { na = true, turbo = true, supercharged = true, electric = true }
+    for _, spec in ipairs(garage) do
+      if spec.engineType then
+        h.assertTrue(types[spec.engineType], spec.name .. ": " .. tostring(spec.engineType))
+      end
+    end
+  end)
+
+  h.it("each engine type adds its own layer and no other", function()
+    local layers = { na = "intake", supercharged = "blower", electric = "motor" }
+    for kind, layer in pairs(layers) do
+      local mix = audio.engineMix(kind, 0.8, 1, 0)
+      for _, other in pairs(layers) do
+        if other == layer then h.assertTrue(mix[other] > 0.05, kind .. " is silent")
+        else h.assertEq(mix[other], 0, kind .. " also plays " .. other) end
+      end
+    end
+    local plain = audio.engineMix(nil, 0.8, 1, 0)
+    for _, layer in pairs(layers) do h.assertEq(plain[layer], 0, "no type, no " .. layer) end
+    h.assertEq(plain.turbo, 0, "no pressure, no whistle")
+    h.assertTrue(audio.engineMix("turbo", 0.8, 1, 1).turbo > 0.1, "full pressure whistles")
+  end)
+
+  h.it("only an electric car loses its pistons", function()
+    h.assertEq(audio.engineMix("electric", 0.8, 1, 0).pistons, 0)
+    for _, kind in ipairs({ "na", "turbo", "supercharged" }) do
+      h.assertEq(audio.engineMix(kind, 0.8, 1, 0).pistons, 1, kind)
+    end
+    h.assertEq(audio.engineMix(nil, 0.8, 1, 0).pistons, 1)
+  end)
+
+  for _, name in ipairs({ "beep", "go", "click", "select", "lap", "shift", "pop", "blowoff", "impact", "scrape" }) do
+    h.it("the " .. name .. " sound is short and doesn't clip", function()
+      local data = audio.shotData(name)
+      h.assertBetween(data:getDuration(), 0.01, 1, "length")
+      h.assertBetween(peakOf(data), 0.05, 0.95, "peak level")
+    end)
+  end
+
+  h.it("tyres are silent until sliding, and on the brakes", function()
+    h.assertEq(audio.scrubLevel(0.2, false), 0)
+    h.assertTrue(audio.scrubLevel(0.8, false) > 0, "a slide is heard")
+    h.assertEq(audio.scrubLevel(0.8, true), 0)
   end)
 end)

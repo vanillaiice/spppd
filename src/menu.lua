@@ -131,17 +131,21 @@ end
 -- Screens ------------------------------------------------------------------
 
 local function mainRows()
-  return {
+  local rows = {
     { label = "RACE", activate = function() settings.mode = "race" menu.go("setup") end },
     { label = "TIME TRIAL", activate = function() settings.mode = "trial" menu.go("setup") end },
     { label = "FREESTYLE", activate = function() settings.mode = "freestyle" menu.go("setup") end },
     { label = "ONLINE", activate = function() settings.mode = "race" menu.go("online") end },
-    { label = "TRACK EDITOR", activate = function() menu.openEditor() end },
-    { label = "SETTINGS", activate = function() menu.go("settings") end },
-    { label = "CONTROLS", activate = function() menu.go("controls") end },
-    { label = "CREDITS", activate = function() menu.go("credits") end },
-    { label = "QUIT", activate = function() love.event.quit() end },
   }
+  -- The editor needs a keyboard and a right click.
+  if not ui.mobile then
+    rows[#rows + 1] = { label = "TRACK EDITOR", activate = function() menu.openEditor() end }
+  end
+  rows[#rows + 1] = { label = "SETTINGS", activate = function() menu.go("settings") end }
+  rows[#rows + 1] = { label = "CONTROLS", activate = function() menu.go("controls") end }
+  rows[#rows + 1] = { label = "CREDITS", activate = function() menu.go("credits") end }
+  rows[#rows + 1] = { label = "QUIT", activate = function() love.event.quit() end }
+  return rows
 end
 
 local function stepper(label, get, set, list, names)
@@ -229,7 +233,7 @@ end
 local function settingsRows()
   local volumes = { 0, 0.2, 0.4, 0.6, 0.8, 1 }
   local volumeNames = { [0] = "OFF", [0.2] = "20%", [0.4] = "40%", [0.6] = "60%", [0.8] = "80%", [1] = "100%" }
-  return {
+  local rows = {
     stepper("VOLUME", function() return settings.volume end, function(v)
       settings.volume = v
       audio.setVolume(v)
@@ -249,17 +253,22 @@ local function settingsRows()
     toggle("PACE NOTES", "paceNotes"),
     toggle("MINIMAP", "minimap"),
     toggle("SHOW FPS", "showFps"),
-    (function()
-      local flip = function()
-        settings.fullscreen = not settings.fullscreen
-        love.window.setFullscreen(settings.fullscreen, "desktop")
-        save()
-      end
-      return { label = "FULLSCREEN", value = function() return settings.fullscreen and "ON" or "OFF" end,
-        left = flip, right = flip, activate = flip }
-    end)(),
-    { label = "BACK", activate = function() menu.go("main") end },
+    toggle("AUTO GAS", "autoGas"),
   }
+  -- A phone always has the touch controls and always fills the screen.
+  if not ui.mobile then
+    rows[#rows + 1] = stepper("TOUCH CONTROLS", function() return settings.touch end,
+      function(v) settings.touch = v end, { "auto", "on", "off" }, { auto = "AUTO", on = "ON", off = "OFF" })
+    local flip = function()
+      settings.fullscreen = not settings.fullscreen
+      love.window.setFullscreen(settings.fullscreen, "desktop")
+      save()
+    end
+    rows[#rows + 1] = { label = "FULLSCREEN", value = function() return settings.fullscreen and "ON" or "OFF" end,
+      left = flip, right = flip, activate = flip }
+  end
+  rows[#rows + 1] = { label = "BACK", activate = function() menu.go("main") end }
+  return rows
 end
 
 local function onlineRows()
@@ -362,7 +371,8 @@ local function drawSetupPreview(sw, sh, boardW, s)
   if settings.mode ~= "freestyle" then
     local entry = currentEntry()
     local data = cachedTrack(entry)
-    local size = math.min(w, sh * 0.5)
+    -- Stops short of the car panel on a screen as low as a phone's.
+    local size = math.min(w, sh * 0.5, sh - 138 * s)
     ui.panel(x, 14 * s, w, size + 34 * s, 0.82)
     minimap.drawOutline(data.track, data.line, x + (w - size) / 2 + 10 * s, 20 * s, size - 20 * s, 3, colors.paint)
     ui.text(entry.title, x + 6 * s, 14 * s + size + 8 * s, 8 * s, colors.marshal)
@@ -391,12 +401,21 @@ local function drawControls(sw, sh, s, w)
     { "HANDBRAKE", "SHIFT" }, { "NITRO", "SPACE" }, { "LIGHTS", "F  G" },
     { "RESET TO TRACK", "R" }, { "CAMERA", "C" }, { "SHIFT GEARS", "Q E" }, { "PAUSE", "ESC / P" },
   }
+  if ui.mobile then
+    rows = {
+      { "STEER", "STICK" }, { "ACCELERATE", "AUTO, OR STICK UP" }, { "BRAKE, REVERSE", "STICK DOWN" },
+      { "DRIFT", "HOLD DRIFT" }, { "NITRO", "TAP NITRO" }, { "RESET, PAUSE", "TOP RIGHT" },
+    }
+  end
   local y = 72 * s
   for i, row in ipairs(rows) do
     ui.text(row[1], 14 * s, y + (i - 1) * 13 * s, 6 * s, colors.paint)
     ui.text(row[2], 0, y + (i - 1) * 13 * s, 6 * s, colors.marshal, "right", w - 14 * s)
   end
-  ui.text("Gamepads work too.", 14 * s, y + #rows * 13 * s + 4 * s, 6 * s, colors.muted)
+  if not ui.mobile then
+    ui.text("PAD: R2 GAS, L2 BRAKE, R1 HANDBRAKE, L1 NITRO, SQUARE CROSS GEARS",
+      14 * s, y + #rows * 13 * s + 4 * s, 6 * s, colors.muted, "left", w - 28 * s)
+  end
 end
 
 local function drawCredits(sw, sh, s, w)

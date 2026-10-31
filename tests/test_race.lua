@@ -5,6 +5,9 @@ local Track = require("src/sim/track")
 local catalog = require("src/tracks/catalog")
 local garage = require("src/entities/garage")
 local config = require("src/config")
+local touch = require("src/touch")
+local input = require("src/input")
+local settings = require("src/settings")
 
 local DT = config.PHYSICS_DT
 local M = config.METER
@@ -25,6 +28,26 @@ local function checkFinite(race)
   end
 end
 
+-- Puts a bot's decisions through the real on-screen stick: its steering becomes
+-- a thumb position, its braking a pull down, and auto gas does the rest.
+local function thumbOn(bot)
+  local thumb = {}
+  local radius = touch.layout(1280, 720).radius
+  local unCurve = function(steer)
+    local curved = math.abs(steer) ^ (1 / 1.6) * 0.92 + 0.08
+    return steer == 0 and 0 or curved * (steer > 0 and 1 or -1)
+  end
+  function thumb.update(_, car, race, dt)
+    bot:update(car, race, dt)
+    local want = car.input
+    local pull = want.brake > 0.05 and 0.3 + want.brake * 0.7 or 0
+    touch.moved(1, 200 + unCurve(want.steer) * radius, 500 + pull * radius)
+    input.applyTo(want, false)
+    touch.applyTo(want)
+  end
+  return thumb
+end
+
 -- Drive the player with a bot and report how the laps went.
 local function botLaps(entry, spec, laps, opts)
   opts = opts or {}
@@ -34,6 +57,7 @@ local function botLaps(entry, spec, laps, opts)
   race.player.driver = AI.new(track, race.player, {
     skill = opts.skill or 1.0, digital = opts.digital, reaction = opts.reaction,
   })
+  if opts.thumb then race.player.driver = opts.thumb(race.player.driver) end
   local respawns = 0
   local realRespawn = race.respawn
   race.respawn = function(self, car) respawns = respawns + 1 return realRespawn(self, car) end
@@ -78,6 +102,24 @@ h.describe("race", function()
         h.assertTrue(r.offSeconds < r.time * 0.2,
           string.format("%s off the road for %.0f of %.0f s", spec.name, r.offSeconds, r.time))
       end
+    end)
+
+    h.it("a thumb on the stick can lap " .. entry.name .. " on auto gas", function()
+      input.clear()
+      touch.reset()
+      settings.touch, settings.autoGas = "on", true
+      touch.pressed(1, 200, 500, 1280, 720)
+      for _, spec in ipairs(garage) do
+        local r = botLaps(entry, spec, 2, { thumb = thumbOn, reaction = 0.08, skill = 0.9 })
+        print(string.format("        %-10s %-15s lap %.1fs  off %.1fs  respawns %d",
+          entry.name, spec.name, r.last or -1, r.offSeconds, r.respawns))
+        h.assertTrue(r.finished, spec.name .. " did not finish, laps " .. r.laps)
+        h.assertEq(r.respawns, 0, spec.name .. " needed respawns")
+        h.assertTrue(r.offSeconds < r.time * 0.2,
+          string.format("%s off the road for %.0f of %.0f s", spec.name, r.offSeconds, r.time))
+      end
+      touch.reset()
+      settings.touch = "auto"
     end)
 
     h.it("a full grid races " .. entry.name .. " to the flag", function()
@@ -142,6 +184,50 @@ h.describe("race", function()
     run(race, 1)
     h.assertEq(race.phase, "racing")
     race:destroy()
+  end)
+
+  h.it("the player and the AI both rev at the lights", function()
+    local track = Track.new(catalog.builtin()[1].def)
+    local race = Race.new({ mode = "race", track = track, laps = 1, opponents = 1, seed = 3, startDelay = 2 })
+    local car, rival = race.player, race.cars[2]
+    car.driver = { revs = function() return 1 end, update = function() end }
+    local x, y = car.body:getPosition()
+    run(race, 1.5)
+    h.assertTrue(car.model.rpm > car.spec.redline * 0.85, "revving: " .. car.model.rpm)
+    h.assertTrue(rival.model.rpm > rival.spec.redline * 0.4, "rival revs: " .. rival.model.rpm)
+    local nx, ny = car.body:getPosition()
+    h.assertTrue(math.abs(nx - x) + math.abs(ny - y) < 2, "jumped the start")
+    run(race, 1)
+    h.assertEq(race.phase, "racing")
+    h.assertEq(car.input.rev, nil, "revving stops at the green")
+    h.assertTrue(car.model.launch > 0, "and the launch is judged")
+    race:destroy()
+  end)
+
+  h.it("better AI drivers launch better, and none of them is a machine", function()
+    local track = Track.new(catalog.builtin()[1].def)
+    local mean, perfects = {}, {}
+    for _, difficulty in ipairs({ "rookie", "pro", "ace" }) do
+      local total, count, perfect = 0, 0, 0
+      for seed = 1, 12 do
+        local race = Race.new({
+          mode = "race", track = track, laps = 1, opponents = 5, seed = seed, difficulty = difficulty,
+          startDelay = 2.5 + seed * 0.13,
+        })
+        run(race, 3 + seed * 0.13)
+        for i = 2, #race.cars do
+          local launch = race.cars[i].model.launch
+          total, count = total + launch, count + 1
+          if launch >= 0.85 then perfect = perfect + 1 end
+        end
+        race:destroy()
+      end
+      mean[difficulty], perfects[difficulty] = total / count, perfect / count
+      print(string.format("        %-7s mean launch %.2f, %d of %d perfect", difficulty, total / count, perfect, count))
+    end
+    h.assertTrue(mean.ace > mean.pro and mean.pro > mean.rookie, "launches follow skill")
+    h.assertTrue(mean.rookie > 0.3, "rookies still get going")
+    h.assertTrue(perfects.ace < 0.9, "even aces fluff some: " .. perfects.ace)
   end)
 
   h.it("driving backwards over the line does not count as a lap", function()

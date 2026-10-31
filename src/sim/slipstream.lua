@@ -15,7 +15,7 @@ local FULL_RANGE = 0.5   -- the share of RANGE that gives the full effect
 local NEAR_WIDTH = 1.6   -- half width of the wake right behind the car, metres
 local FAR_WIDTH = 3.2    -- and at the far end, where it has spread out
 local SAME_WAY = 0.8     -- cos of the angle two cars can differ by and still share air
-local BUILD_RATE = 2.5   -- per second, so a full tow takes 0.4 s to arrive
+local BUILD_RATE = 0.5   -- per second, so a full tow takes 2 s of following to arrive
 local FADE_RATE = 0.9    -- per second; the slow fade is what makes a slingshot
 
 -- How far `car` sits inside the wake of `other`, 0..1.

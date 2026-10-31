@@ -30,6 +30,11 @@ local STYLES = {
     outline = { { -1, 0.86 }, { -0.98, 0.96 }, { -0.9, 1 }, { 0.76, 1 }, { 0.94, 0.96 }, { 1, 0.8 }, { 1, 0 } },
     screen = { 0.46, 0.3 }, rearScreen = { -0.8, -0.9 }, roofWidth = 0.8, rack = true, spare = true,
   },
+  fastback = {
+    outline = { { -1, 0.6 }, { -0.97, 0.8 }, { -0.84, 0.92 }, { -0.42, 1 }, { 0.08, 0.95 }, { 0.5, 0.97 }, { 0.8, 0.88 }, { 0.94, 0.66 }, { 1, 0.32 }, { 1, 0 } },
+    screen = { 0.42, 0.1 }, rearScreen = { -0.34, -0.68 }, roofWidth = 0.56, rearTaper = 0.68, hood = true, glassRoof = true,
+    lamps = { 0.87, 0.6 },
+  },
 }
 
 local function smoothOutline(points)
@@ -93,7 +98,8 @@ local function drawDetails(style, poly, hl, hw, spec)
 
   -- Rear screen
   love.graphics.setColor(glassA)
-  quad(hl, hw, rs[1], -roof, rs[1], roof, rs[2], roof * 1.08, rs[2], -roof * 1.08)
+  local rearWidth = roof * (style.rearTaper or 1.08)
+  quad(hl, hw, rs[1], -roof, rs[1], roof, rs[2], rearWidth, rs[2], -rearWidth)
 
   -- Side glass, split by the door pillar
   local pillar = (sc[2] + rs[1]) / 2
@@ -143,6 +149,12 @@ local function drawDetails(style, poly, hl, hw, spec)
     love.graphics.setColor(0.06, 0.08, 0.1)
     love.graphics.rectangle("fill", -0.3 * hl, -0.42 * hw, 0.42 * hl, 0.84 * hw, 3)
   end
+  if style.glassRoof then
+    love.graphics.setColor(glassA)
+    quad(hl, hw, sc[2] - 0.03, -roof * 0.96, sc[2] - 0.03, roof * 0.96, rs[1] + 0.03, roof * 0.96, rs[1] + 0.03, -roof * 0.96)
+    love.graphics.setColor(glassB)
+    quad(hl, hw, sc[2] - 0.08, -roof * 0.7, sc[2] - 0.08, -roof * 0.1, rs[1] + 0.1, -roof * 0.1, rs[1] + 0.1, -roof * 0.7)
+  end
   if style.rack then
     love.graphics.setColor(0.08, 0.08, 0.09)
     love.graphics.setLineWidth(1.6)
@@ -162,9 +174,10 @@ local function drawDetails(style, poly, hl, hw, spec)
   end
 
   -- Lamps, unlit. The glow is added at runtime.
+  local lamps = style.lamps or { 0.92, 0.66 }
   love.graphics.setColor(0.92, 0.94, 0.86)
   for _, side in ipairs({ -1, 1 }) do
-    love.graphics.ellipse("fill", 0.92 * hl, side * 0.66 * hw, 3.5, 6)
+    love.graphics.ellipse("fill", lamps[1] * hl, side * lamps[2] * hw, 3.5, 6)
   end
   love.graphics.setColor(0.42, 0.04, 0.05)
   for _, side in ipairs({ -1, 1 }) do

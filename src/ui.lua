@@ -10,14 +10,17 @@ local ui = {
   editing = nil,
   fonts = {},
   usingMouse = false,
+  mobile = love._os == "Android" or love._os == "iOS",
 }
 
 local FONT = "assets/fonts/PressStart2P.ttf"
 
--- Layout unit: 1 at 640x360, 2 at 1280x720.
+-- Layout unit: 1 at 640x360, 2 at 1280x720. A phone's screen is physically
+-- small for its resolution, so everything goes up a size to read and tap.
 function ui.scale(sw, sh)
   sw, sh = sw or love.graphics.getWidth(), sh or love.graphics.getHeight()
-  return math.max(1, math.floor(math.min(sw / 640, sh / 360) * 2 + 0.25) / 2)
+  local fit = math.min(sw / 640, sh / 360) * (ui.mobile and 1.5 or 1)
+  return math.max(1, math.floor(fit * 2 + 0.25) / 2)
 end
 
 function ui.font(size)
@@ -46,6 +49,8 @@ end
 
 function ui.mousepressed(x, y, button)
   ui.mx, ui.my = x, y
+  -- A tap arrives with no movement before it.
+  ui.usingMouse = true
   if button == 1 then ui.clicked = true end
 end
 
@@ -66,14 +71,19 @@ local PAD_NAV = {
   a = "ok", b = "back", start = "ok",
 }
 
+local function stopEditing()
+  ui.editing = nil
+  if love.keyboard.hasScreenKeyboard() then love.keyboard.setTextInput(false) end
+end
+
 function ui.keypressed(key)
   if ui.editing then
     if key == "return" or key == "kpenter" then
       local e = ui.editing
-      ui.editing = nil
+      stopEditing()
       e.done(e.value)
     elseif key == "escape" then
-      ui.editing = nil
+      stopEditing()
     elseif key == "backspace" then
       ui.editing.value = ui.editing.value:sub(1, -2)
     end
@@ -103,6 +113,7 @@ end
 
 function ui.startEditing(value, done, pattern, maxLength)
   ui.editing = { value = value, done = done, pattern = pattern, max = maxLength }
+  if love.keyboard.hasScreenKeyboard() then love.keyboard.setTextInput(true) end
 end
 
 -- Clicks and key presses live for one frame only, so changing screen can't

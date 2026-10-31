@@ -18,6 +18,9 @@ function love.conf(t)
   t.window.vsync = 1
   t.window.msaa = 0
   t.modules.video = false
+  -- Without this a phone's tilt sensor shows up as a joystick.
+  t.accelerometerjoystick = false
+  if love._os == "Android" or love._os == "iOS" then t.window.fullscreen = true end
 
   -- `love . --test` runs the simulation tests without opening a window.
   if hasArg("--test") then

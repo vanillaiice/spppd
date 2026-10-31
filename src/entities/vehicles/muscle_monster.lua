@@ -15,6 +15,7 @@ return base.define({
   width = 1.95,
   rollBalance = 0.6,
   grip = 0.99,
+  engineType = "supercharged",
   peakTorque = 860,
   redline = 6400,
   gears = { 3.2, 2.1, 1.55, 1.2, 0.95, 0.76 },

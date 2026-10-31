@@ -98,7 +98,7 @@ function Race:spawnOpponents(opts, playerSlot)
     -- Better starters are further up the grid.
     local skill = diff.skill + diff.spread * (grid <= playerSlot / 2 and 1 or -1)
       + (self.rng:random() - 0.5) * diff.spread
-    car.driver = AI.new(self.track, car, { skill = skill })
+    car.driver = AI.new(self.track, car, { skill = skill, revPhase = self.rng:random() })
     car.trackIndex = index
     self.cars[#self.cars + 1] = car
   end
@@ -247,11 +247,17 @@ function Race:step(dt)
     for _, car in ipairs(self.cars) do
       car.input.throttle, car.input.steer = 0, 0
       car.input.handbrake = false
+      -- The clutch is in at the lights, so the pedal only spins the engine.
+      car.input.rev = car.driver and car.driver.revs and car.driver:revs(dt) or 0
     end
     if self.timer >= self.startDelay then
       self.phase = "racing"
       self.timer = 0
       self.justStarted = true
+      for _, car in ipairs(self.cars) do
+        car.input.rev = nil
+        if not car.remote then dynamics.launch(car.model) end
+      end
     end
   else
     self.time = self.time + dt

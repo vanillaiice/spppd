@@ -1,8 +1,83 @@
 -- All sound is synthesised at load time: no audio files ship with the game.
--- The engine is two loops cross-faded by rpm and pitched to match.
-local audio = { voices = {}, ready = false }
+-- The engine is two loops cross-faded by rpm and pitched to match, and
+-- spec.engineType adds a layer on top. Everything else that isn't plain wind or
+-- road noise is built with sfxr, an arcade effects synth, from the settings below.
+local sfxr = require("src/lib/sfxr")
+
+local audio = { voices = {}, ready = false, spool = 0 }
 
 local RATE = 44100
+local SCRUB_MAX = 0.14
+local IMPACT_GAP = 0.12    -- seconds; a car grinding along a wall is one noise
+local SPOOL_UP, SPOOL_DOWN = 1.8, 7  -- how fast the turbo fills and dumps (per s)
+local BLOWOFF_SPOOL = 0.55 -- turbo pressure needed to be heard venting
+
+local NOISE, SINE, SQUARE = sfxr.WAVEFORM.NOISE, sfxr.WAVEFORM.SINE, sfxr.WAVEFORM.SQUARE
+
+-- A frequency f plays at 3528 * f^2 Hz and an envelope stage e lasts 2.27 * e^2
+-- seconds. Keep a lowpass cutoff under 0.3 or noise stays a bright hiss.
+local SHOTS = {
+  beep = { waveform = SQUARE, frequency = { start = 0.353 }, envelope = { sustain = 0.2, decay = 0.25 } },
+  go = { waveform = SQUARE, frequency = { start = 0.5 }, envelope = { sustain = 0.35, decay = 0.4 } },
+  click = { waveform = SQUARE, frequency = { start = 0.56 }, envelope = { sustain = 0.05, decay = 0.08 } },
+  select = { waveform = SQUARE, frequency = { start = 0.43 }, envelope = { sustain = 0.08, decay = 0.15 } },
+  lap = {
+    waveform = SQUARE, frequency = { start = 0.545 }, envelope = { sustain = 0.15, decay = 0.4 },
+    change = { speed = 0.6, amount = 0.45 },
+  },
+  shift = { waveform = SINE, frequency = { start = 0.23 }, envelope = { sustain = 0.02, decay = 0.1 } },
+  pop = {
+    waveform = NOISE, frequency = { start = 0.35, slide = -0.2 }, envelope = { sustain = 0.05, decay = 0.2 },
+    lowpass = { cutoff = 0.25 },
+  },
+  impact = {
+    waveform = NOISE, frequency = { start = 0.3, slide = -0.3 },
+    envelope = { sustain = 0.05, punch = 0.4, decay = 0.28 },
+    lowpass = { cutoff = 0.15 }, volume = { master = 0.3 },
+  },
+  scrape = {
+    waveform = NOISE, frequency = { start = 0.5 }, envelope = { sustain = 0.04, decay = 0.16 },
+    lowpass = { cutoff = 0.25 }, highpass = { cutoff = 0.1 },
+  },
+  -- The turbo venting when the throttle closes.
+  blowoff = {
+    waveform = NOISE, frequency = { start = 0.7, slide = -0.12 }, envelope = { attack = 0.03, sustain = 0.08, decay = 0.3 },
+    lowpass = { cutoff = 0.5 }, highpass = { cutoff = 0.2 },
+  },
+}
+
+local SCRUB = {
+  waveform = NOISE, frequency = { start = 0.55 }, envelope = { sustain = 0.94, decay = 0 },
+  lowpass = { cutoff = 0.22 }, highpass = { cutoff = 0.12 },
+}
+
+-- Nitro is a low rumble, kept well below the hiss of a jet.
+local NITRO = {
+  waveform = NOISE, frequency = { start = 0.32 }, envelope = { sustain = 0.94, decay = 0 },
+  lowpass = { cutoff = 0.17 }, highpass = { cutoff = 0.06 }, volume = { master = 0.3 },
+}
+
+-- Engine type layers, as harmonics for audio.toneData.
+local TURBO_TONE = { [1] = 0.32, [2] = 0.05 }
+local BLOWER_TONE = { [1] = 0.2, [2] = 0.3, [3] = 0.14, [5] = 0.06 }  -- straight-cut gears
+local MOTOR_TONE = { [2] = 0.14, [4] = 0.06, [7] = 0.3, [10] = 0.09 }  -- inverter whine
+
+local function chip(settings)
+  local sound = sfxr.newSound()
+  sound.volume.master = 0.4  -- sfxr's own default clips anything noisy
+  for group, values in pairs(settings) do
+    if type(values) == "table" then
+      for key, value in pairs(values) do sound[group][key] = value end
+    else
+      sound[group] = values
+    end
+  end
+  return (sound:generateSoundData(RATE, 0))
+end
+
+function audio.shotData(name)
+  return chip(SHOTS[name])
+end
 
 local function soundData(seconds, fn)
   local samples = math.floor(seconds * RATE)
@@ -42,17 +117,22 @@ function audio.engineData(baseHz, brightness)
   end)
 end
 
-local function noiseLoop(seconds, colour, gain)
-  local rng = love.math.newRandomGenerator(5)
-  local last, slow = 0, 0
-  local fadeTime = 0.1
-  local base = soundData(seconds + fadeTime, function()
-    local white = rng:random() * 2 - 1
-    last = last + (white - last) * colour
-    slow = slow + (last - slow) * colour * 0.25
-    return (last - slow * 0.6) * gain
+-- A steady tone built from harmonics of baseHz, as { [harmonic] = level }.
+-- Harmonics are whole cycles, so it loops without a click.
+function audio.toneData(baseHz, harmonics)
+  local samples = math.floor(RATE / baseHz + 0.5) * 8
+  return soundData(samples / RATE, function(_, i)
+    local u = i / samples
+    local total = 0
+    for h, level in pairs(harmonics) do
+      total = total + math.sin(u * math.pi * 2 * h * 8) * level
+    end
+    return total
   end)
-  -- Cross-fade the tail over the head so the loop has no click.
+end
+
+-- Cross-fade the tail over the head so the loop has no click.
+local function crossfade(base, seconds, fadeTime)
   local n = math.floor(seconds * RATE)
   local fade = math.floor(fadeTime * RATE)
   return soundData(seconds, function(_, i)
@@ -65,33 +145,25 @@ local function noiseLoop(seconds, colour, gain)
   end)
 end
 
-function audio.squealData()
-  local period = math.floor(RATE / 8)
-  return soundData(period * 4 / RATE, function(t, i, samples)
-    local u = i / samples
-    local wob = math.sin(u * math.pi * 2 * 3) * 0.012
-    local a = math.sin(u * math.pi * 2 * 225 * (1 + wob))
-    local b = math.sin(u * math.pi * 2 * 340 * (1 - wob)) * 0.6
-    local c = math.sin(u * math.pi * 2 * 512) * 0.3
-    return (a + b + c) * 0.34
+local function noiseLoop(seconds, colour, gain)
+  local rng = love.math.newRandomGenerator(5)
+  local last, slow = 0, 0
+  local fadeTime = 0.1
+  local base = soundData(seconds + fadeTime, function()
+    local white = rng:random() * 2 - 1
+    last = last + (white - last) * colour
+    slow = slow + (last - slow) * colour * 0.25
+    return (last - slow * 0.6) * gain
   end)
+  return crossfade(base, seconds, fadeTime)
 end
 
-local function burst(seconds, thump, noise, decay)
-  local rng = love.math.newRandomGenerator(9)
-  local last = 0
-  return soundData(seconds, function(t)
-    local env = math.exp(-t * decay)
-    last = last + (rng:random() * 2 - 1 - last) * 0.4
-    return (math.sin(t * math.pi * 2 * thump * (1 + env)) * 0.8 + last * noise) * env
-  end)
+function audio.scrubData()
+  return crossfade(chip(SCRUB), 1.7, 0.25)
 end
 
-local function tone(seconds, hz, decay)
-  return soundData(seconds, function(t)
-    local env = math.min(1, t * 200) * math.exp(-t * decay)
-    return (math.sin(t * math.pi * 2 * hz) + math.sin(t * math.pi * 4 * hz) * 0.25) * env * 0.55
-  end)
+function audio.nitroData()
+  return crossfade(chip(NITRO), 1.7, 0.25)
 end
 
 local function looping(data)
@@ -107,26 +179,26 @@ function audio.load()
     audio.engineLow = looping(audio.engineData(55, 0.1))
     audio.engineHigh = looping(audio.engineData(110, 0.6))
     audio.rivalEngine = looping(audio.engineData(82, 0.4))
-    audio.squeal = looping(audio.squealData())
+    audio.scrub = looping(audio.scrubData())
     audio.road = looping(noiseLoop(1.5, 0.08, 1.8))
     audio.loose = looping(noiseLoop(1.2, 0.5, 0.8))
     audio.wind = looping(noiseLoop(1.8, 0.2, 0.8))
-    audio.nitro = looping(noiseLoop(1.0, 0.75, 0.7))
-    audio.impactData = burst(0.35, 70, 0.8, 12)
-    audio.scrapeData = burst(0.2, 180, 1.0, 20)
-    audio.shots = {
-      beep = love.audio.newSource(tone(0.28, 440, 8), "static"),
-      go = love.audio.newSource(tone(0.7, 880, 4), "static"),
-      click = love.audio.newSource(tone(0.05, 1100, 70), "static"),
-      select = love.audio.newSource(tone(0.1, 660, 30), "static"),
-      shift = love.audio.newSource(burst(0.07, 240, 0.25, 55), "static"),
-      pop = love.audio.newSource(burst(0.1, 130, 1.0, 40), "static"),
-      lap = love.audio.newSource(tone(0.4, 1046, 7), "static"),
-    }
+    audio.nitro = looping(audio.nitroData())
+    audio.intake = looping(audio.engineData(220, 1))
+    audio.turbo = looping(audio.toneData(1400, TURBO_TONE))
+    audio.blower = looping(audio.toneData(380, BLOWER_TONE))
+    audio.motor = looping(audio.toneData(210, MOTOR_TONE))
+    audio.rivalMotor = looping(audio.toneData(210, MOTOR_TONE))
+    audio.shots = {}
+    for _, name in ipairs({ "beep", "go", "click", "select", "shift", "pop", "lap", "blowoff" }) do
+      audio.shots[name] = love.audio.newSource(audio.shotData(name), "static")
+    end
+    local impact, scrape = audio.shotData("impact"), audio.shotData("scrape")
     audio.impacts = {}
-    for i = 1, 4 do audio.impacts[i] = love.audio.newSource(audio.impactData, "static") end
+    for i = 1, 4 do audio.impacts[i] = love.audio.newSource(impact, "static") end
     audio.scrapes = {}
-    for i = 1, 2 do audio.scrapes[i] = love.audio.newSource(audio.scrapeData, "static") end
+    for i = 1, 2 do audio.scrapes[i] = love.audio.newSource(scrape, "static") end
+    audio.lastImpact = 0
     audio.ready = true
   end)
   if not ok then print("audio disabled: " .. tostring(err)) end
@@ -148,6 +220,9 @@ end
 
 function audio.impact(strength, scrape)
   if not audio.ready then return end
+  local now = love.timer.getTime()
+  if now - audio.lastImpact < IMPACT_GAP then return end
+  audio.lastImpact = now
   local pool = scrape and audio.scrapes or audio.impacts
   for _, s in ipairs(pool) do
     if not s:isPlaying() then
@@ -159,6 +234,12 @@ function audio.impact(strength, scrape)
   end
 end
 
+-- Sliding is worth hearing. Braking shouldn't nag every time it's used.
+function audio.scrubLevel(slide, braking)
+  if braking then return 0 end
+  return math.max(0, math.min(SCRUB_MAX, (slide - 0.25) * 0.3))
+end
+
 local function fadeTo(source, target, dt, rate)
   local now = source:getVolume()
   local step = (rate or 8) * dt
@@ -166,6 +247,55 @@ local function fadeTo(source, target, dt, rate)
   source:setVolume(v)
   if v > 0.001 and not source:isPlaying() then source:play() end
   if v <= 0.001 and source:isPlaying() then source:pause() end
+end
+
+-- Turbo pressure lags the throttle, and has to go somewhere when it closes.
+-- Returns true on the moment it vents.
+function audio.spoolStep(spool, onPower, revs, dt)
+  local target = onPower and math.min(1, revs * 1.4) or 0
+  local rate = target > spool and SPOOL_UP or SPOOL_DOWN
+  local step = rate * dt
+  local nextSpool = spool + math.max(-step, math.min(step, target - spool))
+  return nextSpool, spool >= BLOWOFF_SPOOL and not onPower
+end
+
+-- How loud the pistons (0..1) and each engine type's layer should be.
+function audio.engineMix(kind, revs, load, spool)
+  return {
+    -- An electric car has no pistons to hear: the motor layer stands in for them.
+    pistons = kind == "electric" and 0 or 1,
+    -- An open engine howls through its intake near the top of the revs.
+    intake = kind == "na" and math.max(0, revs - 0.45) * 2 * load * 0.5 or 0,
+    turbo = spool ^ 2 * 0.3,
+    -- A supercharger is geared to the crank, so it whines the instant the revs rise.
+    blower = kind == "supercharged" and (0.08 + revs * 0.32) * load or 0,
+    motor = kind == "electric" and math.min(1, revs * 3) * (0.12 + load * 0.32) or 0,
+  }
+end
+
+local function updateEngineLayers(dt, model, kind, revs, load)
+  if kind == "turbo" then
+    local onPower = model.throttle > 0.4 and model.shiftTimer == 0
+    local vented
+    audio.spool, vented = audio.spoolStep(audio.spool, onPower, revs, dt)
+    if vented then
+      audio.spool = 0
+      audio.play("blowoff", 0.5)
+    end
+  else
+    audio.spool = 0
+  end
+
+  local mix = audio.engineMix(kind, revs, load, audio.spool)
+  audio.intake:setPitch(math.min(3.2, 0.5 + revs * 1.3))
+  fadeTo(audio.intake, mix.intake, dt, 6)
+  audio.turbo:setPitch(0.45 + audio.spool * 0.9)
+  fadeTo(audio.turbo, mix.turbo, dt, 10)
+  audio.blower:setPitch(math.min(3.2, 0.4 + revs * 1.5))
+  fadeTo(audio.blower, mix.blower, dt, 6)
+  audio.motor:setPitch(0.3 + revs * 2)
+  fadeTo(audio.motor, mix.motor, dt, 6)
+  return mix.pistons
 end
 
 function audio.update(dt, car, rival, rivalDistance)
@@ -180,8 +310,9 @@ function audio.update(dt, car, rival, rivalDistance)
   local highPitch = math.max(0.35, model.rpm / 4400)
   audio.engineLow:setPitch(math.min(3.2, lowPitch))
   audio.engineHigh:setPitch(math.min(3.2, highPitch))
-  fadeTo(audio.engineLow, (1 - revs * 0.8) * load * 0.5, dt, 6)
-  fadeTo(audio.engineHigh, (0.1 + revs * 0.9) * load * 0.42, dt, 6)
+  local pistons = updateEngineLayers(dt, model, spec.engineType, revs, load)
+  fadeTo(audio.engineLow, (1 - revs * 0.8) * load * 0.5 * pistons, dt, 6)
+  fadeTo(audio.engineHigh, (0.1 + revs * 0.9) * load * 0.42 * pistons, dt, 6)
 
   local speed = car:getSpeed()
   local slide, offRoad = 0, 0
@@ -191,31 +322,39 @@ function audio.update(dt, car, rival, rivalDistance)
     if w.surface == "kerb" then offRoad = offRoad + 0.1 end
   end
 
-  audio.squeal:setPitch(0.86 + math.min(0.34, speed / 110))
-  fadeTo(audio.squeal, slide > 0.25 and math.min(0.42, (slide - 0.2) * 0.65) or 0, dt, 5)
+  audio.scrub:setPitch(0.86 + math.min(0.34, speed / 110))
+  fadeTo(audio.scrub, audio.scrubLevel(slide, model.brake > 0.05), dt, 3)
   audio.road:setPitch(0.6 + math.min(1.2, speed / 40))
   fadeTo(audio.road, math.min(0.26, speed / 120), dt, 3)
   audio.loose:setPitch(0.7 + math.min(0.6, speed / 40))
   fadeTo(audio.loose, offRoad * math.min(0.5, speed / 25), dt, 6)
   audio.wind:setPitch(0.7 + math.min(1, speed / 70) + model.slipstream * 0.25)
   fadeTo(audio.wind, math.max(0, (speed - 18) / 110) * 0.45 + model.slipstream * 0.2, dt, 2)
-  fadeTo(audio.nitro, model.boostState == "active" and 0.34 or 0, dt, 5)
+  fadeTo(audio.nitro, model.boostState == "active" and 0.35 or 0, dt, 3)
 
+  local rivalLevel, rivalMotorLevel = 0, 0
   if rival then
-    audio.rivalEngine:setPitch(math.max(0.5, math.min(3, rival.model.rpm / 3000)))
     local near = math.max(0, 1 - rivalDistance / 500)
-    fadeTo(audio.rivalEngine, near * 0.22, dt, 3)
-  else
-    fadeTo(audio.rivalEngine, 0, dt, 3)
+    if rival.spec.engineType == "electric" then
+      rivalMotorLevel = near * 0.22
+      audio.rivalMotor:setPitch(0.3 + math.min(1.1, rival.model.rpm / rival.spec.redline) * 2)
+    else
+      rivalLevel = near * 0.22
+      audio.rivalEngine:setPitch(math.max(0.5, math.min(3, rival.model.rpm / 3000)))
+    end
   end
+  fadeTo(audio.rivalEngine, rivalLevel, dt, 3)
+  fadeTo(audio.rivalMotor, rivalMotorLevel, dt, 3)
 end
 
 function audio.silence()
   if not audio.ready then return end
-  for _, key in ipairs({ "engineLow", "engineHigh", "rivalEngine", "squeal", "road", "loose", "wind", "nitro" }) do
+  for _, key in ipairs({ "engineLow", "engineHigh", "rivalEngine", "rivalMotor", "scrub", "road", "loose", "wind", "nitro",
+    "intake", "turbo", "blower", "motor" }) do
     audio[key]:stop()
     audio[key]:setVolume(0)
   end
+  audio.spool = 0
 end
 
 return audio

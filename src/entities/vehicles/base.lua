@@ -18,6 +18,8 @@ local DEFAULTS = {
   peakSlip = 0.15,      -- slip angle at peak grip (rad)
   looseGrip = 1.0,      -- multiplier on grass and gravel
   -- Drivetrain
+  engineType = "na",    -- or "turbo", "supercharged", "electric"; sets the sound only
+  motor = false,        -- electric motor torque curve instead of a piston engine's
   drive = "RWD",
   awdFront = 0.4,
   peakTorque = 400,

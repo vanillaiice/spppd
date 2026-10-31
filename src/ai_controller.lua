@@ -8,6 +8,8 @@ AI.__index = AI
 
 local M = config.METER
 local abs, min, max, atan, cos, sin = math.abs, math.min, math.max, math.atan, math.cos, math.sin
+local REV_AIM = 0.68  -- throttle that settles the revs in the middle of the launch window
+local MAX_PLAN_ACCEL = 9  -- m/s^2; past this the tyres can't deliver it out of a corner
 
 function AI.new(track, car, opts)
   opts = opts or {}
@@ -24,10 +26,13 @@ function AI.new(track, car, opts)
   self.rng = opts.rng
   self.pending = nil
   self.pendingT = 0
+  -- Every driver hunts around the launch window. Better ones wander less.
+  self.revClock = (opts.revPhase or 0) * math.pi * 2
+  self.revSwing = 0.2 + max(0, 1 - self.skill) * 2.2
 
   local spec = car.spec
   local top = min(95, dynamics.gearingTopSpeed(spec))
-  local accel = dynamics.peakPower(spec) / (spec.mass * 28)
+  local accel = min(MAX_PLAN_ACCEL, dynamics.peakPower(spec) / (spec.mass * 28))
   local handling = car.model.assist
   local mu = spec.grip * handling.grip * 0.92 * self.skill
   self.profile = track:speedProfile({
@@ -37,6 +42,11 @@ function AI.new(track, car, opts)
     accel = accel,
   })
   return self
+end
+
+function AI:revs(dt)
+  self.revClock = self.revClock + dt * 2.6
+  return REV_AIM + sin(self.revClock) * self.revSwing
 end
 
 -- Look for traffic ahead and pick a side to pass on.

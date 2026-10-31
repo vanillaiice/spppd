@@ -7,6 +7,9 @@ local menu = require("src/menu")
 local settings = require("src/settings")
 local catalog = require("src/tracks/catalog")
 local ui = require("src/ui")
+local touch = require("src/touch")
+local audio = require("src/audio")
+local world = require("src/world")
 
 local flow = {}
 
@@ -36,9 +39,16 @@ local function steps()
   step(4, function()
     expect(menu.screen == "main", "main menu shows")
     expect(rm.race() ~= nil, "a live race runs behind the menu")
+    flow.playImpact = audio.impact
+    audio.impact = function() flow.demoImpacts = true end
+    world.events[#world.events + 1] = {
+      x = 0, y = 0, nx = 1, ny = 0, impulse = 9000, carA = rm.race().player,
+    }
     press("down")
   end)
   step(2, function()
+    audio.impact = flow.playImpact
+    expect(not flow.demoImpacts, "crashes in the race behind the menu make no sound")
     expect(ui.focus.main == 2, "down moves the selection")
     press("up")
   end)
@@ -49,6 +59,7 @@ local function steps()
   step(3, function()
     expect(menu.screen == "setup", "enter opens race setup")
     settings.track = "harbour"
+    settings.car = 1
     settings.opponents = 3
     settings.laps = 1
     press("left") press("right")
@@ -68,19 +79,45 @@ local function steps()
   step(3, function()
     expect(state.screen == "race", "START begins the race")
     expect(rm.race().phase == "countdown", "the race opens on the lights")
+    love.keypressed("w", "w", false)
     expect(#rm.race().cars == 4, "three opponents on the grid")
   end)
-  step(240, function()
+  step(120, function()
+    local car = rm.race().player
+    expect(rm.race().phase == "countdown", "still on the lights")
+    expect(car.model.rpm > car.spec.redline * 0.85, "holding W revs the engine at the lights")
+    expect(car:getSpeed() < 0.5, "and the car stays put")
+  end)
+  step(120, function()
     expect(rm.race().phase == "racing", "lights out")
     local car = rm.race().player
     love.keypressed("w", "w", false)
     flow.startX, flow.startY = car.curX, car.curY
+    flow.play = audio.play
+    audio.play = function(name, ...)
+      if name == "blowoff" then flow.blowoffs = true end
+      flow.play(name, ...)
+    end
+    -- Every upshift dumps the pressure, so listen for the whole pull.
+    flow.mix = audio.update
+    audio.update = function(...)
+      flow.mix(...)
+      flow.whistled = flow.whistled or audio.turbo:isPlaying()
+      flow.motored = flow.motored or audio.motor:isPlaying()
+    end
   end)
   step(120, function()
     local car = rm.race().player
     local moved = math.abs(car.curX - flow.startX) + math.abs(car.curY - flow.startY)
     expect(moved > 100, "holding W drives the car")
+    audio.update = flow.mix
+    expect(flow.whistled, "the turbo car whistles under power")
+    expect(not flow.motored, "and has no electric motor")
     love.keyreleased("w")
+  end)
+  step(20, function()
+    audio.play = flow.play
+    expect(flow.blowoffs, "the turbo blows off when the power comes off")
     press("space")
   end)
   step(3, function()
@@ -94,6 +131,40 @@ local function steps()
   step(400, function()
     love.keyreleased("w")
     expect(rm.race().phase == "racing", "still racing under load")
+    expect(not touch.shown(), "no touch controls for a keyboard player")
+    flow.sw, flow.sh = love.graphics.getDimensions()
+    love.touchpressed(1, flow.sw * 0.2, flow.sh * 0.7)
+    love.touchmoved(1, flow.sw * 0.2 + 300, flow.sh * 0.7)
+  end)
+  step(3, function()
+    expect(touch.shown(), "a touch brings up the controls")
+    local car = rm.race().player
+    expect(car.input.steer == 1, "the stick steers the car")
+    expect(car.input.throttle == 1, "with auto gas on")
+    local drift = touch.layout(flow.sw, flow.sh).buttons[2]
+    love.touchpressed(2, drift.x, drift.y)
+  end)
+  step(3, function()
+    expect(rm.race().player.input.handbrake, "the drift button holds the handbrake")
+    love.touchreleased(2)
+    love.touchreleased(1)
+    local pause = touch.layout(flow.sw, flow.sh).buttons[3]
+    love.touchpressed(3, pause.x, pause.y)
+    love.touchreleased(3)
+  end)
+  step(3, function()
+    expect(rm.isPaused(), "the pause button pauses")
+    -- A tap on a menu arrives as a mouse click marked as a touch, with no move.
+    local s = ui.scale()
+    local x, y = flow.sw / 2, flow.sh * 0.3 + 32 * s
+    love.mousepressed(x, y, 1, true)
+    love.mousereleased(x, y, 1, true)
+  end)
+  step(3, function()
+    expect(not rm.isPaused(), "tapping RESUME resumes")
+    love.keypressed("w", "w", false)
+    love.keyreleased("w")
+    expect(not touch.shown(), "a key press hands back to the keyboard")
     press("escape")
   end)
   step(3, function()

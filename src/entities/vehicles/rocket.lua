@@ -16,6 +16,7 @@ return base.define({
   rollBalance = 0.47,
   grip = 1.17,
   peakSlip = 0.135,
+  engineType = "turbo",
   peakTorque = 540,
   redline = 7800,
   gears = { 3.5, 2.3, 1.72, 1.33, 1.07, 0.88 },

@@ -16,6 +16,7 @@ end
 local state = require("src/state")
 local settings = require("src/settings")
 local input = require("src/input")
+local touch = require("src/touch")
 local ui = require("src/ui")
 local splash = require("src/splash")
 local menu = require("src/menu")
@@ -101,6 +102,8 @@ function love.keypressed(key, scancode, isRepeat)
   end
   ui.keypressed(key)
   if not isRepeat then input.press(key) end
+  -- Only in a race: a phone's on-screen keyboard presses keys in the menus.
+  if state.screen == "race" then touch.active = false end
 end
 
 function love.keyreleased(key)
@@ -115,18 +118,42 @@ function love.textinput(t)
   end
 end
 
-function love.mousepressed(x, y, button)
+local function drivingByTouch()
+  return state.screen == "race" and not rm.isPaused() and not rm.isFinished() and touch.shown()
+end
+
+-- Taps also arrive below as mouse events marked istouch, which is what works
+-- the menus. A real mouse drives the on-screen controls like a single finger.
+function love.touchpressed(id, x, y)
+  touch.active = true
+  if drivingByTouch() then touch.pressed(id, x, y, love.graphics.getDimensions()) end
+end
+
+function love.touchmoved(id, x, y)
+  touch.moved(id, x, y)
+end
+
+function love.touchreleased(id)
+  touch.released(id)
+end
+
+function love.mousepressed(x, y, button, istouch)
   ui.mousepressed(x, y, button)
   if state.screen == "editor" then editor.mousepressed(x, y, button) end
+  if button == 1 and not istouch and drivingByTouch() then
+    touch.pressed("mouse", x, y, love.graphics.getDimensions())
+  end
 end
 
-function love.mousereleased(x, y, button)
+function love.mousereleased(x, y, button, istouch)
   if state.screen == "editor" then editor.mousereleased(x, y, button) end
+  if button == 1 and not istouch then touch.released("mouse") end
 end
 
-function love.mousemoved(x, y, dx, dy)
+function love.mousemoved(x, y, dx, dy, istouch)
   ui.mousemoved(x, y)
   if state.screen == "editor" then editor.mousemoved(x, y, dx, dy) end
+  if not istouch then touch.moved("mouse", x, y) end
 end
 
 function love.wheelmoved(x, y)
@@ -134,6 +161,7 @@ function love.wheelmoved(x, y)
 end
 
 function love.gamepadpressed(joystick, button)
+  touch.active = false
   input.gamepadPress(joystick, button)
   ui.gamepadpressed(button)
 end
