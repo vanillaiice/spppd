@@ -286,6 +286,79 @@ h.describe("dynamics", function()
     return swing, jump
   end
 
+  -- Held for a while at full lock, so the drift has fully settled.
+  local function heldDrift(spec, seconds, throttle)
+    local s = sim(spec, "arcade")
+    s.vx = 35
+    for _ = 1, seconds / DT do
+      s:step(input({ steer = 1, handbrake = true, throttle = throttle, keyboard = true }))
+    end
+    return s
+  end
+
+  for _, spec in ipairs(garage) do
+    h.it(spec.name .. " stays in a drift for as long as the handbrake is held", function()
+      for _, throttle in ipairs({ 0, 1 }) do
+        local s = heldDrift(spec, 1, throttle)
+        local low, high = math.huge, 0
+        for _ = 1, 2.5 / DT do
+          s:step(input({ steer = 1, handbrake = true, throttle = throttle, keyboard = true }))
+          if speedOf(s) > 12 then
+            local slip = math.abs(s.c.beta)
+            low, high = math.min(low, slip), math.max(high, slip)
+          end
+        end
+        h.assertTrue(low > math.rad(25), "fell out of the drift: " .. math.deg(low))
+        h.assertTrue(high < math.rad(45), "ran too wide: " .. math.deg(high))
+      end
+    end)
+
+    h.it(spec.name .. " lets go of a long drift without a snap or a fishtail", function()
+      for _, case in ipairs({ { 0, 0 }, { 0, 1 }, { 0.5, 1 } }) do
+        local s = heldDrift(spec, 2.5, case[2])
+        local side = s.c.beta > 0 and 1 or -1
+        local swing, jump, last = 0, 0, nil
+        for _ = 1, 3 / DT do
+          local r = s.r
+          s:step(input({ steer = case[1], throttle = case[2], keyboard = true }))
+          local yawAccel = (s.r - r) / DT
+          if last then jump = math.max(jump, math.abs(yawAccel - last)) end
+          last = yawAccel
+          if s.c.beta * side < 0 then swing = math.max(swing, math.abs(s.c.beta)) end
+        end
+        local label = string.format("steer %.1f throttle %d", case[1], case[2])
+        h.assertTrue(swing < math.rad(8), label .. " swung " .. math.deg(swing))
+        h.assertTrue(jump < 4, label .. " yaw kick in one step " .. jump)
+      end
+    end)
+
+    h.it(spec.name .. " straightens gently if the steering comes off mid-drift", function()
+      local s = heldDrift(spec, 2, 1)
+      local side = s.c.beta > 0 and 1 or -1
+      local swing = 0
+      for _ = 1, 2 / DT do
+        s:step(input({ steer = 0, handbrake = true, throttle = 1, keyboard = true }))
+        if s.c.beta * side < 0 then swing = math.max(swing, math.abs(s.c.beta)) end
+      end
+      h.assertTrue(math.abs(s.c.beta) < math.rad(12), "still sliding: " .. math.deg(s.c.beta))
+      h.assertTrue(swing < math.rad(8), "swung the other way " .. math.deg(swing))
+    end)
+
+    h.it(spec.name .. " can be flicked across or caught with the handbrake held", function()
+      local across = heldDrift(spec, 1.5, 1)
+      local side = across.c.beta > 0 and 1 or -1
+      local spun = 0
+      for _ = 1, 2.5 / DT do
+        across:step(input({ steer = -1, handbrake = true, throttle = 1, keyboard = true }))
+        spun = math.max(spun, math.abs(across.c.beta))
+      end
+      h.assertTrue(across.c.beta * side < 0 or math.abs(across.c.beta) < math.rad(45),
+        "countersteer has no effect: " .. math.deg(across.c.beta))
+      h.assertTrue(spun < math.rad(70), "spun: " .. math.deg(spun))
+      h.assertTrue(across.vx > 0, "ended up going backwards")
+    end)
+  end
+
   for _, spec in ipairs(garage) do
     h.it(spec.name .. " comes out of a drift without a snap or a fishtail", function()
       for _, case in ipairs({ { 0, 0 }, { 0, 1 }, { 0.5, 1 } }) do
@@ -311,9 +384,44 @@ h.describe("dynamics", function()
     h.assertEq(s.vx, 0, "the clutch is in")
     h.assertBetween(highest, spec.redline * 0.95, spec.redline * 1.02, "reaches the limiter")
     h.assertTrue(lowest < spec.redline * 0.93, "and bounces off it: " .. lowest)
+    h.assertTrue(lowest > spec.redline * 0.9, "a tight bounce: " .. lowest)
     h.assertEq(s.c.throttle, 1, "the engine sounds loaded")
+    h.assertTrue(s.c.limiting, "and it's up against the limiter")
     for _ = 1, 1 / DT do s:step(input()) end
     h.assertTrue(s.c.rpm < spec.idleRpm * 1.2, "falls back to idle: " .. s.c.rpm)
+    h.assertTrue(not s.c.limiting, "and leaves the limiter")
+  end)
+
+  h.it("an electric motor holds its revs at the lights without bouncing", function()
+    local spec = garage.byId("cyber")
+    local s = sim(spec, "arcade")
+    local lowest = math.huge
+    for i = 1, 8 / DT do
+      s:step({ throttle = 0, brake = 0, steer = 0, rev = 1 })
+      if i > 6 / DT then lowest = math.min(lowest, s.c.rpm) end
+      h.assertTrue(not s.c.limiting, "no limiter")
+    end
+    h.assertTrue(lowest > spec.redline * 0.97, "steady: " .. lowest)
+    h.assertEq(s.vx, 0, "the clutch is in")
+  end)
+
+  h.it("the limiter bounces quickly, but the launch window is still slow to fill", function()
+    local spec = garage[1]
+    local s = sim(spec, "arcade")
+    local crossings, above = 0, false
+    for i = 1, 2 / DT do
+      s:step({ throttle = 0, brake = 0, steer = 0, rev = 1 })
+      if i > 1 / DT then
+        local now = s.c.rpm > spec.redline * 0.945
+        if now and not above then crossings = crossings + 1 end
+        above = now
+      end
+    end
+    h.assertTrue(crossings >= 7, "bounces a second: " .. crossings)
+    local held = sim(spec, "arcade")
+    for _ = 1, 3 / DT do held:step({ throttle = 0, brake = 0, steer = 0, rev = 0.68 }) end
+    h.assertBetween(held.c.rpm / spec.redline, dynamics.LAUNCH_LOW, dynamics.LAUNCH_HIGH, "holds the window")
+    h.assertTrue(not held.c.limiting, "nowhere near the limiter")
   end)
 
   h.it("a launch is judged by the revs when the lights go out", function()

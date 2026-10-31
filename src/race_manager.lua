@@ -432,16 +432,12 @@ function rm.update(dt)
         if not nearest or d < nearest then rival, nearest = car, d end
       end
     end
-    audio.update(dt, player, rival, nearest and nearest * 12 or 0)
-    if player.fx and player.fx.backfired then
-      player.fx.backfired = false
-      audio.play("pop", 0.4, 0.8 + love.math.random() * 0.5)
-    end
+    if race.phase ~= "finished" then audio.update(dt, player, rival, nearest and nearest * 12 or 0) end
     -- Downshifts stay silent: a hard stop would rattle through every gear.
     local gear, lastGear = player.model.gear, session.lastGear or 1
     if gear ~= lastGear then
       session.lastGear = gear
-      if gear > lastGear then audio.play("shift", 0.25) end
+      if gear > lastGear then audio.play("shift", 0.42, audio.variedPitch()) end
     end
     if race.phase == "finished" then audio.silence() end
   end

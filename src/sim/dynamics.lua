@@ -32,7 +32,17 @@ local ESC_LAG = 0.06            -- seconds stability control takes to lean in or
 local HANDBRAKE_RELEASE = 0.15  -- seconds for the rear wheels to free up again
 local DRIFT_CATCH = 0.5         -- share of the anti-spin moment left after the handbrake is let go
 local DRIFT_SETTLE = 3          -- how firmly a released drift gives up its rotation (per s)
+-- A held drift: full steering asks for this slip angle (rad), and the tail is
+-- sprung (per s^2) and damped (per s) towards it, so it settles instead of
+-- swinging out, snapping straight and swinging out again.
+local DRIFT_HOLD_BETA = 0.55
+local DRIFT_LET_GO = 2.5         -- damps the tail on its way back after a long hold (per s)
+local DRIFT_HOLD_PULL, DRIFT_HOLD_DAMP = 12, 7
 local REV_RISE, REV_FALL = 3, 1.5  -- how quickly a free engine gains and sheds rpm (per s)
+-- Share of redline where the limiter cuts in and lets go, and the share above
+-- which it's in charge. Far above the launch window, so that stays easy to hold.
+local LIMITER_TOP, LIMITER_LOW, LIMITER_ZONE = 0.97, 0.92, 0.9
+local LIMITER_RISE = 25           -- the revs snap back up off a cut (per s)
 local LAUNCH_FADE = 0.15        -- share of redline over which a launch goes from full to none
 local LAUNCH_PUSH = 7.5           -- extra pull from a perfect launch (m/s^2), fading away
 local LAUNCH_TIME = 1.2
@@ -148,6 +158,7 @@ function dynamics.new(spec, assist)
     launch = 0,         -- 0..1 how good the launch was
     launchTimer = 0,
     revCut = false,     -- the rev limiter is holding the engine back
+    limiting = false,   -- the engine is up against the limiter
     ax = 0, ay = 0,
     slip = 0,
     beta = 0,
@@ -405,16 +416,21 @@ local function driveForce(c, pedal, wheelSpeed, dt)
   local target = max(coupled, launch)
   local rate = 14
   if c.rev then
-    if c.rpm > spec.redline * 0.97 then c.revCut = true
-    elseif c.rpm < spec.redline * 0.88 then c.revCut = false end
+    -- A motor has no sparks to cut: it just holds its top speed.
+    if c.rpm > spec.redline * LIMITER_TOP and not spec.motor then c.revCut = true
+    elseif c.rpm < spec.redline * LIMITER_LOW then c.revCut = false end
     target = spec.idleRpm
     if not c.revCut then target = target + c.rev * (spec.redline - spec.idleRpm) end
     -- Slow enough that the revs can be held in the launch window by ear.
     rate = target > c.rpm and REV_RISE or REV_FALL
+    if target > c.rpm and c.rpm > spec.redline * LIMITER_ZONE and not spec.motor then rate = LIMITER_RISE end
   end
   local follow = 1 - math.exp(-dt * rate)
   c.rpm = c.rpm + (target - c.rpm) * follow
   c.clutch = coupled < launch and 1 - coupled / launch or 0
+  -- For the sound. In gear there's no cut to bounce off: the revs just stop climbing.
+  local held = max(pedal, c.rev or 0) > 0.5
+  c.limiting = held and not spec.motor and c.rpm > spec.redline * (c.rev and LIMITER_ZONE or 0.98)
 
   if c.shiftTimer > 0 then return 0 end
 
@@ -454,6 +470,7 @@ function dynamics.step(c, input, vx, vy, r, dt)
   local cosS, sinS = cos(steer), sin(steer)
   local speed = sqrt(vx * vx + vy * vy)
   local beta = speed > 2 and atan2(vy, max(abs(vx), 1)) or 0
+  local betaRate = (beta - c.beta) / dt
   c.beta = beta
 
   -- Stability control ----------------------------------------------------
@@ -493,9 +510,21 @@ function dynamics.step(c, input, vx, vy, r, dt)
     -- Letting go of a drift bleeds its rotation off gradually, which stops the
     -- tail swinging straight past the middle and out the other way.
     if drift > 0 and not input.handbrake then
-      local settle = spec.inertia * yawErr * DRIFT_SETTLE * drift
+      local rate = max(-3, min(3, betaRate))
+      local settle = spec.inertia * (yawErr * DRIFT_SETTLE - rate * DRIFT_LET_GO) * drift
       local limit = spec.mass * G * spec.wheelbase * 0.4
       escMoment = escMoment - max(-limit, min(limit, settle))
+    end
+
+    -- Held and steered into the slide, the car stays in it. Steering against the
+    -- slide is the driver catching it, so that is left to the tyres.
+    local steerInput = c.steerInput or 0
+    if drift > 0 and input.handbrake and beta * steerInput <= 0 then
+      local wanted = -steerInput * DRIFT_HOLD_BETA
+      local rate = max(-3, min(3, betaRate))
+      local hold = spec.inertia * (DRIFT_HOLD_DAMP * rate - DRIFT_HOLD_PULL * (wanted - beta))
+      local limit = spec.mass * G * spec.wheelbase * 0.5
+      escMoment = max(-limit, min(limit, hold)) * drift
     end
   end
 

@@ -59,7 +59,6 @@ function view.updateFx(car, dt)
     if model.gear > fx.gear and model.rpm > car.spec.redline * 0.75 and fx.popTimer <= 0 then
       vfx.backfire(ex, ey, back)
       fx.popTimer = 0.3
-      fx.backfired = true
     end
     fx.gear = model.gear
   end

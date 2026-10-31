@@ -61,9 +61,9 @@ Arcade's grip when you pick it. Online races always use Arcade.
 - **Sim**: no aids at all. The car will spin if you ask it to.
 
 **Engine types**: a car's `engineType` is `na` unless it says `turbo`,
-`supercharged` or `electric`. It only changes the sound: an intake howl near the
-top of the revs, a turbo whistle and blow-off, a supercharger whine, or an
-electric motor in place of the piston engine. Every car keeps its nitro.
+`supercharged` or `electric`. It only changes the sound: a modelled V8 exhaust, a
+turbo whistle and blow-off, a supercharger whine, or an electric motor in place
+of the piston engine. Every car keeps its nitro.
 
 **Slipstream**: sit close behind another car at speed and its wake cuts your
 drag, and on Arcade it pulls you along too. A meter appears above the dash. The

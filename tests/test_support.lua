@@ -198,7 +198,7 @@ h.describe("audio", function()
     h.assertBetween(peakOf(data), 0.1, 0.95, "peak level, clipping sounds harsh")
   end)
 
-  h.it("synthesises a nitro rumble that loops", function()
+  h.it("synthesises a nitro hiss that loops", function()
     local data = audio.nitroData()
     local n = data:getSampleCount()
     h.assertTrue(math.abs(data:getSample(0) - data:getSample(n - 1)) < 0.2, "loop point")
@@ -262,7 +262,7 @@ h.describe("audio", function()
   end)
 
   h.it("each engine type adds its own layer and no other", function()
-    local layers = { na = "intake", supercharged = "blower", electric = "motor" }
+    local layers = { na = "v8", supercharged = "blower", electric = "motor" }
     for kind, layer in pairs(layers) do
       local mix = audio.engineMix(kind, 0.8, 1, 0)
       for _, other in pairs(layers) do
@@ -276,21 +276,158 @@ h.describe("audio", function()
     h.assertTrue(audio.engineMix("turbo", 0.8, 1, 1).turbo > 0.1, "full pressure whistles")
   end)
 
-  h.it("only an electric car loses its pistons", function()
+  h.it("only the turbo and supercharged cars use the piston loops", function()
     h.assertEq(audio.engineMix("electric", 0.8, 1, 0).pistons, 0)
-    for _, kind in ipairs({ "na", "turbo", "supercharged" }) do
+    h.assertEq(audio.engineMix("na", 0.8, 1, 0).pistons, 0, "the V8 replaces them")
+    for _, kind in ipairs({ "turbo", "supercharged" }) do
       h.assertEq(audio.engineMix(kind, 0.8, 1, 0).pistons, 1, kind)
     end
     h.assertEq(audio.engineMix(nil, 0.8, 1, 0).pistons, 1)
   end)
 
-  for _, name in ipairs({ "beep", "go", "click", "select", "lap", "shift", "pop", "blowoff", "impact", "scrape" }) do
+  h.it("every piston engine can hit the limiter, and a motor can't", function()
+    for _, kind in ipairs({ "na", "turbo", "supercharged" }) do
+      h.assertTrue(audio.engineMix(kind, 1, 1, 0).limiter > 0.3, kind)
+    end
+    h.assertEq(audio.engineMix("electric", 1, 1, 0).limiter, 0)
+  end)
+
+  h.it("a hard crash isn't quieter than the engine", function()
+    h.assertTrue(peakOf(audio.shotData("impact")) > peakOf(audio.v8Data(5400)), "a crash is an event")
+  end)
+
+  h.it("no effect starts on a hard edge", function()
+    for _, name in ipairs({ "beep", "go", "click", "select", "lap", "shift", "blowoff" }) do
+      h.assertTrue(math.abs(audio.shotData(name):getSample(0)) < 0.1, name)
+    end
+  end)
+
+  h.it("the V8 loops join cleanly and don't sit in hard saturation", function()
+    for _, rpm in ipairs({ 1300, 3000, 5400 }) do
+      local data = audio.v8Data(rpm)
+      local n = data:getSampleCount()
+      h.assertTrue(math.abs(data:getSample(0) - data:getSample(n - 1)) < 0.1, rpm .. " loop point")
+      local peak, sum, mean = peakOf(data), 0, 0
+      for i = 0, n - 1 do
+        local v = data:getSample(i)
+        sum, mean = sum + v * v, mean + v
+      end
+      h.assertBetween(peak, 0.3, 0.95, rpm .. " peak")
+      h.assertTrue(peak / math.sqrt(sum / n) > 1.25, rpm .. " would be a square wave")
+      h.assertTrue(math.abs(mean / n) < 0.05, rpm .. " sits off centre")
+    end
+    h.assertTrue(peakOf(audio.v8Data(3000, "overrun")) < peakOf(audio.v8Data(3000)), "overrun is quieter")
+  end)
+
+  h.it("the V8 limiter cuts in and out, and loops", function()
+    local data = audio.v8Data(5400, "limiter")
+    local n = data:getSampleCount()
+    h.assertTrue(math.abs(data:getSample(0) - data:getSample(n - 1)) < 0.1, "loop point")
+    h.assertBetween(peakOf(data), 0.3, 0.95, "peak level")
+    local cuts, cutting = 0, false
+    for t = 0.02, 0.5, 0.002 do
+      local level = 0
+      local a = math.floor(t * 44100)
+      for i = a, a + 88 do level = math.max(level, math.abs(data:getSample(i))) end
+      if level < 0.15 and not cutting then cuts = cuts + 1 end
+      cutting = level < 0.15
+    end
+    h.assertBetween(cuts, 6, 16, "bursts in half a second")
+  end)
+
+  h.it("the V8 blends between its two nearest speeds", function()
+    for rpm = 500, 8000, 250 do
+      local blend = audio.v8Blend(rpm)
+      local total = blend[1] + blend[2] + blend[3]
+      h.assertTrue(math.abs(total - 1) < 1e-9, rpm .. " totals " .. total)
+    end
+    h.assertEq(audio.v8Blend(900)[1], 1, "idle")
+    h.assertEq(audio.v8Blend(3000)[2], 1, "a rendered speed plays alone")
+    h.assertEq(audio.v8Blend(7000)[3], 1, "past the top")
+    local between = audio.v8Blend(4000)
+    h.assertEq(between[1], 0, "the far loop stays out")
+    h.assertTrue(between[2] > 0 and between[3] > 0, "both neighbours play")
+  end)
+
+  h.it("the electric motor is a rough whine, not clean tones", function()
+    local data = audio.motorData()
+    local n = data:getSampleCount()
+    h.assertTrue(math.abs(data:getSample(0) - data:getSample(n - 1)) < 0.2, "loop point")
+    h.assertBetween(peakOf(data), 0.1, 0.95, "peak level")
+    -- A clean tone repeats exactly from one period to the next.
+    local lag, same, total = 210, 0, 0
+    for i = 0, n - lag - 1 do
+      local a, b = data:getSample(i), data:getSample(i + lag)
+      same, total = same + a * b, total + a * a
+    end
+    h.assertTrue(same / total < 0.9, "repeats too exactly: " .. same / total)
+    h.assertTrue(audio.motorPitch(1) / audio.motorPitch(0) < 3.5, "less of a swoop")
+  end)
+
+  for _, name in ipairs({ "beep", "go", "click", "select", "lap", "shift", "blowoff", "impact", "scrape" }) do
     h.it("the " .. name .. " sound is short and doesn't clip", function()
       local data = audio.shotData(name)
       h.assertBetween(data:getDuration(), 0.01, 1, "length")
       h.assertBetween(peakOf(data), 0.05, 0.95, "peak level")
     end)
   end
+
+  -- Level over a window of seconds, and how often the wave crosses zero there.
+  local function windowOf(data, from, to)
+    local sum, crossings, last = 0, 0, 0
+    local a, b = math.floor(from * 44100), math.floor(to * 44100)
+    for i = a, b - 1 do
+      local v = data:getSample(i)
+      sum = sum + v * v
+      if v * last < 0 then crossings = crossings + 1 end
+      last = v
+    end
+    return math.sqrt(sum / (b - a)), crossings / (to - from) / 2
+  end
+
+  h.it("nitro hisses above the engine, and sags as it runs out", function()
+    local level, pitch = windowOf(audio.nitroData(), 0.3, 1)
+    h.assertTrue(pitch > 3000, "a hiss, not a rumble: " .. pitch)
+    h.assertTrue(level > 0.08, "loud enough to hear: " .. level)
+    h.assertTrue(audio.nitroPitch(0) < audio.nitroPitch(1))
+  end)
+
+  h.it("a gear change sputters on, it isn't one clank", function()
+    local data = audio.shotData("shift")
+    h.assertBetween(data:getDuration(), 0.1, 0.25, "about as long as the shift")
+    local early, pitch = windowOf(data, 0.012, 0.05)
+    local late = windowOf(data, 0.06, 0.1)
+    h.assertTrue(late > early * 0.5, "still going: " .. early .. " then " .. late)
+    h.assertTrue(pitch > 200, "a phone speaker can play it: " .. pitch)
+    h.assertTrue(windowOf(data, 0, 0.002) < early * 0.5, "no hard edge at the start")
+  end)
+
+  h.it("the blow-off flutters and falls in pitch", function()
+    local data = audio.shotData("blowoff")
+    h.assertTrue(data:getDuration() > 0.4, "it takes time for the pressure to go")
+    local dips, last, falling = 0, 0, false
+    for t = 0.02, 0.3, 0.005 do
+      local level = windowOf(data, t, t + 0.008)
+      if level < last * 0.9 and not falling then dips = dips + 1 end
+      falling = level < last
+      last = level
+    end
+    h.assertTrue(dips >= 4, "flutters: " .. dips)
+    local _, early = windowOf(data, 0.02, 0.1)
+    local _, late = windowOf(data, 0.3, 0.45)
+    h.assertTrue(early < 3500, "a breath, not a hiss: " .. early)
+    h.assertTrue(late < early * 0.8, "falls: " .. early .. " to " .. late)
+  end)
+
+  h.it("more turbo pressure blows off louder", function()
+    h.assertTrue(audio.blowoffVolume(1) > audio.blowoffVolume(0.55))
+    h.assertBetween(audio.blowoffVolume(1), 0.3, 1, "stays in range")
+  end)
+
+  h.it("the engine note drops out during a gear change", function()
+    h.assertTrue(audio.engineLoad(1, true) < audio.engineLoad(1, false) * 0.6)
+    h.assertEq(audio.engineLoad(0, true), audio.engineLoad(0, false), "nothing to cut off throttle")
+  end)
 
   h.it("the startup sound builds to a flare, vents, and ends quietly", function()
     local data = audio.startupData()
