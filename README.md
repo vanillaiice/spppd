@@ -76,8 +76,8 @@ does. Drop MP3, OGG, FLAC or WAV files on the game window, or put them in the
 `music` folder of LÖVE's save folder. MUSIC FOLDER in freestyle setup opens it, and
 RADIO there sets the volume or turns it off. Song names come from the filenames.
 The folder is `~/.local/share/love/spppd/music` on Linux and
-`%APPDATA%\LOVE\spppd\music` on Windows. Phones don't have the radio, because
-their save folder can't be reached.
+`%APPDATA%\spppd\music` for the Windows build. Phones don't have the radio,
+because their save folder can't be reached.
 
 **Zoom** in Settings moves the camera between Near, Mid and Far.
 
