@@ -1,6 +1,6 @@
 .PHONY: run test test-visual test-server test-online server zip win64 win32 all clean
 
-ver := 2.0.0
+ver := 2.1.0
 name := spppd
 
 run:
