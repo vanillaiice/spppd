@@ -34,8 +34,11 @@ local function steps()
   local list = {}
   local function step(wait, fn) list[#list + 1] = { wait = wait, fn = fn } end
 
-  step(2, function() expect(state.screen == "splash", "the game opens on the splash") end)
-  step(110, function() expect(state.screen == "menu", "the splash leads to the menu") end)
+  step(2, function()
+    expect(state.screen == "splash", "the game opens on the splash")
+    expect(audio.shots.startup:isPlaying(), "the engine starts over it")
+  end)
+  step(140, function() expect(state.screen == "menu", "the splash leads to the menu") end)
   step(4, function()
     expect(menu.screen == "main", "main menu shows")
     expect(rm.race() ~= nil, "a live race runs behind the menu")

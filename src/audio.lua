@@ -13,6 +13,15 @@ local LOOSE_IN, LOOSE_OUT = 1.2, 0.8  -- its fade per second: about 0.2 s, 0.25 
 local IMPACT_GAP = 0.12    -- seconds; a car grinding along a wall is one noise
 local SPOOL_UP, SPOOL_DOWN = 1.8, 7  -- how fast the turbo fills and dumps (per s)
 local BLOWOFF_SPOOL = 0.55 -- turbo pressure needed to be heard venting
+local STARTUP_PRESS = 0.08 -- the start button going down
+local STARTUP_CATCH = 0.35 -- seconds before the engine fires
+audio.STARTUP_PEAK = 1.1   -- the rev flare tops out and the turbo vents
+audio.STARTUP_LENGTH = 1.7
+local STARTUP_REDLINE = 7000
+-- Where each cylinder fires in the cycle, and how hard its pulse reaches the
+-- tailpipe. The unevenness is what gives a V8 its lope.
+local V8_FIRING = { 0.02, 0.13, 0.27, 0.36, 0.52, 0.61, 0.77, 0.86 }
+local V8_LEVEL = { 1, 0.72, 0.9, 0.62, 0.95, 0.7, 0.84, 0.66 }
 
 local NOISE, SINE, SQUARE = sfxr.WAVEFORM.NOISE, sfxr.WAVEFORM.SINE, sfxr.WAVEFORM.SQUARE
 
@@ -173,6 +182,110 @@ function audio.looseData()
   return noiseLoop(1.2, 0.11, 1.7)
 end
 
+-- Engine speed through the startup: a stumble as it catches, then a hard snap
+-- up the revs into the limiter, and a fall to idle.
+local function startupRpm(t)
+  if t < STARTUP_CATCH then return 500 end
+  local peak = audio.STARTUP_PEAK
+  if t < STARTUP_CATCH + 0.2 then
+    return 500 + 900 * (t - STARTUP_CATCH) / 0.2
+  end
+  if t < peak then
+    return 1400 + (STARTUP_REDLINE - 1400) * (1 - math.exp(-(t - STARTUP_CATCH - 0.2) * 7))
+  end
+  return 1000 + (STARTUP_REDLINE - 1000) * math.exp(-(t - peak) * 6)
+end
+
+-- A two-pole resonance: one length of exhaust pipe ringing at hz.
+local function resonator(hz, r)
+  local y1, y2 = 0, 0
+  local a = 2 * r * math.cos(hz * math.pi * 2 / RATE)
+  local gain = 1 - r
+  return function(x)
+    local y = a * y1 - r * r * y2 + x * gain
+    y2, y1 = y1, y
+    return y
+  end
+end
+
+-- A heavy start button bottoming out: a low thud that sags in pitch, with a
+-- muted knock on top and only a trace of contact noise.
+local function buttonThud(t, white)
+  if t < 0 or t > 0.2 then return 0 end
+  return math.sin((130 * t - 300 * t * t) * math.pi * 2) * math.exp(-t * 28) * 2.2
+    + math.sin(t * math.pi * 2 * 320) * math.exp(-t * 90) * 0.9
+    + white * math.exp(-t * 400) * 0.08
+end
+
+-- The launch sound: the start button, a rough catch, the revs snapped to the
+-- limiter, then the throttle shutting with a bang and a fluttering blow-off.
+-- The engine is a model, not a tone: uneven V8 firing pulses hit the resonances
+-- of the exhaust and the result is driven hard into saturation. One sample, so
+-- the parts can't drift apart whatever the frame rate does.
+function audio.startupData()
+  local rng = love.math.newRandomGenerator(31)
+  local cyclePhase, flutterPhase = 0, 0
+  local ventLow, ventBand = 0, 0
+  local cylinder, cycle, pressure, body = 1, 0, 0, 0
+  local pipes = { resonator(92, 0.994), resonator(265, 0.99), resonator(710, 0.98), resonator(1900, 0.96) }
+  local PIPE_LEVEL = { 1, 0.8, 0.5, 0.28 }
+  local pressureDecay = math.exp(-1 / (0.0028 * RATE))
+
+  return soundData(audio.STARTUP_LENGTH, function(t)
+    local rpm = startupRpm(t)
+    local peak = audio.STARTUP_PEAK
+    local running, lifted = t >= STARTUP_CATCH, t >= peak
+    local white = rng:random() * 2 - 1
+    cyclePhase = cyclePhase + rpm / 120 / RATE  -- a four-stroke cycle is two turns
+
+    while cyclePhase >= cycle + V8_FIRING[cylinder] do
+      local level = V8_LEVEL[cylinder]
+      if not running then
+        level = 0
+      elseif t < STARTUP_CATCH + 0.2 then
+        if rng:random() < 0.3 then level = 0 end        -- it stumbles as it catches
+      elseif lifted then
+        level = level * 0.28                            -- off the throttle
+        if rng:random() < 0.3 then level = 0 end
+      elseif rpm > STARTUP_REDLINE * 0.97 and cylinder % 2 == 0 then
+        level = 0                                       -- the limiter cutting sparks
+      end
+      pressure = math.max(pressure, level)
+      cylinder = cylinder + 1
+      if cylinder > #V8_FIRING then cylinder, cycle = 1, cycle + 1 end
+    end
+    pressure = pressure * pressureDecay
+
+    -- Hot gas leaving a valve is a rough burst, not a clean click.
+    local gas = pressure * (0.65 + white * 0.5)
+    body = body + (gas - body) * 0.015
+    local pulse = gas - body  -- only the swing: steady pressure would pin the saturation
+    local exhaust = pulse * 0.5
+    for i, pipe in ipairs(pipes) do exhaust = exhaust + pipe(pulse) * PIPE_LEVEL[i] * 2.2 end
+    local drive = (not running or lifted) and 0.7 or 0.7 + rpm / 2600
+    local engine = math.atan(exhaust * drive) * (lifted and 0.3 or 0.5)
+
+    local button = buttonThud(t - STARTUP_PRESS, white)
+
+    local bang, vent = 0, 0
+    local since = t - peak
+    if since > 0 then
+      bang = math.sin(since * math.pi * 2 * (150 - since * 900)) * math.exp(-since * 32) * 0.6
+      -- Noise through a band that sweeps down as the pressure goes.
+      local band = 0.08 + 0.3 * math.exp(-since * 5)
+      ventLow = ventLow + band * ventBand
+      ventBand = ventBand + band * (white - ventLow - ventBand * 0.5)
+      flutterPhase = flutterPhase + (34 - since * 30) / RATE
+      local flutter = 1 - 0.65 * math.max(0, math.sin(flutterPhase * math.pi * 2)) * math.exp(-since * 1.5)
+      vent = ventBand * math.min(1, since / 0.012) * math.exp(-since * 3.6) * flutter * 0.55
+    end
+
+    local mixed = button + engine + bang
+    mixed = mixed / (1 + math.abs(mixed) * 0.5)  -- a soft ceiling for the firing peaks
+    return (mixed + vent) * 0.85 * math.min(1, (audio.STARTUP_LENGTH - t) / 0.12)
+  end)
+end
+
 local function looping(data)
   local source = love.audio.newSource(data, "static")
   source:setLooping(true)
@@ -200,6 +313,7 @@ function audio.load()
     for _, name in ipairs({ "beep", "go", "click", "select", "shift", "pop", "lap", "blowoff" }) do
       audio.shots[name] = love.audio.newSource(audio.shotData(name), "static")
     end
+    audio.shots.startup = love.audio.newSource(audio.startupData(), "static")
     local impact, scrape = audio.shotData("impact"), audio.shotData("scrape")
     audio.impacts = {}
     for i = 1, 4 do audio.impacts[i] = love.audio.newSource(impact, "static") end

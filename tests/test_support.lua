@@ -292,6 +292,27 @@ h.describe("audio", function()
     end)
   end
 
+  h.it("the startup sound builds to a flare, vents, and ends quietly", function()
+    local data = audio.startupData()
+    h.assertEq(data:getDuration() >= audio.STARTUP_LENGTH - 0.01, true, "fills the splash")
+    h.assertBetween(peakOf(data), 0.3, 0.95, "peak level")
+    local function level(from, to)
+      local sum, a, b = 0, math.floor(from * 44100), math.floor(to * 44100)
+      for i = a, b - 1 do sum = sum + data:getSample(i) ^ 2 end
+      return math.sqrt(sum / (b - a))
+    end
+    local peak = audio.STARTUP_PEAK
+    h.assertTrue(level(0.08, 0.1) > 0.05, "the start button is heard")
+    h.assertTrue(level(0.27, 0.34) < 0.01, "nothing else before the engine fires")
+    local mean = 0
+    local from, to = math.floor((peak - 0.3) * 44100), math.floor(peak * 44100)
+    for i = from, to - 1 do mean = mean + data:getSample(i) end
+    h.assertTrue(math.abs(mean / (to - from)) < 0.05, "the flare swings, it isn't stuck to one side")
+    h.assertTrue(level(peak + 0.1, peak + 0.3) < level(peak - 0.2, peak), "the revs drop away")
+    h.assertTrue(level(peak, peak + 0.2) > 0.05, "the vent is heard")
+    h.assertTrue(level(audio.STARTUP_LENGTH - 0.03, audio.STARTUP_LENGTH) < 0.03, "no click at the end")
+  end)
+
   h.it("tyres are silent until sliding, and on the brakes", function()
     h.assertEq(audio.scrubLevel(0.2, false), 0)
     h.assertTrue(audio.scrubLevel(0.8, false) > 0, "a slide is heard")
