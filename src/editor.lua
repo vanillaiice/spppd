@@ -470,7 +470,8 @@ local function drawStats(sw, sh, s)
       x, y, 6 * s, colors.paint)
   end
   for i, issue in ipairs(issues or {}) do
-    ui.text(issue, x, y - i * 11 * s, 6 * s, colors.kerb)
+    -- Row 1 up from the stats is the hint line.
+    ui.text(issue, x, y - (i + 1) * 11 * s, 6 * s, colors.kerb)
   end
   if statusTime > 0 then
     ui.text(status, 0, 8 * s, 7 * s, colors.marshal, "center", sw + panelWidth())
@@ -548,7 +549,7 @@ function editor.draw(sw, sh)
   if ui.editing then
     ui.text("NAME: " .. ui.editing.value .. "_", 0, 24 * s, 8 * s, colors.paint, "center", sw + w)
   else
-    ui.text("Click to add a node. Drag to move. Right click deletes. Wheel zooms.",
+    ui.text("Click adds. Drag moves. Right click deletes. Wheel zooms.",
       w + 8 * s, sh - 23 * s, 5 * s, colors.muted)
   end
   drawStats(sw, sh, s)
