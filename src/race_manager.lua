@@ -17,6 +17,7 @@ local sprites = require("src/render/car_sprites")
 local hud = require("src/hud")
 local minimap = require("src/minimap")
 local audio = require("src/audio")
+local radio = require("src/radio")
 local colors = require("src/colors")
 local network = require("src/network_manager")
 
@@ -116,6 +117,8 @@ function rm.start(opts)
   input.clear()
   touch.reset()
   rm.syncCamera(1)
+  -- The only switch: rm.stop leaves it alone, so a restart doesn't cut the song.
+  radio.tune(race.mode == "freestyle" and not opts.demo)
 end
 
 function rm.stop()
@@ -150,6 +153,7 @@ function rm.setPaused(paused)
     require("src/ui").focus.pause = 1
     touch.reset()
   end
+  radio.pause(paused)
   input.pressedOnce = {}
 end
 
@@ -221,6 +225,7 @@ local function handleControls()
     race:respawn(car)
     audio.play("select", 0.5)
   end
+  if input.consume("radio") then radio.skip() end
 end
 
 local function processImpacts()
@@ -421,6 +426,8 @@ function rm.update(dt)
   for _, car in ipairs(race.cars) do car_view.updateFx(car, dt) end
   vfx.update(dt)
 
+  local song = radio.update()
+  if song then rm.setToast("ON AIR  " .. song, colors.marshal, 3) end
   if session.toast then session.toast.time = session.toast.time - dt end
 
   if not session.demo then

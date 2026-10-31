@@ -16,6 +16,7 @@ local input = {
     highBeam = { "g" },
     respawn = { "r" },
     camera = { "c" },
+    radio = { "n" },
     pause = { "escape", "p" },
   },
   pads = {
@@ -25,6 +26,7 @@ local input = {
     shiftDown = { "a" },
     respawn = { "y" },
     camera = { "back" },
+    radio = { "dpadright" },
     pause = { "start" },
   },
   held = {},

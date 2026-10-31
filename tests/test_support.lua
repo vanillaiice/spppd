@@ -4,6 +4,7 @@ local input = require("src/input")
 local catalog = require("src/tracks/catalog")
 local Track = require("src/sim/track")
 local audio = require("src/audio")
+local radio = require("src/radio")
 
 h.describe("environment", function()
   h.it("every theme gives the shaders what they need", function()
@@ -454,5 +455,84 @@ h.describe("audio", function()
     h.assertEq(audio.scrubLevel(0.2, false), 0)
     h.assertTrue(audio.scrubLevel(0.8, false) > 0, "a slide is heard")
     h.assertEq(audio.scrubLevel(0.8, true), 0)
+  end)
+end)
+
+h.describe("radio", function()
+  local function clearMusic()
+    for _, name in ipairs(love.filesystem.getDirectoryItems("music")) do
+      love.filesystem.remove("music/" .. name)
+    end
+  end
+
+  local function dropped(path, contents)
+    return {
+      getFilename = function() return path end,
+      open = function() return true end,
+      read = function() return contents end,
+      close = function() end,
+    }
+  end
+
+  h.it("knows a song by its extension, in any case", function()
+    for _, name in ipairs({ "a.mp3", "a.OGG", "a.oga", "a.b.flac", "a.Wav" }) do
+      h.assertTrue(radio.isTrack(name), name)
+    end
+    for _, name in ipairs({ "cover.jpg", "notes.txt", "mp3", "a.mp3.part", "" }) do
+      h.assertTrue(not radio.isTrack(name), name)
+    end
+  end)
+
+  h.it("makes a title the font can print from any filename", function()
+    h.assertEq(radio.title("night_drive.mp3"), "night drive")
+    h.assertEq(radio.title("a.b.flac"), "a.b")
+    h.assertEq(radio.title("caf\xc3\xa9 \xff.ogg"), "caf? ?")
+    local long = radio.title(string.rep("x", 200) .. ".wav")
+    h.assertEq(#long, 30, "a long name is cut short")
+    h.assertEq(long:sub(-3), "...")
+  end)
+
+  h.it("shuffles every song in, and doesn't repeat the last one", function()
+    local names = { "a", "b", "c", "d" }
+    for _ = 1, 200 do
+      local order = radio.shuffle(names, "a")
+      h.assertEq(#order, 4)
+      h.assertTrue(order[1] ~= "a", "the last song isn't next")
+      local seen = {}
+      for _, name in ipairs(order) do seen[name] = true end
+      for _, name in ipairs(names) do h.assertTrue(seen[name], name) end
+    end
+    h.assertEq(radio.shuffle({ "a" }, "a")[1], "a", "one song can only repeat")
+  end)
+
+  h.it("finds songs in the music folder and ignores the rest", function()
+    love.filesystem.createDirectory("music")
+    clearMusic()
+    love.filesystem.write("music/b.mp3", "x")
+    love.filesystem.write("music/a.ogg", "x")
+    love.filesystem.write("music/cover.jpg", "x")
+    h.assertEq(table.concat(radio.scan(), " "), "a.ogg b.mp3")
+    clearMusic()
+    h.assertEq(#radio.scan(), 0)
+  end)
+
+  h.it("copies a dropped song into the folder and refuses anything else", function()
+    love.filesystem.createDirectory("music")
+    clearMusic()
+    h.assertTrue(radio.addFile(dropped("/home/me/Music/song.MP3", "tune")), "unix path")
+    h.assertEq(love.filesystem.read("music/song.MP3"), "tune")
+    h.assertTrue(radio.addFile(dropped("C:\\Music\\other.ogg", "tune")), "windows path")
+    h.assertEq(#radio.tracks, 2, "the list updates at once")
+    h.assertTrue(not radio.addFile(dropped("/home/me/notes.txt", "words")))
+    h.assertTrue(not love.filesystem.getInfo("music/notes.txt"), "nothing written")
+    clearMusic()
+    radio.scan()
+  end)
+
+  h.it("has no audio to tune here, and doesn't mind", function()
+    radio.tune(true)
+    radio.skip()
+    h.assertTrue(not radio.isPlaying())
+    h.assertEq(radio.update(), nil)
   end)
 end)

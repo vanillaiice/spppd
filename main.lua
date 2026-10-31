@@ -23,6 +23,7 @@ local menu = require("src/menu")
 local rm = require("src/race_manager")
 local editor = require("src/editor")
 local audio = require("src/audio")
+local radio = require("src/radio")
 local post = require("src/render/post")
 local textures = require("src/render/textures")
 local network = require("src/network_manager")
@@ -178,7 +179,13 @@ function love.joystickremoved(joystick)
   input.joystickRemoved(joystick)
 end
 
+function love.filedropped(file)
+  radio.addFile(file)
+end
+
 function love.focus(focused)
+  -- Coming back from a file manager: there may be new songs in the folder.
+  if focused then radio.scan() end
   if not focused and state.screen == "race" and not rm.isFinished() and not rm.keepRunningUnfocused then
     rm.setPaused(true)
     input.clear()

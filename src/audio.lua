@@ -1,4 +1,5 @@
--- All sound is synthesised at load time: no audio files ship with the game.
+-- All sound is synthesised at load time: no audio files ship with the game. The
+-- one exception is the player's own music, which src/radio.lua plays.
 -- Most engines are two loops cross-faded by rpm and pitched to match, and
 -- spec.engineType adds a layer on top. The "na" V8 is the startup's engine model
 -- rendered at a few speeds instead, so it keeps its exhaust note at any rpm.

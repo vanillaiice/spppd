@@ -37,6 +37,12 @@ local SCENES = {
   setup = function() menu.enter() settings.mode = "race" menu.go("setup") end,
   newestcar = function() settings.car = #garage menu.enter() settings.mode = "race" menu.go("setup") end,
   settings = function() menu.enter() menu.go("settings") end,
+  freesetup = function()
+    menu.enter()
+    settings.mode = "freestyle"
+    menu.go("setup")
+    ui.focus.setup = 6
+  end,
   -- Any one car, by id: SPPPD_CAR=cyber.
   car = function()
     race({ track = "lusail", time = "day", spec = garage.byId(os.getenv("SPPPD_CAR") or "cyber"), opponents = 2 })

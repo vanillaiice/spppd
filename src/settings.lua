@@ -8,6 +8,7 @@ local settings = {
   units = "kmh",
   gearbox = "auto",
   volume = 0.8,
+  radioVolume = 0.6,
   quality = "high",
   minimap = true,
   paceNotes = true,

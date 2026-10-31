@@ -13,6 +13,7 @@ local minimap = require("src/minimap")
 local sprites = require("src/render/car_sprites")
 local hud = require("src/hud")
 local audio = require("src/audio")
+local radio = require("src/radio")
 local network = require("src/network_manager")
 local dynamics = require("src/sim/dynamics")
 
@@ -45,6 +46,9 @@ local ASSIST_HINTS = {
   sim = "No aids. The car does exactly what you ask.",
 }
 local QUALITY = { "high", "low" }
+local VOLUMES = { 0, 0.2, 0.4, 0.6, 0.8, 1 }
+local VOLUME_NAMES = { [0] = "OFF", [0.2] = "20%", [0.4] = "40%", [0.6] = "60%", [0.8] = "80%", [1] = "100%" }
+local MUSIC_HINT = "Drop MP3, OGG, FLAC, WAV here, or press to open the folder."
 
 local trackCache = {}
 local function cachedTrack(entry)
@@ -134,7 +138,11 @@ local function mainRows()
   local rows = {
     { label = "RACE", activate = function() settings.mode = "race" menu.go("setup") end },
     { label = "TIME TRIAL", activate = function() settings.mode = "trial" menu.go("setup") end },
-    { label = "FREESTYLE", activate = function() settings.mode = "freestyle" menu.go("setup") end },
+    { label = "FREESTYLE", activate = function()
+        settings.mode = "freestyle"
+        radio.scan()
+        menu.go("setup")
+      end },
     { label = "ONLINE", activate = function() settings.mode = "race" menu.go("online") end },
   }
   -- The editor needs a keyboard and a right click.
@@ -225,19 +233,26 @@ local function setupRows()
     function(v) settings.time = v end, TIMES, TIME_NAMES)
   rows[#rows + 1] = stepper("HANDLING", function() return settings.assists end,
     function(v) settings.assists = v end, ASSISTS, ASSIST_NAMES)
+  -- A phone's save folder is out of reach, so there's no way to fill it there.
+  if mode == "freestyle" and not ui.mobile then
+    rows[#rows + 1] = stepper("RADIO", function() return settings.radioVolume end,
+      function(v) settings.radioVolume = v end, VOLUMES, VOLUME_NAMES)
+    rows[#rows + 1] = { label = "MUSIC FOLDER", value = function()
+        local count = #radio.tracks
+        return count == 1 and "1 SONG" or count .. " SONGS"
+      end, activate = function() radio.openFolder() end }
+  end
   rows[#rows + 1] = { label = "START", activate = function() menu.startRace() end }
   rows[#rows + 1] = { label = "BACK", activate = function() menu.go("main") end }
   return rows
 end
 
 local function settingsRows()
-  local volumes = { 0, 0.2, 0.4, 0.6, 0.8, 1 }
-  local volumeNames = { [0] = "OFF", [0.2] = "20%", [0.4] = "40%", [0.6] = "60%", [0.8] = "80%", [1] = "100%" }
   local rows = {
     stepper("VOLUME", function() return settings.volume end, function(v)
       settings.volume = v
       audio.setVolume(v)
-    end, volumes, volumeNames),
+    end, VOLUMES, VOLUME_NAMES),
     stepper("CAMERA", function() return settings.camera end, function(v) settings.camera = v end,
       { "chase", "fixed" }, { chase = "CHASE", fixed = "FIXED" }),
     stepper("ZOOM", function() return settings.zoom end, function(v) settings.zoom = v end,
@@ -399,7 +414,8 @@ local function drawControls(sw, sh, s, w)
   local rows = {
     { "STEER", "A D / ARROWS" }, { "ACCELERATE", "W / UP" }, { "BRAKE, REVERSE", "S / DOWN" },
     { "HANDBRAKE", "SHIFT" }, { "NITRO", "SPACE" }, { "LIGHTS", "F  G" },
-    { "RESET TO TRACK", "R" }, { "CAMERA", "C" }, { "SHIFT GEARS", "Q E" }, { "PAUSE", "ESC / P" },
+    { "RESET TO TRACK", "R" }, { "CAMERA", "C" }, { "SHIFT GEARS", "Q E" }, { "NEXT SONG", "N" },
+    { "PAUSE", "ESC / P" },
   }
   if ui.mobile then
     rows = {
@@ -413,7 +429,7 @@ local function drawControls(sw, sh, s, w)
     ui.text(row[2], 0, y + (i - 1) * 13 * s, 6 * s, colors.marshal, "right", w - 14 * s)
   end
   if not ui.mobile then
-    ui.text("PAD: R2 GAS, L2 BRAKE, R1 HANDBRAKE, L1 NITRO, SQUARE CROSS GEARS",
+    ui.text("PAD: R2 GAS, L2 BRAKE, R1 HANDBRAKE, L1 NITRO, SQUARE CROSS GEARS, D-PAD RIGHT NEXT SONG",
       14 * s, y + #rows * 13 * s + 4 * s, 6 * s, colors.muted, "left", w - 28 * s)
   end
 end
@@ -456,6 +472,8 @@ function menu.draw(sw, sh)
       drawSetupPreview(sw, sh, w, s)
       if focused.label == "HANDLING" then
         ui.text(ASSIST_HINTS[settings.assists], 14 * s, sh - 34 * s, 5 * s, colors.muted, "left", w - 28 * s)
+      elseif focused.label == "MUSIC FOLDER" then
+        ui.text(MUSIC_HINT, 14 * s, sh - 34 * s, 5 * s, colors.muted, "left", w - 28 * s)
       end
     end
     if menu.screen == "online" then

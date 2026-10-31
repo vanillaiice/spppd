@@ -9,6 +9,7 @@ local catalog = require("src/tracks/catalog")
 local ui = require("src/ui")
 local touch = require("src/touch")
 local audio = require("src/audio")
+local radio = require("src/radio")
 local world = require("src/world")
 
 local flow = {}
@@ -27,6 +28,21 @@ end
 local function expect(value, message)
   if not value then error("FLOW FAILED: " .. message, 2) end
   print("  ok    " .. message)
+end
+
+-- A second of silence as an 8-bit WAV: short enough to hear a song end.
+local function writeSong(name)
+  local samples = 44100
+  local header = love.data.pack("string", "<c4I4c4c4I4I2I2I4I4I2I2c4I4",
+    "RIFF", 36 + samples, "WAVE", "fmt ", 16, 1, 1, 44100, 44100, 1, 8, "data", samples)
+  love.filesystem.createDirectory("music")
+  love.filesystem.write("music/" .. name, header .. string.rep("\128", samples))
+end
+
+local function clearMusic()
+  for _, name in ipairs(love.filesystem.getDirectoryItems("music")) do
+    love.filesystem.remove("music/" .. name)
+  end
 end
 
 -- Each entry runs after `wait` frames have passed since the previous one.
@@ -243,6 +259,85 @@ local function steps()
   step(2, function() press("return") end)
   step(5, function()
     expect(state.screen == "menu", "leaving the editor returns to the menu")
+    expect(not radio.isPlaying(), "no radio in the menus")
+    clearMusic()
+    writeSong("one.wav")
+    writeSong("two.wav")
+    settings.radioVolume = 0.6
+    flow.toast = rm.setToast
+    rm.setToast = function(text, ...)
+      if text:match("^ON AIR") then flow.onAir = text end
+      flow.toast(text, ...)
+    end
+    ui.focus.main = 3
+    press("return")
+  end)
+  step(3, function()
+    expect(settings.mode == "freestyle", "FREESTYLE opens its setup")
+    expect(#radio.tracks == 2, "and it has found the songs")
+    ui.focus.setup = 7  -- car, paint, time, handling, radio, music folder, start
+    press("return")
+  end)
+  step(3, function()
+    expect(state.screen == "race", "START begins freestyle")
+    expect(radio.isPlaying(), "the radio is on")
+    expect(flow.onAir and flow.onAir:match("one") or flow.onAir:match("two"), "and names the song")
+    flow.song = radio.song()
+    press("n")
+  end)
+  step(3, function()
+    expect(radio.isPlaying() and radio.song() ~= flow.song, "N moves to the other song")
+    flow.song = radio.song()
+    flow.waitedFor = love.timer.getTime()
+  end)
+  -- A real stream ends in real time, however fast the frames go.
+  step(1, function()
+    if radio.song() == flow.song and love.timer.getTime() - flow.waitedFor < 5 then return "again" end
+    expect(radio.song() ~= flow.song, "a song ending moves on by itself")
+    expect(radio.isPlaying(), "and the next one plays")
+    press("escape")
+  end)
+  step(3, function()
+    expect(rm.isPaused() and not radio.isPlaying(), "pausing pauses the radio")
+    flow.song = radio.song()
+    press("escape")
+  end)
+  step(3, function()
+    expect(radio.isPlaying() and radio.song() == flow.song, "resuming carries on with the song")
+    press("escape")
+  end)
+  step(3, function() press("down") end)
+  step(2, function() press("return") end)
+  step(3, function()
+    expect(rm.race().phase == "countdown", "RESTART returns to the lights")
+    expect(radio.isPlaying() and radio.song() == flow.song, "and the song plays on")
+    press("escape")
+  end)
+  step(3, function() press("down") end)
+  step(2, function() press("down") end)
+  step(2, function() press("return") end)
+  step(4, function()
+    expect(state.screen == "menu" and not radio.isPlaying(), "quitting stops the radio")
+    settings.mode = "race"
+    menu.startRace()
+  end)
+  step(3, function()
+    expect(state.screen == "race" and not radio.isPlaying(), "a race has no radio")
+    press("n")
+  end)
+  step(3, function()
+    expect(not radio.isPlaying(), "and N does nothing there")
+    rm.stop()
+    settings.mode = "freestyle"
+    settings.radioVolume = 0
+    menu.startRace()
+  end)
+  step(3, function()
+    expect(not radio.isPlaying(), "RADIO OFF keeps freestyle quiet")
+    settings.mode = "race"
+    settings.radioVolume = 0.6
+    rm.setToast = flow.toast
+    clearMusic()
     print("FLOW PASSED")
     love.event.quit(0)
   end)
@@ -262,12 +357,13 @@ function flow.start()
     local current = list[index]
     if current and waited >= current.wait then
       waited = 0
-      index = index + 1
-      local ok, err = xpcall(current.fn, debug.traceback)
+      local ok, result = xpcall(current.fn, debug.traceback)
       if not ok then
-        print(err)
+        print(result)
         love.event.quit(1)
       end
+      -- A step can return "again" to wait on something that takes real time.
+      if result ~= "again" then index = index + 1 end
     end
     update(1 / 60)
   end
