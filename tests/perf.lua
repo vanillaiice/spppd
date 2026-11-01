@@ -20,9 +20,12 @@ local WARMUP, SAMPLE = 4, 12  -- seconds
 local CASES = {
   { name = "lusail-day-low", track = "lusail", time = "day", quality = "low" },
   { name = "harbour-night-low", track = "harbour", time = "night", quality = "low" },
+  { name = "harbour-midnight-low", track = "harbour", time = "midnight", quality = "low" },
   { name = "lusail-day-high", track = "lusail", time = "day", quality = "high" },
   { name = "highlands-dusk-high", track = "highlands", time = "dusk", quality = "high" },
   { name = "harbour-night-high", track = "harbour", time = "night", quality = "high" },
+  { name = "harbour-midnight-high", track = "harbour", time = "midnight", quality = "high" },
+  { name = "lusail-midnight-boost-high", track = "lusail", time = "midnight", quality = "high", boost = true },
   -- The worst of it: speed blur, the warp and a full minute for a phone to heat up.
   { name = "lusail-night-boost-high", track = "lusail", time = "night", quality = "high", boost = true, sample = 60 },
 }
@@ -98,6 +101,10 @@ function perf.start()
   timed(post, "drawGlow", "glow")
   timed(post, "present", "composite")
   timed(vfx, "draw", "vfx")
+
+  -- CPU time since launch. Everything has loaded by now, so this covers rendering
+  -- the sounds on a first launch, and reading them from the cache after that.
+  print(string.format("PERF loaded after %.1f s", os.clock()))
 
   local index, clock, last = 0, 0, nil
   local frames, gcStart, draws, switches = {}, 0, 0, 0
