@@ -109,10 +109,10 @@ Two players can race through the relay in `server/`.
     make server
     ./dist/relay -addr :8080
 
-Both players set SERVER to that machine's address under ONLINE. One hosts a room
-and reads out the code, the other enters it and joins. UDP port 8080 has to be
-reachable. The host's track, laps and time of day are used, and both players
-need that track installed.
+Both players set SERVER to that machine's address under ONLINE and pick a car.
+One picks HOST A ROOM, chooses the track, laps and time of day, and gets a room
+code to read out. The other enters it and joins. UDP port 8080 has to be
+reachable, and both players need the host's track installed.
 
 The relay can also show a dashboard with its rooms, races, traffic and recent
 activity, where you can close a room or ban an IP. Bans last until the relay

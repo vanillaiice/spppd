@@ -109,6 +109,8 @@ local SCENES = {
   phonesettings = function() phone() menu.enter() menu.go("settings") end,
   controls = function() menu.enter() menu.go("controls") end,
   phonecontrols = function() phone() menu.enter() menu.go("controls") end,
+  phoneonline = function() phone() menu.enter() settings.mode = "race" menu.go("online") end,
+  phonehost = function() phone() menu.enter() settings.mode = "race" menu.go("host") end,
   pause = function() race({ track = "lusail", time = "day" }) autopilot() end,
   results = function() race({ track = "boat", time = "day", opponents = 3 }) autopilot() end,
 }

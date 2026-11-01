@@ -43,6 +43,49 @@ h.describe("network", function()
     end
   end)
 
+  h.it("hosting always makes a new room code, and joining uses the one entered", function()
+    local menu = require("src/menu")
+    local connect = network.connect
+    local sent
+    network.connect = function(_, _, role, code, hello) sent = { role = role, code = code, hello = hello } end
+    network.roomCode = "OLD123"
+    menu.connect("host")
+    h.assertEq(sent.role, "host")
+    h.assertEq(#sent.code, 6)
+    h.assertTrue(sent.code ~= "OLD123", "a stale code was reused")
+    h.assertEq(sent.hello.track, require("src/settings").track)
+    network.roomCode = "FRIEND"
+    menu.connect("join")
+    h.assertEq(sent.code, "FRIEND")
+    network.connect = connect
+    network.roomCode = ""
+  end)
+
+  h.it("only the host sets the race, and everyone picks a car", function()
+    local menu = require("src/menu")
+    local function labels(rows)
+      local found = {}
+      for _, row in ipairs(rows) do found[row.label] = true end
+      return found
+    end
+    network.status = "idle"
+    local online = labels(menu.onlineRows())
+    for _, label in ipairs({ "CAR", "PAINT", "HOST A ROOM", "ROOM CODE", "JOIN A ROOM" }) do
+      h.assertTrue(online[label], label .. " is missing")
+    end
+    for _, label in ipairs({ "TRACK", "LAPS", "TIME" }) do
+      h.assertTrue(not online[label], "a joiner can see " .. label)
+    end
+    local host = labels(menu.hostRows())
+    for _, label in ipairs({ "TRACK", "LAPS", "TIME", "START ROOM" }) do
+      h.assertTrue(host[label], label .. " is missing")
+    end
+    network.status = "waiting"
+    local waiting = labels(menu.onlineRows())
+    h.assertTrue(waiting.CANCEL and not waiting.CAR and not waiting["HOST A ROOM"], "still choosing while connected")
+    network.status = "idle"
+  end)
+
   h.it("a remote car follows its packets without running its own physics", function()
     local track = Track.new(catalog.builtin()[1].def)
     local s = track.samples[20]

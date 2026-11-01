@@ -192,45 +192,59 @@ local function toggle(label, key)
     left = flip, right = flip, activate = flip }
 end
 
+local function trackRow()
+  local names, titles = {}, {}
+  for i, e in ipairs(catalog.all()) do
+    names[i] = e.name
+    titles[e.name] = e.title
+  end
+  return stepper("TRACK", function() return settings.track end,
+    function(v) settings.track = v end, names, titles)
+end
+
+local function carRow()
+  local ids, names = {}, {}
+  for i, spec in ipairs(garage) do
+    ids[i] = i
+    names[i] = spec.name
+  end
+  return stepper("CAR", function() return settings.car end,
+    function(v) settings.car = v end, ids, names)
+end
+
+local function paintRow()
+  local ids, names = {}, {}
+  for i, p in ipairs(PAINTS) do
+    ids[i] = i
+    names[i] = p.name
+  end
+  return stepper("PAINT", function() return settings.hue end,
+    function(v) settings.hue = v end, ids, names)
+end
+
+local function lapsRow()
+  return numberStepper("LAPS", "laps", config.LAPS_MIN, config.LAPS_MAX)
+end
+
+local function timeRow()
+  return stepper("TIME", function() return settings.time end,
+    function(v) settings.time = v end, TIMES, TIME_NAMES)
+end
+
 local function setupRows()
   local rows = {}
   local mode = settings.mode
-  if mode ~= "freestyle" then
-    local entries = catalog.all()
-    local names = {}
-    local titles = {}
-    for i, e in ipairs(entries) do
-      names[i] = e.name
-      titles[e.name] = e.title
-    end
-    rows[#rows + 1] = stepper("TRACK", function() return settings.track end,
-      function(v) settings.track = v end, names, titles)
-  end
-
-  local carIds, carNames = {}, {}
-  for i, spec in ipairs(garage) do
-    carIds[i] = i
-    carNames[i] = spec.name
-  end
-  rows[#rows + 1] = stepper("CAR", function() return settings.car end,
-    function(v) settings.car = v end, carIds, carNames)
-
-  local paintIds, paintNames = {}, {}
-  for i, p in ipairs(PAINTS) do
-    paintIds[i] = i
-    paintNames[i] = p.name
-  end
-  rows[#rows + 1] = stepper("PAINT", function() return settings.hue end,
-    function(v) settings.hue = v end, paintIds, paintNames)
+  if mode ~= "freestyle" then rows[#rows + 1] = trackRow() end
+  rows[#rows + 1] = carRow()
+  rows[#rows + 1] = paintRow()
 
   if mode == "race" then
-    rows[#rows + 1] = numberStepper("LAPS", "laps", config.LAPS_MIN, config.LAPS_MAX)
+    rows[#rows + 1] = lapsRow()
     rows[#rows + 1] = numberStepper("OPPONENTS", "opponents", 0, config.OPPONENTS_MAX)
     rows[#rows + 1] = stepper("DIFFICULTY", function() return settings.difficulty end,
       function(v) settings.difficulty = v end, DIFFICULTIES, DIFFICULTY_NAMES)
   end
-  rows[#rows + 1] = stepper("TIME", function() return settings.time end,
-    function(v) settings.time = v end, TIMES, TIME_NAMES)
+  rows[#rows + 1] = timeRow()
   rows[#rows + 1] = stepper("HANDLING", function() return settings.assists end,
     function(v) settings.assists = v end, ASSISTS, ASSIST_NAMES)
   -- A phone's save folder is out of reach, so there's no way to fill it there.
@@ -286,45 +300,61 @@ local function settingsRows()
   return rows
 end
 
+-- Everyone picks their own car here. The race itself is the host's to set, on
+-- the next screen, so a joiner never sees choices that wouldn't count. Once
+-- connecting, there's nothing left to choose and the status gets the room.
 local function onlineRows()
-  local rows = {
+  local back = { label = "BACK", activate = function()
+    network.disconnect()
+    menu.go("main")
+  end }
+  local busy = network.status ~= "idle" and network.status ~= "error"
+  local room = { label = "ROOM CODE", disabled = busy, value = function()
+      if ui.editing and ui.editing.field == "room" then return ui.editing.value .. "_" end
+      return network.roomCode ~= "" and network.roomCode or "ENTER CODE"
+    end, activate = function()
+      ui.startEditing(network.roomCode, function(v) network.roomCode = v:upper() end, "^%w$", 6)
+      ui.editing.field = "room"
+    end }
+  if busy then
+    return { room, { label = "CANCEL", activate = function() network.disconnect() end }, back }
+  end
+  return {
     { label = "SERVER", value = function()
         return ui.editing and ui.editing.field == "server" and ui.editing.value .. "_" or settings.server
       end, activate = function()
         ui.startEditing(settings.server, function(v) settings.server = v save() end, "^[%w%.:%-]$", 40)
         ui.editing.field = "server"
       end },
-    { label = "ROOM CODE", value = function()
-        return ui.editing and ui.editing.field == "room" and ui.editing.value .. "_" or (network.roomCode ~= "" and network.roomCode or "NONE")
-      end, activate = function()
-        ui.startEditing(network.roomCode, function(v) network.roomCode = v:upper() end, "^%w$", 6)
-        ui.editing.field = "room"
-      end },
+    carRow(), paintRow(),
+    { label = "HOST A ROOM", activate = function() menu.go("host") end },
+    room,
+    { label = "JOIN A ROOM", disabled = network.roomCode == "", activate = function() menu.connect("join") end },
+    back,
   }
-  if network.status == "idle" or network.status == "error" then
-    rows[#rows + 1] = { label = "HOST A ROOM", activate = function() menu.connect("host") end }
-    rows[#rows + 1] = { label = "JOIN A ROOM", disabled = network.roomCode == "",
-      activate = function() menu.connect("join") end }
-  else
-    rows[#rows + 1] = { label = "CANCEL", activate = function() network.disconnect() end }
-  end
-  rows[#rows + 1] = { label = "BACK", activate = function()
-    network.disconnect()
-    menu.go("main")
-  end }
-  return rows
 end
+menu.onlineRows = onlineRows
+
+local function hostRows()
+  return {
+    trackRow(), lapsRow(), timeRow(),
+    { label = "START ROOM", activate = function() menu.connect("host") end },
+    { label = "BACK", activate = function() menu.go("online") end },
+  }
+end
+menu.hostRows = hostRows
 
 function menu.connect(role)
   local host, port = settings.server:match("^(.+):(%d+)$")
-  if role == "host" and network.roomCode == "" then
-    network.roomCode = network.generateCode()
-  end
+  -- Every room gets a fresh code, so a host never has to think of one.
+  if role == "host" then network.roomCode = network.generateCode() end
   local spec = currentCar()
   network.connect(host or settings.server, tonumber(port) or 8080, role, network.roomCode, {
     car = spec.id, paint = settings.hue, track = settings.track,
     laps = settings.laps, time = settings.time,
   })
+  menu.go("online")
+  ui.focus.online = 2  -- CANCEL, once the list has shrunk
 end
 
 function menu.testDrive(doc, track)
@@ -351,6 +381,7 @@ local SCREENS = {
   setup = { rows = setupRows },
   settings = { rows = settingsRows },
   online = { rows = onlineRows },
+  host = { rows = hostRows },
 }
 
 local function drawBoard(sw, sh, s, title)
@@ -378,12 +409,12 @@ local function drawCar(spec, color, cx, cy, s, spin)
   love.graphics.draw(sprite.detail, cx, cy, spin, scale, scale, sprite.ox, sprite.oy)
 end
 
-local function drawSetupPreview(sw, sh, boardW, s)
+local function drawSetupPreview(sw, sh, boardW, s, carOnly)
   local x = boardW + 14 * s
   local w = sw - x - 14 * s
   if w < 120 * s then return end
 
-  if settings.mode ~= "freestyle" then
+  if settings.mode ~= "freestyle" and not carOnly then
     local entry = currentEntry()
     local data = cachedTrack(entry)
     -- Stops short of the car panel on a screen as low as a phone's.
@@ -457,10 +488,13 @@ function menu.draw(sw, sh)
   local s = ui.scale(sw, sh)
 
   local titles = {
-    setup = MODES[settings.mode], settings = "SETTINGS", online = "ONLINE",
+    setup = MODES[settings.mode], settings = "SETTINGS", online = "ONLINE", host = "HOST A ROOM",
     controls = "CONTROLS", credits = "CREDITS",
   }
-  local w = drawBoard(sw, sh, s, titles[menu.screen])
+  -- A failure takes over the title, because the full list leaves no room below it.
+  local failed = menu.screen == "online" and network.status == "error"
+  local w = drawBoard(sw, sh, s, not failed and titles[menu.screen] or nil)
+  if failed then ui.text(network.statusText(), 14 * s, 53 * s, 5 * s, colors.kerb, "left", w - 28 * s) end
   local x = 8 * s
   local listW = w - 22 * s
   local size = 7 * s
@@ -470,7 +504,7 @@ function menu.draw(sw, sh)
       -- nothing to go back to
     else
       if menu.screen == "online" then network.disconnect() end
-      menu.go("main")
+      menu.go(menu.screen == "host" and "online" or "main")
     end
   end
 
@@ -479,18 +513,20 @@ function menu.draw(sw, sh)
     local rows = def.rows()
     local y, rowH = menu.listLayout(menu.screen, #rows, sh, s)
     local focused = ui.list(menu.screen, rows, x, y, listW, rowH, size, s)
-    if menu.screen == "setup" then
+    if menu.screen == "setup" or menu.screen == "host" then
       drawSetupPreview(sw, sh, w, s)
+    elseif menu.screen == "online" then
+      drawSetupPreview(sw, sh, w, s, true)
+    end
+    if menu.screen == "setup" then
       if focused.label == "HANDLING" then
         ui.text(ASSIST_HINTS[settings.assists], 14 * s, sh - 34 * s, 5 * s, colors.muted, "left", w - 28 * s)
       elseif focused.label == "MUSIC FOLDER" then
         ui.text(MUSIC_HINT, 14 * s, sh - 34 * s, 5 * s, colors.muted, "left", w - 28 * s)
       end
     end
-    if menu.screen == "online" then
-      local statusY = y + #rows * rowH + 8 * s
-      ui.text(network.statusText(), 14 * s, statusY, 6 * s,
-        network.status == "error" and colors.kerb or colors.marshal, "left", w - 28 * s)
+    if menu.screen == "online" and not failed then
+      ui.text(network.statusText(), 14 * s, y + #rows * rowH + 8 * s, 6 * s, colors.marshal, "left", w - 28 * s)
     end
   else
     local rows = { { label = "BACK", activate = function() menu.go("main") end } }
