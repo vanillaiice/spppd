@@ -84,6 +84,12 @@ OPEN WHEELER's V6 differs from ROCKET's.
 drag, and on Arcade it pulls you along too. A meter appears above the dash. The
 effect lasts about a second after you pull out, so time it to slingshot past.
 
+**Midnight**: the darkest TIME. The circuit has no floodlights, so you see by your
+own headlights, which end well short of what the camera shows, and by the moon.
+Only the start line is lit. Amber and white studs mark the two edges of the road
+beyond your beams, and a rival shows up by its lights. Cars start on high beam: **F**
+is low beam and **G** switches high beam off, if you want to drive blind.
+
 **Radio**: freestyle plays your own music, shuffled and non-stop, and nothing else
 does. Drop MP3, OGG, FLAC or WAV files on the game window, or put them in the
 `music` folder of LÖVE's save folder. MUSIC FOLDER in freestyle setup opens it, and

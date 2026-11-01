@@ -9,6 +9,10 @@ local renderer = {}
 local M = config.METER
 local KERB = config.KERB_WIDTH * M
 local INK = { 0.15, 0.15, 0.22 }  -- outline colour for anything solid
+local STUD_SPACING = 15  -- metres along the road
+local STUD_SIZE = 3      -- metres across, with the soft edge of its glow
+local STUD_INSET = 0.5   -- metres in from the road's edge, on the painted line
+local POOL_SIZE = 70     -- metres across, a lamp on an unlit circuit
 
 local ROAD_SHADER = [[
   varying vec3 v_edge;
@@ -397,6 +401,33 @@ local function buildStand(st, env)
   return rectMesh(rects)
 end
 
+-- Where the road studs go: along both edges of the road, as { x, y, side }.
+function renderer.studSpots(track)
+  local spots = {}
+  local stride = math.max(1, math.floor(STUD_SPACING / config.SAMPLE_SPACING))
+  for i = 1, track.count, stride do
+    local s = track.samples[i]
+    local reach = s.w / 2 - STUD_INSET * M
+    spots[#spots + 1] = { x = s.x - s.nx * reach, y = s.y - s.ny * reach, side = -1 }
+    spots[#spots + 1] = { x = s.x + s.nx * reach, y = s.y + s.ny * reach, side = 1 }
+  end
+  return spots
+end
+
+-- Studs are drawn into the lightmap, so what shows is the paint they sit on: amber
+-- down one edge and white down the other, to tell the sides apart in a spin.
+local function buildStuds(track)
+  textures.load()
+  local spots = renderer.studSpots(track)
+  local batch = love.graphics.newSpriteBatch(textures.blob, #spots, "static")
+  local scale = STUD_SIZE * M / textures.blob:getWidth()
+  for _, spot in ipairs(spots) do
+    if spot.side < 0 then batch:setColor(1, 0.68, 0.22, 1) else batch:setColor(0.9, 0.95, 1, 1) end
+    batch:add(spot.x, spot.y, 0, scale, scale, 32, 32)
+  end
+  return batch
+end
+
 function renderer.load(track, timeName)
   textures.load()
   local self = {}
@@ -453,6 +484,9 @@ function renderer.load(track, timeName)
 
   local start = track.samples[1]
   self.start = { x = start.x, y = start.y, angle = math.atan2(start.ty, start.tx), w = start.w }
+  -- Unlit circuits still light the grid, which marks every lap.
+  self.pools = { { x = start.x, y = start.y } }
+  if self.env.studs then self.studs = buildStuds(track) end
   return setmetatable(self, { __index = renderer })
 end
 
@@ -473,10 +507,12 @@ function renderer.loadApron(timeName)
     { extent, extent, 1, 1 }, { -extent, extent, 0, 1 },
   }, "fan", "static")
 
-  self.floods = {}
+  self.floods, self.pools = {}, {}
   for x = -8, 8 do
     for y = -8, 8 do
       self.floods[#self.floods + 1] = { x = x * 70 * M, y = y * 70 * M, nx = 0, ny = 0 }
+      -- Scattered lamps, for something to drive around in the dark.
+      if x % 3 == 0 and y % 3 == 0 then self.pools[#self.pools + 1] = { x = x * 70 * M, y = y * 70 * M } end
     end
   end
 
@@ -602,6 +638,14 @@ end
 
 function renderer:drawLights()
   local blob = textures.blob
+  if not self.env.floodlit then
+    local scale = POOL_SIZE * M / blob:getWidth()
+    love.graphics.setColor(0.62, 0.6, 0.52, 1)
+    for _, p in ipairs(self.pools) do love.graphics.draw(blob, p.x, p.y, 0, scale, scale, 32, 32) end
+    love.graphics.setColor(1, 1, 1, 1)
+    if self.studs then love.graphics.draw(self.studs) end
+    return
+  end
   local scale = 62 * M / blob:getWidth()
   love.graphics.setColor(0.78, 0.74, 0.62, 1)
   for _, f in ipairs(self.floods) do

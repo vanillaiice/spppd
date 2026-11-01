@@ -58,6 +58,13 @@ local SCENES = {
   day = function() race({ track = "lusail", time = "day" }) autopilot() end,
   dusk = function() race({ track = "highlands", time = "dusk" }) autopilot() end,
   night = function() race({ track = "harbour", time = "night" }) autopilot() end,
+  -- Any track in the dark: SPPPD_TRACK=touge.
+  midnight = function() race({ track = os.getenv("SPPPD_TRACK") or "highlands", time = "midnight" }) autopilot() end,
+  -- No other headlights to see by.
+  midnightsolo = function()
+    race({ track = os.getenv("SPPPD_TRACK") or "touge", time = "midnight", mode = "trial", opponents = 0 })
+    autopilot()
+  end,
   marina = function() race({ track = "harbour", time = "day" }) autopilot() end,
   start = function()
     race({ track = "lusail", time = "day" })

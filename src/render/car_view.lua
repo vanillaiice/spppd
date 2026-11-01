@@ -184,24 +184,25 @@ function view.drawLamps(car, x, y, angle)
 end
 
 -- Pools of light on the road, for the night lightmap.
-function view.drawBeams(car, x, y, angle)
+function view.drawBeams(car, x, y, angle, beams)
   local hl = car.length / 2
   local ca, sa = math.cos(angle), math.sin(angle)
   if car.lowBeam or car.highBeam then
+    local on = car.highBeam and beams.high or beams.low
     local beam = textures.beam
     local bw, bh = beam:getDimensions()
-    local length = (car.highBeam and 120 or 74) * M
-    local width = (car.highBeam and 52 or 46) * M
-    local power = car.highBeam and 1.4 or 1.1
-    love.graphics.setColor(power, power * 0.96, power * 0.86, 1)
-    love.graphics.draw(beam, x + ca * hl, y + sa * hl, angle, length / bw, width / bh, 0, bh / 2)
+    love.graphics.setColor(on.power, on.power * 0.96, on.power * 0.86, 1)
+    love.graphics.draw(beam, x + ca * hl, y + sa * hl, angle, on.length * M / bw, on.width * M / bh, 0, bh / 2)
   end
   local glow = textures.blob
   local s = 14 * M / glow:getWidth()
   love.graphics.setColor(0.3, 0.3, 0.32, 1)
   love.graphics.draw(glow, x, y, 0, s, s, 32, 32)
-  if car.model.brake > 0.05 then
-    love.graphics.setColor(0.7, 0.06, 0.04, 1)
+  -- Tail lights are how a rival shows up in the dark.
+  local braking = car.model.brake > 0.05
+  if braking or car.lowBeam or car.highBeam then
+    local red = braking and 0.7 or 0.3
+    love.graphics.setColor(red, red * 0.09, red * 0.06, 1)
     love.graphics.draw(glow, x - ca * hl * 1.5, y - sa * hl * 1.5, 0, s * 0.8, s * 0.8, 32, 32)
   end
 end

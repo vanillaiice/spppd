@@ -34,8 +34,8 @@ local PAINTS = {
 local MODES = {
   race = "RACE", trial = "TIME TRIAL - NO OPPONENTS", freestyle = "FREESTYLE",
 }
-local TIMES = { "day", "dusk", "night" }
-local TIME_NAMES = { day = "DAY", dusk = "DUSK", night = "NIGHT" }
+local TIMES = { "day", "dusk", "night", "midnight" }
+local TIME_NAMES = { day = "DAY", dusk = "DUSK", night = "NIGHT", midnight = "MIDNIGHT" }
 local DIFFICULTIES = { "rookie", "pro", "ace" }
 local DIFFICULTY_NAMES = { rookie = "ROOKIE", pro = "PRO", ace = "ACE" }
 local ASSISTS = { "arcade", "sport", "sim" }

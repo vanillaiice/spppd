@@ -53,8 +53,9 @@ function playerDriver:update(car)
   touch.applyTo(car.input)
 end
 
-local function lightsForTime(car, time)
-  car.lowBeam = time ~= "day"
+local function lightsFor(car, env)
+  car.highBeam = env.highBeams or false
+  car.lowBeam = env.lights and not car.highBeam
 end
 
 local function newCamera(x, y, angle)
@@ -105,7 +106,7 @@ function rm.start(opts)
     ghostTimer = 0,
   }
 
-  for _, car in ipairs(race.cars) do lightsForTime(car, timeName) end
+  for _, car in ipairs(race.cars) do lightsFor(car, env) end
   for _, car in ipairs(race.cars) do sprites.get(car.spec) end
 
   if opts.demo then
@@ -569,7 +570,7 @@ function rm.drawScene(sw, sh)
         scene:drawLights()
         for _, car in ipairs(race.cars) do
           local x, y, a = car:interpolated(alpha)
-          car_view.drawBeams(car, x, y, a)
+          car_view.drawBeams(car, x, y, a, env.beams)
         end
       end)
     end)

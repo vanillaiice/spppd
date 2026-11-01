@@ -175,6 +175,45 @@ h.describe("catalog", function()
   end)
 end)
 
+h.describe("midnight", function()
+  local environment = require("src/render/environment")
+  local renderer = require("src/render/track_renderer")
+  local config = require("src/config")
+  local midnight, night = environment.time("midnight"), environment.time("night")
+
+  h.it("is much darker than floodlit night, but not black", function()
+    for i = 1, 3 do
+      h.assertTrue(midnight.ambient[i] < night.ambient[i] * 0.4, "channel " .. i)
+      h.assertTrue(midnight.ambient[i] > 0.04, "the moon still shows the shape of things")
+    end
+    h.assertTrue(midnight.lights and not midnight.floodlit)
+    h.assertTrue(night.floodlit, "floodlit night stays as it was")
+  end)
+
+  h.it("headlights are far shorter than a floodlit night's", function()
+    -- The default camera shows about 70 m of road at top speed, and a beam has
+    -- faded out well before its full length.
+    h.assertTrue(midnight.beams.high.length <= 75)
+    h.assertTrue(midnight.beams.low.length < midnight.beams.high.length)
+    h.assertTrue(night.beams.high.length > midnight.beams.high.length)
+  end)
+
+  h.it("studs run down both edges of the road, on the road", function()
+    local Track = require("src/sim/track")
+    local track = Track.new(catalog.find("lusail").def)
+    local spots = renderer.studSpots(track)
+    h.assertTrue(#spots > 100, "a whole lap of them")
+    local left, right = 0, 0
+    for _, spot in ipairs(spots) do
+      if spot.side < 0 then left = left + 1 else right = right + 1 end
+    end
+    h.assertEq(left, right)
+    local first = track.samples[1]
+    local off = math.sqrt((spots[1].x - first.x) ^ 2 + (spots[1].y - first.y) ^ 2)
+    h.assertBetween(off, first.w / 2 - config.METER, first.w / 2, "on the edge line")
+  end)
+end)
+
 h.describe("audio", function()
   local function peakOf(data)
     local peak = 0

@@ -1,18 +1,39 @@
 -- Light and colour for each time of day, and the look of each circuit.
 local environment = {}
 
+-- How far headlights reach, in metres. Past 70 m they run off the top of the
+-- screen, so a floodlit circuit barely needs them.
+local BEAMS = {
+  low = { length = 74, width = 46, power = 1.1 },
+  high = { length = 120, width = 52, power = 1.4 },
+}
+-- With nothing else lit these have to end on screen, so the road runs out into
+-- the dark, and a corner stays out of the light until the car turns in.
+local DARK_BEAMS = {
+  low = { length = 48, width = 38, power = 1.2 },
+  high = { length = 72, width = 44, power = 1.4 },
+}
+
 environment.TIMES = {
   day = {
     ambient = { 1, 1, 1 }, lights = false, grade = { 1, 1, 1 }, saturation = 1.15,
     sun = { 0.62, 0.78 }, shadowLength = 9, shadowAlpha = 0.26, glow = 0.8, vignette = 0,
   },
   dusk = {
-    ambient = { 1.0, 0.72, 0.78 }, lights = true, grade = { 1.04, 0.98, 1.0 }, saturation = 1.25,
+    ambient = { 1.0, 0.72, 0.78 }, lights = true, floodlit = true, beams = BEAMS, grade = { 1.04, 0.98, 1.0 }, saturation = 1.25,
     sun = { 0.9, 0.42 }, shadowLength = 20, shadowAlpha = 0.34, glow = 1.0, vignette = 0.15,
   },
   night = {
-    ambient = { 0.3, 0.32, 0.55 }, lights = true, grade = { 1, 1, 1.04 }, saturation = 1.3,
+    ambient = { 0.3, 0.32, 0.55 }, lights = true, floodlit = true, beams = BEAMS, grade = { 1, 1, 1.04 }, saturation = 1.3,
     sun = { 0.3, 0.9 }, shadowLength = 4, shadowAlpha = 0.25, glow = 1.25, vignette = 0.25,
+  },
+  -- No floodlights: a car sees by its own headlights, and by the moon just enough
+  -- to make out the shape of things. Studs mark the road's edges beyond the beams.
+  -- Cars start on high beam, because a phone has no lights button.
+  midnight = {
+    ambient = { 0.075, 0.09, 0.17 }, lights = true, floodlit = false, beams = DARK_BEAMS, highBeams = true,
+    studs = true, grade = { 1, 1, 1.02 }, saturation = 1.1,
+    sun = { 0.3, 0.9 }, shadowLength = 3, shadowAlpha = 0.2, glow = 1.3, vignette = 0.3,
   },
 }
 
