@@ -20,7 +20,7 @@ local TIMEOUT = 6
 function network.generateCode()
   local letters = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"
   local out = {}
-  for i = 1, 4 do
+  for i = 1, 6 do
     local n = love.math.random(1, #letters)
     out[i] = letters:sub(n, n)
   end

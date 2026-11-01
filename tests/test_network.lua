@@ -38,7 +38,7 @@ h.describe("network", function()
   h.it("room codes are readable", function()
     for _ = 1, 50 do
       local code = network.generateCode()
-      h.assertEq(#code, 4)
+      h.assertEq(#code, 6)
       h.assertTrue(not code:find("[01OI]"), "ambiguous character in " .. code)
     end
   end)
