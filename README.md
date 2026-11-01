@@ -112,6 +112,15 @@ and reads out the code, the other enters it and joins. UDP port 8080 has to be
 reachable. The host's track, laps and time of day are used, and both players
 need that track installed.
 
+The relay can also show a dashboard with its rooms, races, traffic and recent
+activity, where you can close a room or ban an IP. Bans last until the relay
+restarts.
+
+    ./dist/relay -addr :8080 -dashboard 127.0.0.1:9090
+
+Then open <http://localhost:9090>. The dashboard has no login, so keep it on
+loopback.
+
 ## Tests
 
     make test          # simulation, rules, editor, settings, audio. No display needed.
@@ -143,3 +152,5 @@ Copyright (C) 2026 vanillaiice
 - The Press Start 2P font is not covered by either. It stays under the
   [SIL Open Font License 1.1](assets/fonts/OFL.txt).
 - `src/lib/sfxr.lua` keeps its own MIT license, in the file's header.
+- `server/htmx.min.js` is [htmx](https://htmx.org) 2.0.4, under the Zero-Clause BSD
+  license.

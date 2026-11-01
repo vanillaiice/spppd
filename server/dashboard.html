@@ -1,0 +1,138 @@
+{{define "page"}}<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>SPPPD Relay</title>
+<style>
+:root {
+  color-scheme: light dark;
+  --bg: #f6f6f3; --panel: #ffffff; --line: #deded8; --text: #1d1d1b; --muted: #6c6c66;
+  --accent: #c8321e; --ok: #1f7a4d;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #131312; --panel: #1c1c1a; --line: #30302c; --text: #eeeee9; --muted: #9b9b93;
+    --accent: #ff6a52; --ok: #5ccf96;
+  }
+}
+* { box-sizing: border-box; }
+body {
+  margin: 0; background: var(--bg); color: var(--text);
+  font: 15px/1.45 ui-sans-serif, system-ui, sans-serif;
+}
+.wrap { max-width: 1040px; margin: 0 auto; padding: 24px 16px 48px; }
+header { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin-bottom: 20px; }
+h1 { margin: 0; font-size: 20px; letter-spacing: .04em; }
+h2 { margin: 28px 0 8px; font-size: 13px; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); }
+#state { font-size: 13px; color: var(--ok); }
+body.offline #state { color: var(--accent); font-weight: 600; }
+.stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 10px; }
+.stat { background: var(--panel); border: 1px solid var(--line); border-radius: 6px; padding: 12px 14px; }
+.stat b { display: block; font-size: 24px; font-weight: 600; font-variant-numeric: tabular-nums; }
+.stat span { color: var(--muted); font-size: 13px; }
+.table { overflow-x: auto; background: var(--panel); border: 1px solid var(--line); border-radius: 6px; }
+table { width: 100%; border-collapse: collapse; }
+th, td { padding: 8px 12px; text-align: left; border-bottom: 1px solid var(--line); white-space: nowrap; }
+th { font-size: 12px; font-weight: 500; color: var(--muted); }
+tr:last-child td { border-bottom: 0; }
+.mono { font-family: ui-monospace, monospace; font-size: 13px; font-variant-numeric: tabular-nums; }
+.actions { display: flex; gap: 6px; justify-content: flex-end; }
+.empty { margin: 0; padding: 12px 14px; color: var(--muted); background: var(--panel); border: 1px solid var(--line); border-radius: 6px; }
+form { margin: 0; }
+button, input {
+  font: inherit; font-size: 13px; color: var(--text); background: var(--bg);
+  border: 1px solid var(--line); border-radius: 4px; padding: 4px 10px;
+}
+button { cursor: pointer; }
+button:hover { border-color: var(--accent); color: var(--accent); }
+.ban-form { display: flex; gap: 6px; margin-top: 10px; }
+.ban-form input { width: 220px; max-width: 100%; }
+.log { max-height: 340px; overflow-y: auto; padding: 8px 12px; }
+.log div { padding: 2px 0; white-space: pre-wrap; overflow-wrap: anywhere; }
+.log time { color: var(--muted); margin-right: 10px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1>SPPPD Relay</h1>
+    <span id="state">Live</span>
+  </header>
+  <main id="live" hx-get="/live" hx-trigger="every 2s" hx-swap="innerHTML">{{template "live" .}}</main>
+  <h2>Ban an IP</h2>
+  <form class="ban-form" hx-post="/ban" hx-target="#live" hx-swap="innerHTML" hx-on::after-request="if (event.detail.successful) this.reset()">
+    <input name="ip" placeholder="203.0.113.7" aria-label="IP address" required>
+    <button>Ban</button>
+  </form>
+</div>
+<script src="/htmx.js"></script>
+<script>
+  const state = document.getElementById("state");
+  document.body.addEventListener("htmx:sendError", () => {
+    document.body.classList.add("offline");
+    state.textContent = "Relay not responding";
+  });
+  document.body.addEventListener("htmx:afterOnLoad", () => {
+    document.body.classList.remove("offline");
+    state.textContent = "Live";
+  });
+</script>
+</body>
+</html>
+{{end}}
+
+{{define "live"}}
+<div class="stats">
+  <div class="stat"><b>{{len .Rooms}}</b><span>rooms waiting</span></div>
+  <div class="stat"><b>{{len .Races}}</b><span>races running</span></div>
+  <div class="stat"><b>{{.Players}}</b><span>players</span></div>
+  <div class="stat"><b>{{.Rate.PacketsIn}}</b><span>packets/s in, {{.Rate.PacketsOut}} out</span></div>
+  <div class="stat"><b>{{bytes .Rate.BytesIn}}</b><span>per second in, {{bytes .Rate.BytesOut}} out</span></div>
+  <div class="stat"><b>{{age .Uptime}}</b><span>up, {{bytes .Total.BytesIn}} received</span></div>
+</div>
+
+<h2>Waiting rooms</h2>
+{{if .Rooms}}<div class="table"><table>
+  <tr><th>Code</th><th>Host</th><th>Waiting</th><th></th></tr>
+  {{range .Rooms}}<tr>
+    <td class="mono">{{.Code}}</td>
+    <td class="mono">{{.Host}}</td>
+    <td>{{age .Age}}</td>
+    <td><div class="actions">
+      <form hx-post="/close" hx-target="#live" hx-swap="innerHTML"><input type="hidden" name="addr" value="{{.Host}}"><button>Close</button></form>
+      <form hx-post="/ban" hx-target="#live" hx-swap="innerHTML" hx-confirm="Ban {{.HostIP}}?"><input type="hidden" name="ip" value="{{.HostIP}}"><button>Ban</button></form>
+    </div></td>
+  </tr>{{end}}
+</table></div>{{else}}<p class="empty">No rooms waiting.</p>{{end}}
+
+<h2>Races</h2>
+{{if .Races}}<div class="table"><table>
+  <tr><th>Code</th><th>Drivers</th><th>Running</th><th></th></tr>
+  {{range .Races}}<tr>
+    <td class="mono">{{.Code}}</td>
+    <td class="mono">{{.First}}<br>{{.Second}}</td>
+    <td>{{age .Age}}</td>
+    <td><div class="actions">
+      <form hx-post="/close" hx-target="#live" hx-swap="innerHTML"><input type="hidden" name="addr" value="{{.First}}"><button>Close</button></form>
+      <form hx-post="/ban" hx-target="#live" hx-swap="innerHTML" hx-confirm="Ban {{.FirstIP}}?"><input type="hidden" name="ip" value="{{.FirstIP}}"><button>Ban first</button></form>
+      <form hx-post="/ban" hx-target="#live" hx-swap="innerHTML" hx-confirm="Ban {{.SecondIP}}?"><input type="hidden" name="ip" value="{{.SecondIP}}"><button>Ban second</button></form>
+    </div></td>
+  </tr>{{end}}
+</table></div>{{else}}<p class="empty">No races running.</p>{{end}}
+
+<h2>Banned IPs</h2>
+{{if .Banned}}<div class="table"><table>
+  {{range .Banned}}<tr>
+    <td class="mono">{{.}}</td>
+    <td><div class="actions">
+      <form hx-post="/unban" hx-target="#live" hx-swap="innerHTML"><input type="hidden" name="ip" value="{{.}}"><button>Unban</button></form>
+    </div></td>
+  </tr>{{end}}
+</table></div>{{else}}<p class="empty">Nobody is banned. Bans last until the relay restarts.</p>{{end}}
+
+<h2>Recent activity</h2>
+{{if .Events}}<div class="table log mono">
+  {{range .Events}}<div><time>{{clock .At}}</time>{{.Text}}</div>{{end}}
+</div>{{else}}<p class="empty">Nothing has happened yet.</p>{{end}}
+{{end}}
