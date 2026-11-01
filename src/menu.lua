@@ -32,7 +32,7 @@ local PAINTS = {
 }
 
 local MODES = {
-  race = "RACE", trial = "TIME TRIAL", freestyle = "FREESTYLE",
+  race = "RACE", trial = "TIME TRIAL - NO OPPONENTS", freestyle = "FREESTYLE",
 }
 local TIMES = { "day", "dusk", "night" }
 local TIME_NAMES = { day = "DAY", dusk = "DUSK", night = "NIGHT" }
@@ -361,7 +361,7 @@ local function drawBoard(sw, sh, s, title)
   ui.kerb(14 * s, 44 * s, w - 28 * s, 4 * s, s)
   ui.text("SPPPD", 14 * s, 14 * s, 22 * s, colors.marshal)
   if title then
-    ui.text(title, 14 * s, 56 * s, 7 * s, colors.paint)
+    ui.text(title, 14 * s, 56 * s, 7 * s, colors.marshal)
   end
   ui.text("v" .. config.VERSION, 14 * s, sh - 12 * s, 5 * s, colors.muted)
   return w
@@ -440,6 +440,18 @@ local function drawCredits(sw, sh, s, w)
   ui.text("Built with LOVE", 14 * s, 118 * s, 6 * s, colors.muted)
 end
 
+-- Where a screen's list sits, and how tall its rows are. Standard rows are about
+-- 4 mm tall on a phone, too close for a thumb to pick RACE over TIME TRIAL, so
+-- the main menu spreads out over the whole height there.
+function menu.listLayout(screen, count, sh, s)
+  if screen == "main" and ui.mobile then
+    local y = 52 * s
+    return y, (sh - y - 16 * s) / count
+  end
+  local rowH = math.min(15 * s, (sh - 96 * s) / count)
+  return screen == "main" and 62 * s or 72 * s, rowH
+end
+
 function menu.draw(sw, sh)
   rm.drawScene(sw, sh)
   local s = ui.scale(sw, sh)
@@ -449,7 +461,7 @@ function menu.draw(sw, sh)
     controls = "CONTROLS", credits = "CREDITS",
   }
   local w = drawBoard(sw, sh, s, titles[menu.screen])
-  local x, y = 8 * s, 72 * s
+  local x = 8 * s
   local listW = w - 22 * s
   local size = 7 * s
 
@@ -465,8 +477,7 @@ function menu.draw(sw, sh)
   local def = SCREENS[menu.screen]
   if def then
     local rows = def.rows()
-    local rowH = math.min(15 * s, (sh - y - 24 * s) / #rows)
-    if menu.screen == "main" then y = 62 * s end
+    local y, rowH = menu.listLayout(menu.screen, #rows, sh, s)
     local focused = ui.list(menu.screen, rows, x, y, listW, rowH, size, s)
     if menu.screen == "setup" then
       drawSetupPreview(sw, sh, w, s)

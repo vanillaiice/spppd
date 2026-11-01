@@ -42,6 +42,17 @@ h.describe("touch", function()
     love.filesystem.remove("settings.lua")
   end)
 
+  h.it("a phone's main menu is big enough for a thumb", function()
+    local menu = require("src/menu")
+    local mobile = ui.mobile
+    ui.mobile = true
+    local s = ui.scale(1600, 720)
+    local y, rowH = menu.listLayout("main", 8, 720, s)
+    ui.mobile = mobile
+    h.assertTrue(rowH >= 60, "row height " .. rowH)
+    h.assertTrue(y + rowH * 8 <= 720 - 12 * s, "rows reach the version label")
+  end)
+
   h.it("menus go up a size on a phone", function()
     h.assertEq(ui.scale(800, 360), 1)
     ui.mobile = true
