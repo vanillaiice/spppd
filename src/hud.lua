@@ -11,6 +11,10 @@ local hud = {}
 
 local DASH_W, DASH_H = 112, 44
 
+-- How long the finish banner holds the screen before the results open.
+hud.FINISH_HOLD = 3
+local BANNER_IN, BANNER_OUT = 0.35, 0.25
+
 -- The dash moves out from under the right thumb when touch controls are up.
 local function dashX(sw, s)
   if touch.shown() then return (sw - DASH_W * s) / 2 end
@@ -239,8 +243,54 @@ local function drawToast(ctx, sw, sh, s)
   ui.text(t.text, 0, y, size, { c[1], c[2], c[3], alpha }, "center", sw)
 end
 
-function hud.draw(sw, sh, race, ctx)
-  local s = ui.scale(sw, sh)
+function hud.finishHeading(place)
+  if place == 1 then return "YOU WIN", colors.marshal end
+  return "FINISHED P" .. place, colors.paint
+end
+
+-- Two rows of chequers across the width, drifting along like a waved flag.
+local function drawChequers(x, y, width, size, drift)
+  local c = colors.paint
+  love.graphics.setColor(c[1], c[2], c[3], 1)
+  local offset = drift % (size * 2)
+  for row = 0, 1 do
+    for column = -2, math.ceil(width / size) do
+      if (column + row) % 2 == 0 then
+        local left = math.max(x, x + column * size + offset)
+        local right = math.min(x + width, x + (column + 1) * size + offset)
+        if right > left then love.graphics.rectangle("fill", left, y + row * size, right - left, size) end
+      end
+    end
+  end
+end
+
+-- A band of chequered flag sweeps in from both sides as the car crosses.
+local function drawFinishBanner(race, clock, sw, sh, s)
+  if clock >= hud.FINISH_HOLD then return end
+  local enter = 1 - (1 - math.min(1, clock / BANNER_IN)) ^ 3
+  local open = math.min((hud.FINISH_HOLD - clock) / BANNER_OUT, 1)
+  local square = 5 * s
+  local bandH = 44 * s
+  local y = sh * 0.3 - bandH / 2
+  local reach = sw * enter
+  local bodyH = bandH * open
+  local top = y + (bandH - bodyH) / 2
+
+  love.graphics.setScissor(0, top - square * 2, sw, bodyH + square * 4)
+  ui.panel(sw - reach, top - square * 2, reach, bodyH + square * 4, 0.9)
+  drawChequers(0, top - square * 2, reach, square, clock * 40 * s)
+  drawChequers(sw - reach, top + bodyH, reach, square, -clock * 40 * s)
+  love.graphics.setScissor()
+
+  local alpha = math.max(0, math.min(1, (clock - BANNER_IN * 0.5) / BANNER_IN)) * open
+  local car = race.player
+  local heading, c = hud.finishHeading(car.place)
+  ui.text(heading, 0, y + 6 * s, 20 * s, { c[1], c[2], c[3], alpha }, "center", sw)
+  local m = colors.muted
+  ui.text(hud.formatTime(car.finishTime), 0, y + 30 * s, 8 * s, { m[1], m[2], m[3], alpha }, "center", sw)
+end
+
+local function drawDriving(sw, sh, race, ctx, s)
   local car = race.player
 
   if race.mode == "race" then
@@ -271,12 +321,22 @@ function hud.draw(sw, sh, race, ctx)
     if pulse then ui.text("WRONG WAY", 0, sh * 0.34, 12 * s, colors.kerb, "center", sw) end
   end
 
+  if not ctx.paused then touch.draw(sw, sh, car) end
+end
+
+function hud.draw(sw, sh, race, ctx)
+  local s = ui.scale(sw, sh)
+  -- Past the line there's nothing left to drive, so the road gets the screen.
+  if ctx.finishClock then
+    drawFinishBanner(race, ctx.finishClock, sw, sh, s)
+  else
+    drawDriving(sw, sh, race, ctx, s)
+  end
+
   if settings.showFps then
     local x = touch.shown() and sw - 158 * s or sw - 72 * s
     ui.text(love.timer.getFPS() .. " FPS", x, 8 * s, 6 * s, colors.muted, "right", 64 * s)
   end
-
-  if not ctx.paused and race.phase ~= "finished" then touch.draw(sw, sh, car) end
 end
 
 return hud

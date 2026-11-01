@@ -226,17 +226,36 @@ function Race:updateProgress(car, dt)
   end
 end
 
-function Race:onPlayerFinished()
-  self.finishGrace = FINISH_GRACE
-  -- The car drives its own cool-down lap behind the results.
-  local car = self.player
+-- The car drives its own cool-down lap behind the results.
+local function coolDown(self, car)
   car.driver = AI.new(self.track, car, { skill = 0.7 })
   car.input.boost = false
+  -- Nobody is left to work a manual gearbox.
+  car.input.manual = false
+end
+
+function Race:onPlayerFinished()
+  self.finishGrace = FINISH_GRACE
+  coolDown(self, self.player)
+end
+
+-- The other player has gone. Someone who already took the flag only went home,
+-- so their car drives on rather than freezing on the road just past the line.
+-- Returns true if they quit a race they hadn't finished.
+function Race:peerLeft()
+  local peer = self.cars[2]
+  if peer.finished then
+    peer.remote = false
+    coolDown(self, peer)
+    return false
+  end
+  peer.retired = true
+  return true
 end
 
 local function allFinished(self)
   for _, car in ipairs(self.cars) do
-    if not car.finished then return false end
+    if not car.finished and not car.retired then return false end
   end
   return true
 end
@@ -249,6 +268,7 @@ function Race:step(dt)
       car.input.handbrake = false
       -- The clutch is in at the lights, so the pedal only spins the engine.
       car.input.rev = car.driver and car.driver.revs and car.driver:revs(dt) or 0
+      car.input.boost = car.driver and car.driver.nitroButton and car.driver:nitroButton() or false
     end
     if self.timer >= self.startDelay then
       self.phase = "racing"

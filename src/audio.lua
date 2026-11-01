@@ -416,6 +416,26 @@ function MODELLED.shift()
   end)
 end
 
+-- A square-wave climb up a major chord, built from the same voice as the start
+-- lights, with the top note left to ring.
+local FINISH_NOTES = { 523, 659, 784, 1047 }
+local FINISH_STEP = 0.1
+
+function MODELLED.finish()
+  return soundData(0.95, function(t)
+    local v = 0
+    for i, hz in ipairs(FINISH_NOTES) do
+      local since = t - (i - 1) * FINISH_STEP
+      if since > 0 then
+        local wave = (since * hz) % 1 < 0.5 and 1 or -1
+        local ring = i == #FINISH_NOTES and 5 or 16
+        v = v + wave * math.exp(-since * ring) * math.min(1, since * 500)
+      end
+    end
+    return v * 0.3
+  end)
+end
+
 function MODELLED.blowoff()
   local rng = love.math.newRandomGenerator(59)
   local vent = newVent()
@@ -480,7 +500,7 @@ function audio.load()
     audio.motor = looping(motor)
     audio.rivalMotor = looping(motor)
     audio.shots = {}
-    for _, name in ipairs({ "beep", "go", "click", "select", "shift", "lap", "blowoff" }) do
+    for _, name in ipairs({ "beep", "go", "click", "select", "shift", "lap", "blowoff", "finish" }) do
       audio.shots[name] = shot(name, audio.shotData, name)
     end
     audio.shots.startup = shot("startup", audio.startupData)
@@ -536,6 +556,8 @@ end
 function audio.looseLevel(offRoad, speed)
   return offRoad * LOOSE_MAX * math.min(1, speed / 25)
 end
+
+local FADE_OUT = 0.5
 
 local function fadeTo(source, target, dt, rate)
   local now = source:getVolume()
@@ -704,18 +726,32 @@ function audio.update(dt, car, rival, rivalDistance)
   fadeTo(audio.rivalV8, rivalV8Level, dt, 3)
 end
 
-function audio.silence()
-  if not audio.ready then return end
+local function eachLoop(fn)
   for _, key in ipairs({ "engineLow", "engineHigh", "rivalEngine", "rivalMotor", "rivalV8", "scrub", "road", "loose", "wind", "nitro",
     "v8Overrun", "v8Limiter", "turbo", "blower", "motor" }) do
-    audio[key]:stop()
-    audio[key]:setVolume(0)
+    fn(audio[key])
   end
-  for _, source in ipairs(audio.v8) do
+  for _, source in ipairs(audio.v8) do fn(source) end
+end
+
+function audio.silence()
+  if not audio.ready then return end
+  eachLoop(function(source)
     source:stop()
     source:setVolume(0)
-  end
+  end)
   audio.spool = 0
+end
+
+-- The race noise dies away behind the results rather than cutting out.
+function audio.fadeOut(dt)
+  if not audio.ready then return end
+  eachLoop(function(source)
+    if source:isPlaying() then
+      fadeTo(source, 0, dt, FADE_OUT)
+      if source:getVolume() <= 0.001 then source:stop() end
+    end
+  end)
 end
 
 return audio

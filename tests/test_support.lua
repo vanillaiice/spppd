@@ -298,7 +298,7 @@ h.describe("audio", function()
   end)
 
   h.it("no effect starts on a hard edge", function()
-    for _, name in ipairs({ "beep", "go", "click", "select", "lap", "shift", "blowoff" }) do
+    for _, name in ipairs({ "beep", "go", "click", "select", "lap", "shift", "blowoff", "finish" }) do
       h.assertTrue(math.abs(audio.shotData(name):getSample(0)) < 0.1, name)
     end
   end)
@@ -365,7 +365,7 @@ h.describe("audio", function()
     h.assertTrue(audio.motorPitch(1) / audio.motorPitch(0) < 3.5, "less of a swoop")
   end)
 
-  for _, name in ipairs({ "beep", "go", "click", "select", "lap", "shift", "blowoff", "impact", "scrape" }) do
+  for _, name in ipairs({ "beep", "go", "click", "select", "lap", "shift", "blowoff", "finish", "impact", "scrape" }) do
     h.it("the " .. name .. " sound is short and doesn't clip", function()
       local data = audio.shotData(name)
       h.assertBetween(data:getDuration(), 0.01, 1, "length")

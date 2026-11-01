@@ -311,11 +311,14 @@ end
 
 -- Each press switches the nitro on or off, so a tank can be spent in sips. It
 -- only refills while off, and braking shuts it so it can't fight the brakes.
+-- It can't be lit at the lights, and a button still held when they go out has
+-- to be pressed again.
 local function updateBoost(c, input, dt)
   local spec = c.spec
   local pressed = input.boost and not c.boostHeld
   local braking = input.brake > 0.05
   c.boostHeld = input.boost
+  if input.rev then return end
   if c.boostState == "active" then
     c.boostTank = max(0, c.boostTank - dt)
     if pressed or braking or c.boostTank == 0 then c.boostState = "ready" end

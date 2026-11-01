@@ -106,10 +106,13 @@ local function steps()
     expect(rm.race().phase == "countdown", "still on the lights")
     expect(car.model.rpm > car.spec.redline * 0.85, "holding W revs the engine at the lights")
     expect(car:getSpeed() < 0.5, "and the car stays put")
+    press("space")
   end)
   step(120, function()
     expect(rm.race().phase == "racing", "lights out")
     local car = rm.race().player
+    expect(car.model.boostState == "ready", "a nitro press at the lights is ignored")
+    expect(car.model.boostTank == car.spec.boostTime, "and the tank is full")
     love.keypressed("w", "w", false)
     flow.startX, flow.startY = car.curX, car.curY
     flow.play = audio.play
@@ -338,6 +341,39 @@ local function steps()
     settings.radioVolume = 0.6
     rm.setToast = flow.toast
     clearMusic()
+    rm.stop()
+    settings.opponents = 3
+    menu.startRace()
+  end)
+  step(1, function()
+    if rm.race().phase ~= "racing" then return "again" end
+    local player = rm.race().player
+    player.lapsDone = rm.race().laps - 1
+    player.distance = rm.race().track.length * rm.race().laps + 1
+  end)
+  step(3, function()
+    local race = rm.race()
+    expect(race.player.finished and race.phase == "racing", "the player takes the flag with the rest still racing")
+    expect(rm.isFinished() and not rm.resultsAge(), "the finish banner comes first")
+    expect(audio.shots.finish:isPlaying(), "and the finish sting plays")
+    press("escape")
+  end)
+  step(3, function()
+    expect(not rm.isPaused(), "there's nothing to pause past the line")
+    press("return")
+  end)
+  step(3, function() expect(rm.race().player.finished, "a press under the banner does nothing") end)
+  step(1, function()
+    if not rm.resultsAge() then return "again" end
+    expect(rm.race().phase == "racing", "the results open without waiting for the others")
+    press("return")
+  end)
+  step(2, function()
+    expect(rm.race().player.finished, "a press as the panel lands doesn't restart the race")
+  end)
+  step(30, function() press("return") end)
+  step(3, function()
+    expect(rm.race().phase == "countdown" and not rm.isFinished(), "RACE AGAIN restarts from the results")
     print("FLOW PASSED")
     love.event.quit(0)
   end)

@@ -30,7 +30,7 @@ local function input(t)
   return {
     throttle = t.throttle or 0, brake = t.brake or 0, steer = t.steer or 0,
     handbrake = t.handbrake or false, boost = t.boost or false,
-    keyboard = t.keyboard or false,
+    keyboard = t.keyboard or false, rev = t.rev,
   }
 end
 
@@ -581,6 +581,19 @@ h.describe("dynamics", function()
   end)
 
   -- Speed gained in 1.5 s on full throttle, after settling into a gear.
+  h.it("nitro can't be lit at the lights, and a held button needs a fresh press", function()
+    local spec = garage[1]
+    local s = sim(spec, "sport")
+    s:step(input({ rev = 1, boost = true }))
+    h.assertEq(s.c.boostState, "ready", "no firing at the lights")
+    h.assertEq(s.c.boostTank, spec.boostTime, "and the tank stays full")
+    s:step(input({ boost = true }))
+    h.assertEq(s.c.boostState, "ready", "still held at lights out")
+    s:step(input())
+    s:step(input({ boost = true }))
+    h.assertEq(s.c.boostState, "active", "a new press lights it")
+  end)
+
   local function pull(spec, startSpeed, steer, boost)
     local s = sim(spec, "arcade")
     s.vx = startSpeed

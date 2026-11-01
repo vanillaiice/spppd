@@ -122,6 +122,20 @@ h.describe("race", function()
       settings.touch = "auto"
     end)
 
+    h.it("a manual car shifts for itself after the flag on " .. entry.name, function()
+      local track = Track.new(entry.def)
+      local race = Race.new({ mode = "race", track = track, laps = 1, opponents = 0,
+        spec = garage[3], seed = 7, startDelay = 0.5, manualGearbox = true })
+      h.assertEq(race.player.input.manual, true)
+      race.phase = "racing"
+      race.player.lapsDone = race.laps - 1
+      race.player.distance = track.length * race.laps + 1
+      race:step(DT)
+      h.assertTrue(race.player.finished, "over the line")
+      h.assertEq(race.player.input.manual, false)
+      race:destroy()
+    end)
+
     h.it("a full grid races " .. entry.name .. " to the flag", function()
       local track = Track.new(entry.def)
       local race = Race.new({ mode = "race", track = track, laps = 2, opponents = 5,
@@ -161,6 +175,76 @@ h.describe("race", function()
       local player, rival = gripOf(assist)
       h.assertEq(rival, player, assist .. " grid grip")
     end
+  end)
+
+  h.it("every mode starts on a full tank that can't fire until lights out", function()
+    for _, mode in ipairs({ "race", "trial", "freestyle" }) do
+      local entry = catalog.builtin()[1]
+      local race = Race.new({ mode = mode, track = Track.new(entry.def), laps = 1, opponents = 2,
+        spec = garage[3], seed = 7, startDelay = 1 })
+      local car = race.player
+      local held = true
+      car.driver = {
+        nitroButton = function() return held end,
+        update = function(_, c) c.input.boost = held end,
+      }
+      for _, each in ipairs(race.cars) do h.assertEq(each.model.boostTank, each.spec.boostTime, each.name) end
+      while race.phase == "countdown" do
+        race:step(DT)
+        h.assertEq(car.model.boostState, "ready", "no firing at the lights")
+      end
+      for _ = 1, 0.2 / DT do race:step(DT) end
+      h.assertEq(car.model.boostState, "ready", "held through the lights, it stays off")
+      held = false
+      race:step(DT)
+      race:step(DT)
+      held = true
+      race:step(DT)
+      race:step(DT)
+      h.assertEq(car.model.boostState, "active", "a fresh press after the start lights it")
+      race:destroy()
+    end
+  end)
+
+  local function onlineRace()
+    local entry = catalog.builtin()[1]
+    local peerState = { x = 0, y = 0, vx = 0, vy = 0, a = 0, steer = 0, rpm = 1000, throttle = 0, brake = 0, gear = 1 }
+    local track = Track.new(entry.def)
+    local race = Race.new({ mode = "race", track = track, laps = 1, spec = garage[3], seed = 7, startDelay = 0.1,
+      online = { slot = 1, peerSpec = garage[2], peerColor = { 1, 0, 0 }, state = function() return peerState, 0 end } })
+    peerState.x, peerState.y, peerState.a = race.cars[2].curX, race.cars[2].curY, race.cars[2].curA
+    while race.phase == "countdown" do race:step(DT) end
+    return race, track
+  end
+
+  h.it("a rival who leaves after the flag isn't reported as quitting", function()
+    local race, track = onlineRace()
+    local peer = race.cars[2]
+    peer.finished, peer.finishTime = true, 60
+    h.assertEq(race:peerLeft(), false)
+    h.assertTrue(not peer.remote, "their car is ours to drive now")
+    local x, y = peer.curX, peer.curY
+    for _ = 1, 3 / DT do race:step(DT) end
+    checkFinite(race)
+    h.assertTrue(math.abs(peer.curX - x) + math.abs(peer.curY - y) > 5 * M, "it drives on, clear of the line")
+
+    race.player.lapsDone = race.laps - 1
+    race.player.distance = track.length * race.laps + 1
+    race:step(DT)
+    h.assertEq(race.phase, "finished", "nobody left to wait for")
+    race:destroy()
+  end)
+
+  h.it("a rival who quits mid-race isn't waited for", function()
+    local race, track = onlineRace()
+    h.assertEq(race:peerLeft(), true)
+    race.player.lapsDone = race.laps - 1
+    race.player.distance = track.length * race.laps + 1
+    race:step(DT)
+    h.assertTrue(race.player.finished, "over the line")
+    h.assertEq(race.phase, "finished", "no grace period for someone who's gone")
+    h.assertTrue(not race.cars[2].finished, "and they did not finish")
+    race:destroy()
   end)
 
   h.it("online races ignore the local handling tier", function()

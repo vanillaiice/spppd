@@ -106,7 +106,7 @@ function love.draw()
     menu.draw(sw, sh)
   elseif state.screen == "race" then
     rm.draw(sw, sh)
-    if rm.isFinished() then
+    if rm.resultsAge() then
       menu.drawResults(sw, sh)
     elseif rm.isPaused() then
       menu.drawPause(sw, sh)

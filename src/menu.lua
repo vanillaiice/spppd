@@ -571,6 +571,8 @@ end
 
 -- Pause and results overlays ---------------------------------------------------
 
+local RESULTS_SLIDE = 0.3
+
 local function quitRace()
   local opts = rm.race() and rm.opts()
   local fromEditor = opts and opts.fromEditor
@@ -611,20 +613,21 @@ end
 function menu.drawResults(sw, sh)
   local s = ui.scale(sw, sh)
   local race = rm.race()
-  love.graphics.setColor(0, 0, 0, 0.5)
+  local slide = math.min(1, rm.resultsAge() / RESULTS_SLIDE)
+  local ease = 1 - (1 - slide) ^ 3
+  love.graphics.setColor(0, 0, 0, 0.5 * ease)
   love.graphics.rectangle("fill", 0, 0, sw, sh)
 
   local order = race:standings()
   local w = math.min(sw - 16 * s, 300 * s)
   local rowH = 13 * s
   local h = 52 * s + rowH * #order + 40 * s
-  local x, y = (sw - w) / 2, (sh - h) / 2
+  local x, y = (sw - w) / 2, sh + ((sh - h) / 2 - sh) * ease
   ui.panel(x, y, w, h, 0.95)
   ui.kerb(x, y, w, 3 * s, s)
 
-  local place = race.player.place
-  local heading = place == 1 and "YOU WIN" or ("FINISHED P" .. place)
-  ui.text(heading, x, y + 12 * s, 12 * s, place == 1 and colors.marshal or colors.paint, "center", w)
+  local heading, headingColor = hud.finishHeading(race.player.place)
+  ui.text(heading, x, y + 12 * s, 12 * s, headingColor, "center", w)
 
   local listY = y + 36 * s
   for i, car in ipairs(order) do
@@ -634,10 +637,14 @@ function menu.drawResults(sw, sh)
       love.graphics.rectangle("fill", x + 6 * s, ry - 2 * s, w - 12 * s, rowH)
     end
     ui.text(i .. "  " .. car.name, x + 10 * s, ry, 6 * s, colors.paint)
-    local t = car.finished and hud.formatTime(car.finishTime) or "DID NOT FINISH"
+    -- The panel opens with the others still out there: they fill in as they finish.
+    local t = car.finished and hud.formatTime(car.finishTime)
+      or (race.phase == "finished" and "DID NOT FINISH" or "RACING")
     ui.text(t, x, ry, 6 * s, colors.muted, "right", w - 10 * s)
   end
 
+  -- No buttons until it lands, so a press meant for the car can't hit one.
+  if slide < 1 then return end
   local rows = {}
   if not rm.isOnline() then
     rows[1] = { label = "RACE AGAIN", activate = function() rm.restart() end }

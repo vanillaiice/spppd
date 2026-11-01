@@ -113,6 +113,8 @@ local SCENES = {
   phonehost = function() phone() menu.enter() settings.mode = "race" menu.go("host") end,
   pause = function() race({ track = "lusail", time = "day" }) autopilot() end,
   results = function() race({ track = "boat", time = "day", opponents = 3 }) autopilot() end,
+  -- Only the player over the line: 40 frames shows the banner, 120 the results.
+  finish = function() race({ track = "boat", time = "day", opponents = 3 }) autopilot() end,
 }
 
 local waitFrames = 180
@@ -147,6 +149,11 @@ function visual.start(args)
         car.finishTime = 60 + car.body:getX() % 9
       end
       r.phase = "finished"
+    end
+    if scene == "finish" and rm.race() and frame == 60 then
+      local r = rm.race()
+      r.player.lapsDone = r.laps - 1
+      r.player.distance = r.track.length * r.laps + 1
     end
     if scene == "pause" and frame == waitFrames - 2 then rm.setPaused(true) end
   end

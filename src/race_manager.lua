@@ -41,6 +41,12 @@ function playerDriver:revs()
   return math.max(input.throttle(), touch.revs())
 end
 
+-- Read at the lights too, so a press there is used up and can't fire at the go.
+function playerDriver:nitroButton()
+  local tapped = input.consume("boost")
+  return tapped or input.isDown("boost")
+end
+
 function playerDriver:update(car)
   input.applyTo(car.input, settings.gearbox == "manual")
   touch.applyTo(car.input)
@@ -157,8 +163,15 @@ function rm.setPaused(paused)
   input.pressedOnce = {}
 end
 
+-- True from the moment the player takes the flag, whatever the rest are doing.
 function rm.isFinished()
-  return session and session.race.phase == "finished"
+  return session and session.finishClock ~= nil
+end
+
+-- Seconds the results have been up, or nil while they aren't.
+function rm.resultsAge()
+  local clock = session and session.finishClock
+  return clock and clock >= hud.FINISH_HOLD and clock - hud.FINISH_HOLD or nil
 end
 
 function rm.isOnline()
@@ -176,7 +189,8 @@ end
 function rm.onLap(car, time, clean)
   if not session or car ~= session.race.player or session.demo then return end
   local race = session.race
-  audio.play("lap", 0.5)
+  -- The last lap gets the finish sting instead.
+  if race.mode ~= "race" or car.lapsDone < race.laps then audio.play("lap", 0.5) end
 
   if race.mode == "trial" then
     local entry = session.opts.entry
@@ -221,7 +235,7 @@ local function handleControls()
     settings.camera = settings.camera == "chase" and "fixed" or "chase"
     settings.save()
   end
-  if input.consume("respawn") and race.phase == "racing" then
+  if input.consume("respawn") and race.phase == "racing" and not car.finished then
     race:respawn(car)
     audio.play("select", 0.5)
   end
@@ -358,6 +372,21 @@ function rm.syncCamera(blend)
   cam.x, cam.y = x + cam.lookX, y + cam.lookY
 end
 
+-- The flag falls for the player here, while the rest may race on for a while.
+local function updateFinish(dt)
+  local player = session.race.player
+  if session.demo or not player.finished then return end
+  if session.finishClock then
+    session.finishClock = session.finishClock + dt
+    return
+  end
+  session.finishClock = 0
+  session.paused = false
+  session.toast = nil
+  touch.reset()
+  audio.play("finish", 0.6, player.place == 1 and 1 or 0.84)
+end
+
 local function updateCamera(dt)
   local cam = session.cam
   rm.syncCamera(1 - math.exp(-dt * 4))
@@ -415,10 +444,11 @@ function rm.update(dt)
     end
     if network.peerGone and not session.peerGoneShown then
       session.peerGoneShown = true
-      rm.setToast("YOUR RIVAL LEFT THE RACE", colors.kerb, 4)
+      if race:peerLeft() then rm.setToast("YOUR RIVAL LEFT THE RACE", colors.kerb, 4) end
     end
   end
 
+  updateFinish(dt)
   updateDrift(dt)
   recordGhost(dt)
   updatePaceNote()
@@ -439,14 +469,17 @@ function rm.update(dt)
         if not nearest or d < nearest then rival, nearest = car, d end
       end
     end
-    if race.phase ~= "finished" then audio.update(dt, player, rival, nearest and nearest * 12 or 0) end
-    -- Downshifts stay silent: a hard stop would rattle through every gear.
-    local gear, lastGear = player.model.gear, session.lastGear or 1
-    if gear ~= lastGear then
-      session.lastGear = gear
-      if gear > lastGear then audio.play("shift", 0.42, audio.variedPitch()) end
+    if rm.resultsAge() then
+      audio.fadeOut(dt)
+    else
+      audio.update(dt, player, rival, nearest and nearest * 12 or 0)
+      -- Downshifts stay silent: a hard stop would rattle through every gear.
+      local gear, lastGear = player.model.gear, session.lastGear or 1
+      if gear ~= lastGear then
+        session.lastGear = gear
+        if gear > lastGear then audio.play("shift", 0.42, audio.variedPitch()) end
+      end
     end
-    if race.phase == "finished" then audio.silence() end
   end
 end
 
