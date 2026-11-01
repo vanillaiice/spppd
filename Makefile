@@ -1,4 +1,4 @@
-.PHONY: run test test-visual test-server test-online server zip win64 win32 all clean
+.PHONY: run test test-visual test-server test-online server zip apk win64 win32 all clean
 
 ver := 2.1.0
 name := spppd
@@ -34,6 +34,10 @@ clean:
 zip:
 	mkdir -p dist/
 	zip -9 -r dist/${name}-${ver}.love main.lua conf.lua LICENSE assets src
+
+# A test build for a phone. See android/apk.sh for what it needs.
+apk: zip
+	./android/apk.sh
 
 dist/love-binaries/love-11.5-win64.zip:
 	mkdir -p dist/love-binaries

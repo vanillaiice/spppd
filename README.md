@@ -50,7 +50,9 @@ touch. Use Settings to force them on, which lets a mouse act as one finger.
 | Boost on/off | Tap BOOST |
 | Reset and pause | Top right |
 
-To try it on Android, run `make zip` and open the `.love` file in the LÖVE app.
+To try it on Android, run `make zip` and open the `.love` file in the LÖVE app, or
+run `make apk` for a test build of its own. The first `make apk` compiles LÖVE for
+Android, which needs the Android SDK and NDK, JDK 17 and about 1 GB in `dist/`.
 Touch always uses the automatic gearbox, and the track editor isn't available on
 a phone.
 
