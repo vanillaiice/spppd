@@ -20,7 +20,11 @@ function love.conf(t)
   t.modules.video = false
   -- Without this a phone's tilt sensor shows up as a joystick.
   t.accelerometerjoystick = false
-  if love._os == "Android" or love._os == "iOS" then t.window.fullscreen = true end
+  if love._os == "Android" or love._os == "iOS" then
+    t.window.fullscreen = true
+    -- A resizable window lets the phone rotate, which Android then letterboxes.
+    t.window.resizable = false
+  end
 
   -- `love . --test` runs the simulation tests without opening a window.
   if hasArg("--test") then

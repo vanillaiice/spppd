@@ -424,10 +424,16 @@ function MODELLED.blowoff()
   end)
 end
 
+-- Gives the screen a turn between sounds when the game is loading on the side.
+local function breathe()
+  if coroutine.running() then coroutine.yield() end
+end
+
 local function looping(data)
   local source = love.audio.newSource(data, "static")
   source:setLooping(true)
   source:setVolume(0)
+  breathe()
   return source
 end
 
@@ -455,8 +461,10 @@ function audio.load()
     audio.shots = {}
     for _, name in ipairs({ "beep", "go", "click", "select", "shift", "lap", "blowoff" }) do
       audio.shots[name] = love.audio.newSource(audio.shotData(name), "static")
+      breathe()
     end
     audio.shots.startup = love.audio.newSource(audio.startupData(), "static")
+    breathe()
     local impact, scrape = audio.shotData("impact"), audio.shotData("scrape")
     audio.impacts = {}
     for i = 1, 4 do audio.impacts[i] = love.audio.newSource(impact, "static") end

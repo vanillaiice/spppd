@@ -28,19 +28,36 @@ local post = require("src/render/post")
 local textures = require("src/render/textures")
 local network = require("src/network_manager")
 
+-- Slow phones take seconds over this, so it runs a step at a time between
+-- frames, with the splash on screen.
+local loading
+
+local function loadGame()
+  post.load()
+  post.quality = settings.quality
+  coroutine.yield()
+  textures.load()
+  coroutine.yield()
+  audio.load()
+  audio.setVolume(settings.volume)
+end
+
+local function stepLoading()
+  local ok, err = coroutine.resume(loading)
+  if not ok then error(debug.traceback(loading, err), 0) end
+  if coroutine.status(loading) == "dead" then loading = nil end
+end
+
 function love.load(args)
   love.graphics.setDefaultFilter("linear", "linear")
   love.keyboard.setKeyRepeat(false)
   settings.load()
   if settings.fullscreen then love.window.setFullscreen(true, "desktop") end
-  post.load()
-  post.quality = settings.quality
-  textures.load()
-  audio.load()
-  audio.setVolume(settings.volume)
+  loading = coroutine.create(loadGame)
 
   for _, a in ipairs(args) do
     if a == "--visual" then
+      while loading do stepLoading() end
       rm.keepRunningUnfocused = true
       for _, b in ipairs(args) do
         if b == "flow" then
@@ -55,7 +72,9 @@ function love.load(args)
 end
 
 function love.update(dt)
-  if state.screen == "splash" then
+  if loading then
+    stepLoading()
+  elseif state.screen == "splash" then
     if splash.update(dt) then menu.enter() end
   elseif state.screen == "menu" then
     menu.update(dt)
@@ -75,7 +94,7 @@ end
 function love.draw()
   local sw, sh = love.graphics.getDimensions()
   if state.screen == "splash" then
-    splash.draw(sw, sh)
+    splash.draw(sw, sh, loading ~= nil)
   elseif state.screen == "menu" then
     menu.draw(sw, sh)
   elseif state.screen == "race" then
