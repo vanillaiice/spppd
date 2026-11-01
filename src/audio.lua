@@ -1,5 +1,6 @@
--- All sound is synthesised at load time: no audio files ship with the game. The
--- one exception is the player's own music, which src/radio.lua plays.
+-- All sound is synthesised, on the first launch only: no audio files ship with the
+-- game, and src/sound_cache.lua keeps the results. The one exception is the
+-- player's own music, which src/radio.lua plays.
 -- Most engines are two loops cross-faded by rpm and pitched to match, and
 -- spec.engineType adds a layer on top. The "na" V8 is the startup's engine model
 -- rendered at a few speeds instead, so it keeps its exhaust note at any rpm.
@@ -7,6 +8,7 @@
 -- arcade effects synth, from the settings below. The sounds that have to feel
 -- mechanical (startup, gear change, blow-off) are modelled here instead.
 local sfxr = require("src/lib/sfxr")
+local cache = require("src/sound_cache")
 
 local audio = { voices = {}, ready = false, spool = 0 }
 
@@ -424,9 +426,17 @@ function MODELLED.blowoff()
   end)
 end
 
--- Gives the screen a turn between sounds when the game is loading on the side.
+-- Gives the screen a turn when the game is loading on the side, but only when
+-- it's due one: sounds read from the cache go by in a few milliseconds.
+local lastBreath = 0
+local BREATH = 1 / 30
+
 local function breathe()
-  if coroutine.running() then coroutine.yield() end
+  if not coroutine.running() then return end
+  local now = love.timer.getTime()
+  if now - lastBreath < BREATH then return end
+  coroutine.yield()
+  lastBreath = love.timer.getTime()
 end
 
 local function looping(data)
@@ -437,35 +447,45 @@ local function looping(data)
   return source
 end
 
+local function loop(name, render, ...)
+  return looping(cache.get(name, render, ...))
+end
+
+local function shot(name, render, ...)
+  local source = love.audio.newSource(cache.get(name, render, ...), "static")
+  breathe()
+  return source
+end
+
 function audio.load()
   if audio.ready or not love.audio then return end
   local ok, err = pcall(function()
-    audio.engineLow = looping(audio.engineData(55, 0.1))
-    audio.engineHigh = looping(audio.engineData(110, 0.6))
-    audio.rivalEngine = looping(audio.engineData(82, 0.4))
-    audio.scrub = looping(audio.scrubData())
-    audio.road = looping(noiseLoop(1.5, 0.08, 1.8))
-    audio.loose = looping(audio.looseData())
-    audio.wind = looping(noiseLoop(1.8, 0.2, 0.8))
-    audio.nitro = looping(audio.nitroData())
+    cache.open({ "src/audio.lua", "src/lib/sfxr.lua" })
+    audio.engineLow = loop("engineLow", audio.engineData, 55, 0.1)
+    audio.engineHigh = loop("engineHigh", audio.engineData, 110, 0.6)
+    audio.rivalEngine = loop("rivalEngine", audio.engineData, 82, 0.4)
+    audio.scrub = loop("scrub", audio.scrubData)
+    audio.road = loop("road", noiseLoop, 1.5, 0.08, 1.8)
+    audio.loose = loop("loose", audio.looseData)
+    audio.wind = loop("wind", noiseLoop, 1.8, 0.2, 0.8)
+    audio.nitro = loop("nitro", audio.nitroData)
     audio.v8 = {}
-    for i, rpm in ipairs(V8_RPMS) do audio.v8[i] = looping(audio.v8Data(rpm)) end
-    audio.v8Overrun = looping(audio.v8Data(V8_OVERRUN_RPM, "overrun"))
-    audio.v8Limiter = looping(audio.v8Data(V8_RPMS[#V8_RPMS], "limiter"))
+    for i, rpm in ipairs(V8_RPMS) do audio.v8[i] = loop("v8" .. i, audio.v8Data, rpm) end
+    audio.v8Overrun = loop("v8Overrun", audio.v8Data, V8_OVERRUN_RPM, "overrun")
+    audio.v8Limiter = loop("v8Limiter", audio.v8Data, V8_RPMS[#V8_RPMS], "limiter")
     audio.rivalV8 = audio.v8[2]:clone()
-    audio.turbo = looping(audio.toneData(1400, TURBO_TONE))
-    audio.blower = looping(audio.toneData(380, BLOWER_TONE))
-    local motor = audio.motorData()
+    audio.turbo = loop("turbo", audio.toneData, 1400, TURBO_TONE)
+    audio.blower = loop("blower", audio.toneData, 380, BLOWER_TONE)
+    local motor = cache.get("motor", audio.motorData)
     audio.motor = looping(motor)
     audio.rivalMotor = looping(motor)
     audio.shots = {}
     for _, name in ipairs({ "beep", "go", "click", "select", "shift", "lap", "blowoff" }) do
-      audio.shots[name] = love.audio.newSource(audio.shotData(name), "static")
-      breathe()
+      audio.shots[name] = shot(name, audio.shotData, name)
     end
-    audio.shots.startup = love.audio.newSource(audio.startupData(), "static")
-    breathe()
-    local impact, scrape = audio.shotData("impact"), audio.shotData("scrape")
+    audio.shots.startup = shot("startup", audio.startupData)
+    local impact, scrape = cache.get("impact", audio.shotData, "impact"), cache.get("scrape", audio.shotData, "scrape")
+    cache.finish()
     audio.impacts = {}
     for i = 1, 4 do audio.impacts[i] = love.audio.newSource(impact, "static") end
     audio.scrapes = {}

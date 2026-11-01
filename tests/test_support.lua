@@ -458,6 +458,83 @@ h.describe("audio", function()
   end)
 end)
 
+h.describe("sound cache", function()
+  local cache = require("src/sound_cache")
+  local FILES = { "src/audio.lua" }
+
+  local function tone()
+    local data = love.sound.newSoundData(500, 44100, 16, 1)
+    for i = 0, 499 do data:setSample(i, math.sin(i * 0.05) * 0.8) end
+    return data
+  end
+
+  local function empty()
+    for _, folder in ipairs(love.filesystem.getDirectoryItems("soundcache")) do
+      local path = "soundcache/" .. folder
+      for _, name in ipairs(love.filesystem.getDirectoryItems(path)) do love.filesystem.remove(path .. "/" .. name) end
+      love.filesystem.remove(path)
+    end
+  end
+
+  h.it("gives back exactly what was rendered, without rendering again", function()
+    empty()
+    cache.open(FILES)
+    local first = cache.get("tone", tone)
+    cache.finish()
+    cache.open(FILES)
+    h.assertTrue(cache.complete, "the finished cache is found")
+    local renders = 0
+    local second = cache.get("tone", function() renders = renders + 1 return tone() end)
+    h.assertEq(renders, 0)
+    h.assertEq(second:getSampleCount(), first:getSampleCount())
+    h.assertEq(second:getSampleRate(), first:getSampleRate())
+    for i = 0, first:getSampleCount() - 1 do h.assertEq(second:getSample(i), first:getSample(i)) end
+  end)
+
+  h.it("doesn't trust a first launch that never finished", function()
+    empty()
+    cache.open(FILES)
+    cache.get("tone", tone)
+    cache.open(FILES)
+    h.assertTrue(not cache.complete)
+    local renders = 0
+    cache.get("tone", function() renders = renders + 1 return tone() end)
+    h.assertEq(renders, 1)
+  end)
+
+  h.it("renders again if a saved sound is damaged", function()
+    empty()
+    cache.open(FILES)
+    cache.get("tone", tone)
+    cache.finish()
+    love.filesystem.write(cache.folder .. "/tone.wav", "not a sound")
+    cache.open(FILES)
+    local renders = 0
+    local data = cache.get("tone", function() renders = renders + 1 return tone() end)
+    h.assertEq(renders, 1)
+    h.assertEq(data:getSampleCount(), 500)
+  end)
+
+  h.it("changes when the code behind the sounds changes", function()
+    h.assertTrue(cache.key({ "one" }) ~= cache.key({ "two" }))
+    h.assertEq(cache.key({ "one" }), cache.key({ "one" }))
+  end)
+
+  h.it("clears out what older versions left behind", function()
+    empty()
+    love.filesystem.createDirectory("soundcache/old")
+    love.filesystem.write("soundcache/old/tone.wav", "x")
+    cache.open(FILES)
+    h.assertTrue(not love.filesystem.getInfo("soundcache/old"))
+  end)
+
+  h.it("still gives sound when there's nowhere to keep it", function()
+    cache.open({ "src/no_such_file.lua" })
+    h.assertTrue(not cache.folder)
+    h.assertEq(cache.get("tone", tone):getSampleCount(), 500)
+  end)
+end)
+
 h.describe("radio", function()
   local function clearMusic()
     for _, name in ipairs(love.filesystem.getDirectoryItems("music")) do
