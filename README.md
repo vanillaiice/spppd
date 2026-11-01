@@ -22,6 +22,7 @@ are needed, though freestyle will play your own music. Sound effects are built w
 | Change camera | C |
 | Shift gears in manual | Q, E |
 | Next song in freestyle | N |
+| Horn (hold) | H |
 | Pause | Esc or P |
 
 Gamepads work too, with analogue steering and triggers:
@@ -36,6 +37,7 @@ Gamepads work too, with analogue steering and triggers:
 | Reset to the track | Y | Triangle |
 | Change camera | Back | Share |
 | Next song in freestyle | D-pad right | D-pad right |
+| Horn (hold) | B | Circle |
 | Pause | Start | Options |
 
 Pads vibrate with crashes, nitro, gears, kerbs and grass, and phones buzz for

@@ -21,6 +21,10 @@ local LOOSE_IN, LOOSE_OUT = 1.2, 0.8  -- its fade per second: about 0.2 s, 0.25 
 local IMPACT_GAP = 0.12    -- seconds; a car grinding along a wall is one noise
 local NITRO_LEVEL = 0.4
 local NITRO_IN, NITRO_OUT = 12, 5  -- its fade per second: a burst on, a short sigh off
+local HORN_LEVEL = 0.5
+local HORN_FADE = 40       -- per second, so it starts and stops like a button
+local HORN_HZ = { 420, 500 }  -- the classic two trumpets, a little under a third apart
+local HORN_MASS = 1400     -- a car this heavy plays the horn at its written pitch
 local SPOOL_DOWN = 7        -- how fast a turbo dumps (per s)
 local BLOWOFF_SPOOL = 0.55 -- turbo pressure needed to be heard venting
 local BLOWOFF_LENGTH = 0.55
@@ -158,6 +162,20 @@ function audio.turboData(turbos)
       total = total + math.sin(at) * level + math.sin(at * 2) * level * 0.15
     end
     return total
+  end)
+end
+
+-- A horn is a vibrating diaphragm: bright, buzzy and hard-edged, so it cuts through
+-- an engine. Half a second holds a whole number of cycles of both notes.
+function audio.hornData()
+  return soundData(0.5, function(t)
+    local total = 0
+    for _, hz in ipairs(HORN_HZ) do
+      for harmonic = 1, 8 do
+        total = total + math.sin(t * math.pi * 2 * hz * harmonic) / harmonic
+      end
+    end
+    return math.atan(total * 1.2) * 0.5
   end)
 end
 
@@ -535,6 +553,8 @@ function audio.load()
     audio.loose = loop("loose", audio.looseData)
     audio.wind = loop("wind", noiseLoop, 1.8, 0.2, 0.8)
     audio.nitro = loop("nitro", audio.nitroData)
+    audio.horn = loop("horn", audio.hornData)
+    audio.rivalHorn = audio.horn:clone()
     audio.engines, audio.turbos = {}, {}
     for _, spec in ipairs(garage) do
       local voice = audio.voiceOf(spec)
@@ -625,6 +645,11 @@ function audio.spoolStep(spool, onPower, revs, dt, spoolUp)
   local step = rate * dt
   local nextSpool = spool + math.max(-step, math.min(step, target - spool))
   return nextSpool, spool >= BLOWOFF_SPOOL and not onPower
+end
+
+-- A truck's horn sits lower than a hatchback's.
+function audio.hornPitch(spec)
+  return math.max(0.7, math.min(1.25, math.sqrt(HORN_MASS / spec.mass)))
 end
 
 -- The more pressure there is to dump, the louder it goes.
@@ -753,6 +778,8 @@ local function updateRival(dt, rival, rivalDistance)
     audio.rivalMotor:setPitch(audio.motorPitch(math.min(1.1, rival.model.rpm / rival.spec.redline)))
   end
   fadeTo(audio.rivalMotor, motorLevel, dt, 3)
+  if rival then audio.rivalHorn:setPitch(audio.hornPitch(rival.spec)) end
+  fadeTo(audio.rivalHorn, rival and rival.horn and near * HORN_LEVEL or 0, dt, HORN_FADE)
   for key, engine in pairs(audio.engines) do
     local level = 0
     if voice and voice.key == key then
@@ -791,12 +818,14 @@ function audio.update(dt, car, rival, rivalDistance)
   local boosting = model.boostState == "active"
   audio.nitro:setPitch(audio.nitroPitch(model.boostTank / spec.boostTime))
   fadeTo(audio.nitro, boosting and NITRO_LEVEL or 0, dt, boosting and NITRO_IN or NITRO_OUT)
+  audio.horn:setPitch(audio.hornPitch(spec))
+  fadeTo(audio.horn, car.horn and HORN_LEVEL or 0, dt, HORN_FADE)
 
   updateRival(dt, rival, rivalDistance)
 end
 
 local function eachLoop(fn)
-  for _, key in ipairs({ "rivalMotor", "scrub", "road", "loose", "wind", "nitro", "blower", "motor" }) do
+  for _, key in ipairs({ "rivalMotor", "scrub", "road", "loose", "wind", "nitro", "blower", "motor", "horn", "rivalHorn" }) do
     fn(audio[key])
   end
   for _, source in pairs(audio.turbos) do fn(source) end

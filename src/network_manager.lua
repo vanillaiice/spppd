@@ -28,15 +28,15 @@ function network.generateCode()
 end
 
 function network.packState(s)
-  return string.format("sync|%.1f|%.1f|%.3f|%.1f|%.1f|%.3f|%d|%.2f|%.2f|%d",
-    s.x, s.y, s.a, s.vx, s.vy, s.steer, s.rpm, s.throttle, s.brake, s.gear)
+  return string.format("sync|%.1f|%.1f|%.3f|%.1f|%.1f|%.3f|%d|%.2f|%.2f|%d|%d",
+    s.x, s.y, s.a, s.vx, s.vy, s.steer, s.rpm, s.throttle, s.brake, s.gear, s.horn and 1 or 0)
 end
 
 function network.unpackState(str)
   local parts = {}
   for chunk in str:gmatch("[^|]+") do parts[#parts + 1] = chunk end
-  if parts[1] ~= "sync" or #parts < 11 then return nil end
-  local fields = { "x", "y", "a", "vx", "vy", "steer", "rpm", "throttle", "brake", "gear" }
+  if parts[1] ~= "sync" or #parts < 12 then return nil end
+  local fields = { "x", "y", "a", "vx", "vy", "steer", "rpm", "throttle", "brake", "gear", "horn" }
   local out = {}
   for i, name in ipairs(fields) do
     local value = tonumber(parts[i + 1])
@@ -199,7 +199,7 @@ function network.sendCar(car)
   network.udp:send(network.packState({
     x = car.curX, y = car.curY, a = car.curA, vx = vx, vy = vy,
     steer = car.model.steer, rpm = car.model.rpm,
-    throttle = car.model.throttle, brake = car.model.brake, gear = car.model.gear,
+    throttle = car.model.throttle, brake = car.model.brake, gear = car.model.gear, horn = car.horn,
   }))
 end
 

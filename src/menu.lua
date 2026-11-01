@@ -448,12 +448,12 @@ local function drawControls(sw, sh, s, w)
     { "STEER", "A D / ARROWS" }, { "ACCELERATE", "W / UP" }, { "BRAKE, REVERSE", "S / DOWN" },
     { "HANDBRAKE", "SHIFT" }, { "NITRO", "SPACE" }, { "LIGHTS", "F  G" },
     { "RESET TO TRACK", "R" }, { "CAMERA", "C" }, { "SHIFT GEARS", "Q E" }, { "NEXT SONG", "N" },
-    { "PAUSE", "ESC / P" },
+    { "HORN", "H" }, { "PAUSE", "ESC / P" },
   }
   if ui.mobile then
     rows = {
       { "STEER", "STICK" }, { "ACCELERATE", "AUTO, OR STICK UP" }, { "BRAKE, REVERSE", "STICK DOWN" },
-      { "DRIFT", "HOLD DRIFT" }, { "BOOST", "TAP BOOST" }, { "RESET, PAUSE", "TOP RIGHT" },
+      { "DRIFT", "HOLD DRIFT" }, { "BOOST", "TAP BOOST" }, { "HORN, RESET, PAUSE", "TOP RIGHT" },
     }
   end
   local y = 72 * s
@@ -462,7 +462,7 @@ local function drawControls(sw, sh, s, w)
     ui.text(row[2], 0, y + (i - 1) * 13 * s, 6 * s, colors.marshal, "right", w - 14 * s)
   end
   if not ui.mobile then
-    ui.text("PAD: R2 GAS, L2 BRAKE, R1 HANDBRAKE, L1 NITRO, SQUARE CROSS GEARS, D-PAD RIGHT NEXT SONG",
+    ui.text("PAD: R2 GAS, L2 BRAKE, R1 HANDBRAKE, L1 NITRO, SQUARE CROSS GEARS, D-PAD RIGHT NEXT SONG, CIRCLE HORN",
       14 * s, y + #rows * 13 * s + 4 * s, 6 * s, colors.muted, "left", w - 28 * s)
   end
 end

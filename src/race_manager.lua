@@ -228,6 +228,7 @@ end
 local function handleControls()
   local race = session.race
   local car = race.player
+  car.horn = input.isDown("horn") and not session.paused
   if input.consume("lowBeam") then
     car.lowBeam = not car.lowBeam
     if car.lowBeam then car.highBeam = false end

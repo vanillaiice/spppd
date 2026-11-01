@@ -455,6 +455,24 @@ h.describe("audio", function()
     h.assertEq(garage.byId("open_wheeler").cylinders, 6)
   end)
 
+  h.it("the horn loops, and is loud enough to cut through", function()
+    local data = audio.hornData()
+    local n = data:getSampleCount()
+    -- The wave steps hard every cycle, so the join only has to be no worse than that.
+    local biggest = 0
+    for i = 1, n - 1 do biggest = math.max(biggest, math.abs(data:getSample(i) - data:getSample(i - 1))) end
+    h.assertTrue(math.abs(data:getSample(0) - data:getSample(n - 1)) <= biggest, "click at the loop point")
+    h.assertBetween(peakOf(data), 0.3, 0.95, "peak level")
+  end)
+
+  h.it("a heavy car's horn is lower than a light one's", function()
+    local low = audio.hornPitch(garage.byId("baja_beast"))
+    local high = audio.hornPitch(garage.byId("tofu_runner"))
+    h.assertTrue(low < 1 and high > 1 and low < high)
+    h.assertBetween(low, 0.7, 1.25)
+    h.assertBetween(high, 0.7, 1.25)
+  end)
+
   h.it("the electric motor is a rough whine, not clean tones", function()
     local data = audio.motorData()
     local n = data:getSampleCount()

@@ -17,6 +17,7 @@ local input = {
     respawn = { "r" },
     camera = { "c" },
     radio = { "n" },
+    horn = { "h" },
     pause = { "escape", "p" },
   },
   pads = {
@@ -27,6 +28,7 @@ local input = {
     respawn = { "y" },
     camera = { "back" },
     radio = { "dpadright" },
+    horn = { "b" },
     pause = { "start" },
   },
   held = {},

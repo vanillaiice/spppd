@@ -35,6 +35,7 @@ function RemoteDriver:update(car, race, dt)
   local model = car.model
   model.steer, model.rpm, model.throttle, model.brake = state.steer, state.rpm, state.throttle, state.brake
   model.gear = math.max(1, state.gear)
+  car.horn = state.horn == 1
 end
 
 return RemoteDriver

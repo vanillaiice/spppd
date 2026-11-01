@@ -46,6 +46,7 @@ function Car.new(spec, x, y, angle, opts)
     manual = false, shiftUp = false, shiftDown = false,
   }
   self.lowBeam, self.highBeam = false, false
+  self.horn = false
 
   -- Race progress, maintained by the race logic.
   self.trackIndex = nil

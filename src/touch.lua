@@ -19,8 +19,8 @@ function touch.shown()
   return settings.touch == "auto" and touch.active
 end
 
--- Nitro sits under the resting right thumb with drift just inside it. Reset and
--- pause are up top, where a thumb won't hit them by accident.
+-- Nitro sits under the resting right thumb with drift just inside it. Reset, pause
+-- and the horn are up top, where a thumb won't hit them by accident.
 function touch.layout(sw, sh)
   local s = ui.scale(sw, sh)
   return {
@@ -32,6 +32,7 @@ function touch.layout(sw, sh)
       { action = "handbrake", label = "DRIFT", size = 7 * s, x = sw - 124 * s, y = sh - 40 * s, r = 26 * s },
       { action = "pause", label = "II", size = 7 * s, x = sw - 24 * s, y = 24 * s, r = 17 * s },
       { action = "respawn", label = "RESET", size = 5 * s, x = sw - 62 * s, y = 24 * s, r = 17 * s },
+      { action = "horn", label = "HORN", size = 5 * s, x = sw - 100 * s, y = 24 * s, r = 17 * s },
     },
   }
 end
