@@ -28,16 +28,18 @@ local function button(action)
 end
 
 h.describe("touch", function()
-  h.it("a phone's first run starts on low effects, and a saved choice stands", function()
+  h.it("a phone starts on high effects, and a saved choice stands", function()
     ui.mobile = true
     love.filesystem.remove("settings.lua")
     settings.quality = "high"
     settings.load()
+    h.assertEq(settings.quality, "high")
+    settings.quality = "low"
+    settings.save()
+    settings.quality = "high"
+    settings.load()
     h.assertEq(settings.quality, "low")
     settings.quality = "high"
-    settings.save()
-    settings.load()
-    h.assertEq(settings.quality, "high")
     ui.mobile = false
     love.filesystem.remove("settings.lua")
   end)
@@ -46,11 +48,12 @@ h.describe("touch", function()
     local menu = require("src/menu")
     local mobile = ui.mobile
     ui.mobile = true
-    local s = ui.scale(1600, 720)
-    local y, rowH = menu.listLayout("main", 8, 720, s)
+    -- What LÖVE reports on a 1600x720 phone, in its density-independent units.
+    local s = ui.scale(853, 384)
+    local y, rowH = menu.listLayout("main", 8, 384, s)
     ui.mobile = mobile
-    h.assertTrue(rowH >= 60, "row height " .. rowH)
-    h.assertTrue(y + rowH * 8 <= 720 - 12 * s, "rows reach the version label")
+    h.assertTrue(rowH >= 34, "row height " .. rowH)
+    h.assertTrue(y + rowH * 8 <= 384 - 12 * s, "rows reach the version label")
   end)
 
   h.it("menus go up a size on a phone", function()
