@@ -1,4 +1,4 @@
-.PHONY: run test test-visual test-server test-online server zip apk win64 win32 all clean
+.PHONY: run test test-visual test-server test-online server zip apk apk-perf win64 win32 all clean
 
 ver := 2.1.0
 name := spppd
@@ -38,6 +38,15 @@ zip:
 # A test build for a phone. See android/apk.sh for what it needs.
 apk: zip
 	./android/apk.sh
+
+# An APK that runs love . --perf as soon as it opens. Read the results with
+# adb logcat | grep PERF. It shares the game's save folder but changes nothing in it.
+apk-perf:
+	rm -rf dist/perf && mkdir -p dist/perf
+	cp -r main.lua conf.lua LICENSE assets src tests dist/perf/
+	printf 'local load = love.load\nlove.load = function(args) args[#args + 1] = "--perf" load(args) end\n' >> dist/perf/main.lua
+	cd dist/perf && zip -q -9 -r ../spppd-${ver}-perf.love .
+	GAME=dist/spppd-${ver}-perf.love OUTPUT=dist/spppd-${ver}-perf.apk ./android/apk.sh
 
 dist/love-binaries/love-11.5-win64.zip:
 	mkdir -p dist/love-binaries

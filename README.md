@@ -129,6 +129,8 @@ loopback.
     make test-visual   # plays the real game through its input handlers. Needs a display.
     make test-server   # relay server, with the race detector
     make test-online   # two clients through a real relay
+    love . --perf      # frame timings for a race
+    make apk-perf      # the same on a phone: read them with adb logcat | grep PERF
 
 ## How it fits together
 

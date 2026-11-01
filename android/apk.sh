@@ -4,16 +4,17 @@
 # that, only the game inside the APK is swapped, which takes seconds.
 #
 # Needs the Android SDK and NDK, and JDK 17. Override these if yours live elsewhere:
-#   ANDROID_HOME, JAVA_HOME, BUILD_TOOLS, GAME (a .love to pack instead of the game)
+#   ANDROID_HOME, JAVA_HOME, BUILD_TOOLS, GAME (a .love to pack instead of the game),
+#   OUTPUT (where the APK goes)
 set -euo pipefail
 
 repo=$(cd "$(dirname "$0")/.." && pwd)
 ver=$(sed -n 's/^ver := //p' "$repo/Makefile")
 love_android="$repo/dist/love-android"
 work="$repo/dist/apk-work"
-output="$repo/dist/spppd-$ver-android.apk"
+output=$(realpath -m "${OUTPUT:-$repo/dist/spppd-$ver-android.apk}")
 keystore="$HOME/.android/spppd-test.keystore"
-game="${GAME:-$repo/dist/spppd-$ver.love}"
+game=$(realpath "${GAME:-$repo/dist/spppd-$ver.love}")
 
 export ANDROID_HOME="${ANDROID_HOME:-$HOME/Android/Sdk}"
 export ANDROID_SDK_ROOT="$ANDROID_HOME"
