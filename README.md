@@ -47,7 +47,7 @@ touch. Use Settings to force them on, which lets a mouse act as one finger.
 | Accelerate | Automatic, or stick up with Auto Gas off (stick up revs at the start lights) |
 | Brake, then reverse | Pull the stick down |
 | Drift | Hold DRIFT and keep steering |
-| Nitro on/off | Tap NITRO |
+| Boost on/off | Tap BOOST |
 | Reset and pause | Top right |
 
 To try it on Android, run `make zip` and open the `.love` file in the LÖVE app.

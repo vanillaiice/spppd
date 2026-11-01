@@ -28,7 +28,7 @@ function touch.layout(sw, sh)
     radius = STICK_RADIUS * s,
     rest = { x = 62 * s, y = sh - 62 * s },
     buttons = {
-      { action = "boost", label = "NITRO", size = 8 * s, x = sw - 52 * s, y = sh - 52 * s, r = 34 * s },
+      { action = "boost", label = "BOOST", size = 8 * s, x = sw - 52 * s, y = sh - 52 * s, r = 34 * s },
       { action = "handbrake", label = "DRIFT", size = 7 * s, x = sw - 124 * s, y = sh - 40 * s, r = 26 * s },
       { action = "pause", label = "II", size = 7 * s, x = sw - 24 * s, y = 24 * s, r = 17 * s },
       { action = "respawn", label = "RESET", size = 5 * s, x = sw - 62 * s, y = 24 * s, r = 17 * s },

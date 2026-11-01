@@ -420,7 +420,7 @@ local function drawControls(sw, sh, s, w)
   if ui.mobile then
     rows = {
       { "STEER", "STICK" }, { "ACCELERATE", "AUTO, OR STICK UP" }, { "BRAKE, REVERSE", "STICK DOWN" },
-      { "DRIFT", "HOLD DRIFT" }, { "NITRO", "TAP NITRO" }, { "RESET, PAUSE", "TOP RIGHT" },
+      { "DRIFT", "HOLD DRIFT" }, { "BOOST", "TAP BOOST" }, { "RESET, PAUSE", "TOP RIGHT" },
     }
   end
   local y = 72 * s
