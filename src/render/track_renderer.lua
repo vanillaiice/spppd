@@ -246,6 +246,35 @@ local function barrierMesh(points, theme, halfWidth, shift)
   return mesh
 end
 
+-- Flat coloured rectangles, baked into one mesh. Drawing them one at a time costs
+-- a slow phone more than the rest of the world put together. frame is an optional
+-- { x, y, angle } the rectangle is placed in.
+local function addRect(rects, x, y, w, h, c, alpha, frame)
+  rects[#rects + 1] = { x = x, y = y, w = w, h = h, c = c, alpha = alpha or 1, frame = frame }
+end
+
+local function rectMesh(rects)
+  if #rects == 0 then return nil end
+  local verts, indices = {}, {}
+  for _, r in ipairs(rects) do
+    local c, f = r.c, r.frame
+    local ox, oy, ca, sa = 0, 0, 1, 0
+    if f then ox, oy, ca, sa = f[1], f[2], math.cos(f[3]), math.sin(f[3]) end
+    local base = #verts
+    local function corner(x, y)
+      verts[#verts + 1] = { ox + x * ca - y * sa, oy + x * sa + y * ca, 0, 0, c[1], c[2], c[3], r.alpha }
+    end
+    corner(r.x, r.y)
+    corner(r.x + r.w, r.y)
+    corner(r.x + r.w, r.y + r.h)
+    corner(r.x, r.y + r.h)
+    for _, k in ipairs({ 1, 2, 3, 1, 3, 4 }) do indices[#indices + 1] = base + k end
+  end
+  local mesh = love.graphics.newMesh(verts, "triangles", "static")
+  mesh:setVertexMap(indices)
+  return mesh
+end
+
 local function outsideRoad(track, x, y, clearance)
   local _, _, _, off, side = track:locate(x, y)
   if off <= 0 then return false end
@@ -322,6 +351,52 @@ local function grandstandSpot(track)
   }
 end
 
+local function buildGridBoxes(track)
+  local rects = {}
+  local paint = { 0.92, 0.92, 0.88 }
+  local w, near, far, thick = 1.3 * M, 3.2 * M, 3.6 * M, 2
+  for slot = 1, 6 do
+    local x, y, angle = track:gridSlot(slot)
+    local frame = { x, y, angle }
+    addRect(rects, near, -w - thick / 2, far - near + thick / 2, thick, paint, 0.8, frame)
+    addRect(rects, far - thick / 2, -w + thick / 2, thick, w * 2 - thick, paint, 0.8, frame)
+    addRect(rects, near, w - thick / 2, far - near + thick / 2, thick, paint, 0.8, frame)
+  end
+  return rectMesh(rects)
+end
+
+local function buildBoxes(boxes, env)
+  local rects = {}
+  local sx, sy = env.sun[1] * env.shadowLength, env.sun[2] * env.shadowLength
+  local w, h, edge = 12.2 * M, 2.5 * M, 1.5
+  for _, box in ipairs(boxes) do
+    local x, y = box.x - w / 2, box.y - h / 2
+    addRect(rects, x + sx * box.h * 1.6, y + sy * box.h * 1.6, w, h, { 0, 0, 0 }, env.shadowAlpha)
+    addRect(rects, x - edge, y - edge, w + edge * 2, h + edge * 2, INK)
+    addRect(rects, x + edge, y + edge, w - edge * 2, h - edge * 2, box.color)
+  end
+  return rectMesh(rects)
+end
+
+local function buildStand(st, env)
+  local CROWD = { { 0.98, 0.25, 0.25 }, { 0.2, 0.55, 0.98 }, { 0.99, 0.85, 0.2 }, { 0.98, 0.98, 0.98 }, { 0.98, 0.45, 0.75 } }
+  local rects = {}
+  local frame = { st.x, st.y, st.angle }
+  local w, h = 62 * M, 8 * M
+  addRect(rects, -w / 2 + 12, -h / 2 + 12, w, h, { 0, 0, 0 }, env.shadowAlpha, frame)
+  addRect(rects, -w / 2, -h / 2, w, h, { 0.32, 0.36, 0.5 }, 1, frame)
+  local rng = love.math.newRandomGenerator(5)
+  for row = 0, 9 do
+    for col = 0, 150 do
+      if rng:random() > 0.2 then
+        local c = CROWD[rng:random(1, #CROWD)]
+        addRect(rects, -w / 2 + 6 + col * (w - 12) / 150, -h / 2 + 5 + row * (h - 8) / 10, 3, 3, c, 1, frame)
+      end
+    end
+  end
+  return rectMesh(rects)
+end
+
 function renderer.load(track, timeName)
   textures.load()
   local self = {}
@@ -361,7 +436,9 @@ function renderer.load(track, timeName)
 
   local rng = love.math.newRandomGenerator(track.count * 7 + 3)
   self.batches, self.boxes = buildScenery(track, self.theme, rng)
-  self.stand = grandstandSpot(track)
+  self.gridBoxes = buildGridBoxes(track)
+  self.boxMesh = buildBoxes(self.boxes, self.env)
+  self.standMesh = buildStand(grandstandSpot(track), self.env)
 
   -- Floodlights around the lap for night racing.
   self.floods = {}
@@ -433,64 +510,6 @@ function renderer.loadApron(timeName)
   return self
 end
 
-local function drawGridBoxes(self)
-  love.graphics.setColor(0.92, 0.92, 0.88, 0.8)
-  love.graphics.setLineWidth(2)
-  local track = self.track
-  for slot = 1, 6 do
-    local x, y, angle = track:gridSlot(slot)
-    love.graphics.push()
-    love.graphics.translate(x, y)
-    love.graphics.rotate(angle)
-    local w = 1.3 * M
-    love.graphics.line(3.2 * M, -w, 3.6 * M, -w, 3.6 * M, w, 3.2 * M, w)
-    love.graphics.pop()
-  end
-end
-
-local function drawBoxes(self)
-  local env = self.env
-  local sx, sy = env.sun[1] * env.shadowLength, env.sun[2] * env.shadowLength
-  for _, box in ipairs(self.boxes) do
-    local w, h = 12.2 * M, 2.5 * M
-    love.graphics.setColor(0, 0, 0, env.shadowAlpha)
-    love.graphics.rectangle("fill", box.x - w / 2 + sx * box.h * 1.6, box.y - h / 2 + sy * box.h * 1.6, w, h)
-    local c = box.color
-    love.graphics.setColor(c[1], c[2], c[3])
-    love.graphics.rectangle("fill", box.x - w / 2, box.y - h / 2, w, h)
-    love.graphics.setColor(INK)
-    love.graphics.setLineWidth(3)
-    love.graphics.rectangle("line", box.x - w / 2, box.y - h / 2, w, h)
-  end
-end
-
-local function drawStand(self)
-  local st = self.stand
-  local env = self.env
-  love.graphics.push()
-  love.graphics.translate(st.x, st.y)
-  love.graphics.rotate(st.angle)
-  local w, h = 62 * M, 8 * M
-  love.graphics.setColor(0, 0, 0, env.shadowAlpha)
-  love.graphics.rectangle("fill", -w / 2 + 12, -h / 2 + 12, w, h)
-  love.graphics.setColor(0.32, 0.36, 0.5)
-  love.graphics.rectangle("fill", -w / 2, -h / 2, w, h)
-  -- Rows of crowd
-  local rng = love.math.newRandomGenerator(5)
-  for row = 0, 9 do
-    for col = 0, 150 do
-      local r = rng:random()
-      if r > 0.2 then
-        local hue = rng:random(1, 5)
-        local c = ({ { 0.98, 0.25, 0.25 }, { 0.2, 0.55, 0.98 }, { 0.99, 0.85, 0.2 }, { 0.98, 0.98, 0.98 }, { 0.98, 0.45, 0.75 } })[hue]
-        love.graphics.setColor(c)
-        love.graphics.rectangle("fill", -w / 2 + 6 + col * (w - 12) / 150, -h / 2 + 5 + row * (h - 8) / 10, 3, 3)
-      end
-    end
-  end
-  love.graphics.pop()
-end
-
 -- Everything under the cars.
 function renderer:drawGround()
   local shader = self.groundShader
@@ -518,7 +537,7 @@ function renderer:drawGround()
   love.graphics.draw(self.road)
   love.graphics.setShader()
 
-  drawGridBoxes(self)
+  love.graphics.draw(self.gridBoxes)
 
   love.graphics.setColor(1, 1, 1, self.env.shadowAlpha * 0.9)
   love.graphics.draw(self.barrierShadowL)
@@ -536,8 +555,8 @@ function renderer:drawGround()
   for _, batch in pairs(self.batches) do love.graphics.draw(batch, sx, sy) end
   love.graphics.setColor(1, 1, 1)
   for _, batch in pairs(self.batches) do love.graphics.draw(batch) end
-  drawBoxes(self)
-  drawStand(self)
+  if self.boxMesh then love.graphics.draw(self.boxMesh) end
+  love.graphics.draw(self.standMesh)
 end
 
 -- The start gantry passes over the top of the cars.
@@ -554,6 +573,7 @@ function renderer:drawOverhead(lightsOn, lightsOut)
   love.graphics.setColor(0.16, 0.17, 0.2)
   love.graphics.rectangle("fill", -M * 0.5, -span, M, span * 2)
   love.graphics.setColor(0.3, 0.31, 0.35)
+  love.graphics.setLineWidth(2)
   for y = -span, span, M * 1.2 do
     love.graphics.line(-M * 0.5, y, M * 0.5, y + M * 0.6)
   end

@@ -57,6 +57,7 @@ local COMPOSITE = [[
 
 local function createCanvases(w, h)
   post.w, post.h = w, h
+  post.glowCleared = false
   post.scene = love.graphics.newCanvas(w, h)
   post.light = love.graphics.newCanvas(math.ceil(w / 2), math.ceil(h / 2))
   post.glow = love.graphics.newCanvas(math.ceil(w / 2), math.ceil(h / 2))
@@ -93,6 +94,16 @@ function post.drawLights(ambient, fn)
 end
 
 function post.drawGlow(fn)
+  if post.quality == "low" then
+    if not post.glowCleared then
+      love.graphics.setCanvas(post.blurA)
+      love.graphics.clear(0, 0, 0, 1)
+      post.glowCleared = true
+    end
+    return
+  end
+  post.glowCleared = false
+
   love.graphics.setCanvas(post.glow)
   love.graphics.clear(0, 0, 0, 1)
   love.graphics.push()
@@ -101,12 +112,6 @@ function post.drawGlow(fn)
   fn()
   love.graphics.setBlendMode("alpha")
   love.graphics.pop()
-
-  if post.quality == "low" then
-    love.graphics.setCanvas(post.blurA)
-    love.graphics.clear(0, 0, 0, 1)
-    return
-  end
 
   local bw, bh = post.blurA:getDimensions()
   love.graphics.setCanvas(post.blurA)
