@@ -124,7 +124,7 @@ local function steps()
     flow.mix = audio.update
     audio.update = function(...)
       flow.mix(...)
-      flow.whistled = flow.whistled or audio.turbo:isPlaying()
+      for _, whistle in pairs(audio.turbos) do flow.whistled = flow.whistled or whistle:isPlaying() end
       flow.motored = flow.motored or audio.motor:isPlaying()
     end
   end)

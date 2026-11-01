@@ -176,20 +176,25 @@ h.describe("catalog", function()
 end)
 
 h.describe("audio", function()
-  h.it("engine loops are seamless and don't clip", function()
-    local data = audio.engineData(55, 0.1)
-    local n = data:getSampleCount()
-    local peak = 0
-    for i = 0, n - 1 do peak = math.max(peak, math.abs(data:getSample(i))) end
-    h.assertBetween(peak, 0.2, 1.0, "peak level")
-    local jump = math.abs(data:getSample(0) - data:getSample(n - 1))
-    h.assertTrue(jump < 0.12, "click at the loop point: " .. jump)
-  end)
-
   local function peakOf(data)
     local peak = 0
     for i = 0, data:getSampleCount() - 1 do peak = math.max(peak, math.abs(data:getSample(i))) end
     return peak
+  end
+
+  local garage = require("src/entities/garage")
+
+  -- The engines the garage uses, one of each.
+  local function voices()
+    local list, seen = {}, {}
+    for _, spec in ipairs(garage) do
+      local voice = audio.voiceOf(spec)
+      if voice and not seen[voice.key] then
+        seen[voice.key] = true
+        list[#list + 1] = voice
+      end
+    end
+    return list
   end
 
   h.it("synthesises a tyre scrub that loops", function()
@@ -237,64 +242,92 @@ h.describe("audio", function()
 
   h.it("a turbo builds pressure with a lag and vents it once", function()
     local spool, vented = 0, false
-    for _ = 1, 10 do spool, vented = audio.spoolStep(spool, true, 1, 1 / 60) end
+    for _ = 1, 10 do spool, vented = audio.spoolStep(spool, true, 1, 1 / 60, 1.8) end
     h.assertBetween(spool, 0.1, 0.5, "still spooling")
     h.assertTrue(not vented)
-    for _ = 1, 60 do spool = audio.spoolStep(spool, true, 1, 1 / 60) end
+    for _ = 1, 60 do spool = audio.spoolStep(spool, true, 1, 1 / 60, 1.8) end
     h.assertEq(spool, 1, "full pressure")
-    spool, vented = audio.spoolStep(spool, false, 1, 1 / 60)
+    spool, vented = audio.spoolStep(spool, false, 1, 1 / 60, 1.8)
     h.assertTrue(vented, "lifting vents it")
   end)
 
   h.it("a turbo with no pressure stays quiet on a lift", function()
-    local spool, vented = audio.spoolStep(0.2, false, 1, 1 / 60)
+    local spool, vented = audio.spoolStep(0.2, false, 1, 1 / 60, 1.8)
     h.assertTrue(not vented)
     h.assertTrue(spool < 0.2)
   end)
 
-  h.it("no car has an unknown engine type", function()
-    local garage = require("src/entities/garage")
-    local types = { na = true, turbo = true, supercharged = true, electric = true }
+  h.it("every car has an engine the sound can play", function()
     for _, spec in ipairs(garage) do
-      if spec.engineType then
-        h.assertTrue(types[spec.engineType], spec.name .. ": " .. tostring(spec.engineType))
-      end
+      h.assertTrue(spec.cylinders == 0 or spec.cylinders >= 3, spec.name .. " cylinders")
+      h.assertTrue(spec.turbos == 0 or spec.turbos == 1 or spec.turbos == 2 or spec.turbos == 4, spec.name .. " turbos")
+      if spec.cylinders == 0 then h.assertEq(spec.turbos, 0, spec.name .. " has nothing to turbocharge") end
     end
   end)
 
-  h.it("each engine type adds its own layer and no other", function()
-    local layers = { na = "v8", supercharged = "blower", electric = "motor" }
-    for kind, layer in pairs(layers) do
-      local mix = audio.engineMix(kind, 0.8, 1, 0)
-      for _, other in pairs(layers) do
-        if other == layer then h.assertTrue(mix[other] > 0.05, kind .. " is silent")
-        else h.assertEq(mix[other], 0, kind .. " also plays " .. other) end
-      end
+  h.it("the single turbo and the pair are different whistles", function()
+    h.assertEq(garage.byId("hot_hatch").turbos, 1)
+    h.assertEq(garage.byId("big_bull").turbos, 2)
+    local one, two = audio.turboData(1), audio.turboData(2)
+    local same = 0
+    for i = 0, one:getSampleCount() - 1 do
+      if math.abs(one:getSample(i) - two:getSample(i)) < 0.02 then same = same + 1 end
     end
-    local plain = audio.engineMix(nil, 0.8, 1, 0)
-    for _, layer in pairs(layers) do h.assertEq(plain[layer], 0, "no type, no " .. layer) end
-    h.assertEq(plain.turbo, 0, "no pressure, no whistle")
-    h.assertTrue(audio.engineMix("turbo", 0.8, 1, 1).turbo > 0.1, "full pressure whistles")
+    h.assertTrue(same / one:getSampleCount() < 0.2, "the same sound twice")
   end)
 
-  h.it("only the turbo and supercharged cars use the piston loops", function()
-    h.assertEq(audio.engineMix("electric", 0.8, 1, 0).pistons, 0)
-    h.assertEq(audio.engineMix("na", 0.8, 1, 0).pistons, 0, "the V8 replaces them")
-    for _, kind in ipairs({ "turbo", "supercharged" }) do
-      h.assertEq(audio.engineMix(kind, 0.8, 1, 0).pistons, 1, kind)
+  h.it("turbo whistles join cleanly", function()
+    for _, turbos in ipairs({ 1, 2, 4 }) do
+      local data = audio.turboData(turbos)
+      local n = data:getSampleCount()
+      h.assertTrue(math.abs(data:getSample(0) - data:getSample(n - 1)) < 0.2, turbos .. " loop point")
+      h.assertBetween(peakOf(data), 0.1, 0.95, turbos .. " peak")
     end
-    h.assertEq(audio.engineMix(nil, 0.8, 1, 0).pistons, 1)
   end)
 
-  h.it("every piston engine can hit the limiter, and a motor can't", function()
-    for _, kind in ipairs({ "na", "turbo", "supercharged" }) do
-      h.assertTrue(audio.engineMix(kind, 1, 1, 0).limiter > 0.3, kind)
+  local function car(fields)
+    return setmetatable(fields, { __index = { cylinders = 8, turbos = 0, supercharged = false } })
+  end
+
+  h.it("each kind of engine adds its own layer and no other", function()
+    local mix = audio.engineMix(car({}), 0.8, 1, 1)
+    h.assertTrue(mix.exhaust > 0.05, "pistons are heard")
+    h.assertEq(mix.turbo, 0)
+    h.assertEq(mix.blower, 0)
+    h.assertEq(mix.motor, 0)
+
+    local blown = audio.engineMix(car({ supercharged = true }), 0.8, 1, 0)
+    h.assertTrue(blown.blower > 0.05, "the blower whines")
+    h.assertEq(blown.turbo, 0)
+
+    h.assertTrue(audio.engineMix(car({ turbos = 2 }), 0.8, 1, 1).turbo > 0.1, "full pressure whistles")
+    h.assertEq(audio.engineMix(car({ turbos = 2 }), 0.8, 1, 0).turbo, 0, "no pressure, no whistle")
+
+    local electric = audio.engineMix(car({ cylinders = 0 }), 0.8, 1, 0)
+    h.assertTrue(electric.motor > 0.05, "the motor stands in")
+    h.assertEq(electric.exhaust, 0)
+    h.assertEq(electric.limiter, 0)
+  end)
+
+  h.it("more turbos whistle louder", function()
+    local one = audio.engineMix(car({ turbos = 1 }), 0.8, 1, 1).turbo
+    local two = audio.engineMix(car({ turbos = 2 }), 0.8, 1, 1).turbo
+    local four = audio.engineMix(car({ turbos = 4 }), 0.8, 1, 1).turbo
+    h.assertTrue(one < two and two < four)
+  end)
+
+  h.it("no cylinders is electric, with no engine to render", function()
+    h.assertEq(audio.voiceOf(car({ cylinders = 0 })), nil)
+  end)
+
+  h.it("every piston engine can hit the limiter", function()
+    for _, spec in ipairs(garage) do
+      if spec.cylinders > 0 then h.assertTrue(audio.engineMix(spec, 1, 1, 0).limiter > 0.3, spec.name) end
     end
-    h.assertEq(audio.engineMix("electric", 1, 1, 0).limiter, 0)
   end)
 
   h.it("a hard crash isn't quieter than the engine", function()
-    h.assertTrue(peakOf(audio.shotData("impact")) > peakOf(audio.v8Data(5400)), "a crash is an event")
+    h.assertTrue(peakOf(audio.shotData("impact")) > peakOf(audio.engineData(audio.voice(8), 5400)), "a crash is an event")
   end)
 
   h.it("no effect starts on a hard edge", function()
@@ -303,51 +336,84 @@ h.describe("audio", function()
     end
   end)
 
-  h.it("the V8 loops join cleanly and don't sit in hard saturation", function()
-    for _, rpm in ipairs({ 1300, 3000, 5400 }) do
-      local data = audio.v8Data(rpm)
-      local n = data:getSampleCount()
-      h.assertTrue(math.abs(data:getSample(0) - data:getSample(n - 1)) < 0.1, rpm .. " loop point")
-      local peak, sum, mean = peakOf(data), 0, 0
-      for i = 0, n - 1 do
-        local v = data:getSample(i)
-        sum, mean = sum + v * v, mean + v
+  h.it("engine loops join cleanly and don't sit in hard saturation", function()
+    for _, voice in ipairs(voices()) do
+      for _, rpm in ipairs(voice.rpms) do
+        local name = voice.key .. " at " .. rpm
+        local data = audio.engineData(voice, rpm)
+        local n = data:getSampleCount()
+        h.assertTrue(math.abs(data:getSample(0) - data:getSample(n - 1)) < 0.1, name .. " loop point")
+        local peak, sum, mean = peakOf(data), 0, 0
+        for i = 0, n - 1 do
+          local v = data:getSample(i)
+          sum, mean = sum + v * v, mean + v
+        end
+        h.assertBetween(peak, 0.3, 0.95, name .. " peak")
+        h.assertTrue(peak / math.sqrt(sum / n) > 1.25, name .. " would be a square wave")
+        h.assertTrue(math.abs(mean / n) < 0.05, name .. " sits off centre")
       end
-      h.assertBetween(peak, 0.3, 0.95, rpm .. " peak")
-      h.assertTrue(peak / math.sqrt(sum / n) > 1.25, rpm .. " would be a square wave")
-      h.assertTrue(math.abs(mean / n) < 0.05, rpm .. " sits off centre")
+      local mid = voice.rpms[2]
+      h.assertTrue(peakOf(audio.engineData(voice, mid, "overrun")) < peakOf(audio.engineData(voice, mid)), voice.key .. " overrun is quieter")
     end
-    h.assertTrue(peakOf(audio.v8Data(3000, "overrun")) < peakOf(audio.v8Data(3000)), "overrun is quieter")
   end)
 
-  h.it("the V8 limiter cuts in and out, and loops", function()
-    local data = audio.v8Data(5400, "limiter")
-    local n = data:getSampleCount()
-    h.assertTrue(math.abs(data:getSample(0) - data:getSample(n - 1)) < 0.1, "loop point")
-    h.assertBetween(peakOf(data), 0.3, 0.95, "peak level")
-    local cuts, cutting = 0, false
-    for t = 0.02, 0.5, 0.002 do
-      local level = 0
-      local a = math.floor(t * 44100)
-      for i = a, a + 88 do level = math.max(level, math.abs(data:getSample(i))) end
-      if level < 0.15 and not cutting then cuts = cuts + 1 end
-      cutting = level < 0.15
+  h.it("the limiter cuts in and out, and loops, on any engine", function()
+    for _, voice in ipairs(voices()) do
+      local data = audio.engineData(voice, voice.rpms[#voice.rpms], "limiter")
+      local n = data:getSampleCount()
+      h.assertTrue(math.abs(data:getSample(0) - data:getSample(n - 1)) < 0.1, voice.key .. " loop point")
+      h.assertBetween(peakOf(data), 0.3, 0.95, voice.key .. " peak")
+      local cuts, cutting = 0, false
+      for t = 0.02, 0.5, 0.002 do
+        local level = 0
+        local a = math.floor(t * 44100)
+        for i = a, a + 88 do level = math.max(level, math.abs(data:getSample(i))) end
+        if level < 0.15 and not cutting then cuts = cuts + 1 end
+        cutting = level < 0.15
+      end
+      h.assertBetween(cuts, 6, 30, voice.key .. " bursts in half a second")
     end
-    h.assertBetween(cuts, 6, 16, "bursts in half a second")
   end)
 
-  h.it("the V8 blends between its two nearest speeds", function()
+  h.it("an engine blends between its two nearest speeds", function()
+    local rpms = { 1300, 3000, 5400 }
     for rpm = 500, 8000, 250 do
-      local blend = audio.v8Blend(rpm)
+      local blend = audio.engineBlend(rpm, rpms)
       local total = blend[1] + blend[2] + blend[3]
       h.assertTrue(math.abs(total - 1) < 1e-9, rpm .. " totals " .. total)
     end
-    h.assertEq(audio.v8Blend(900)[1], 1, "idle")
-    h.assertEq(audio.v8Blend(3000)[2], 1, "a rendered speed plays alone")
-    h.assertEq(audio.v8Blend(7000)[3], 1, "past the top")
-    local between = audio.v8Blend(4000)
+    h.assertEq(audio.engineBlend(900, rpms)[1], 1, "idle")
+    h.assertEq(audio.engineBlend(3000, rpms)[2], 1, "a rendered speed plays alone")
+    h.assertEq(audio.engineBlend(7000, rpms)[3], 1, "past the top")
+    local between = audio.engineBlend(4000, rpms)
     h.assertEq(between[1], 0, "the far loop stays out")
     h.assertTrue(between[2] > 0 and between[3] > 0, "both neighbours play")
+  end)
+
+  h.it("more cylinders are rougher", function()
+    local spread = function(voice)
+      local low = 1
+      for _, level in ipairs(voice.levels) do low = math.min(low, level) end
+      return 1 - low
+    end
+    local last
+    for _, cylinders in ipairs({ 4, 5, 6, 12, 16 }) do
+      local voice = audio.voice(cylinders)
+      if last then
+        h.assertTrue(voice.noise > last.noise and voice.drive > last.drive and spread(voice) > spread(last), cylinders .. " cylinders")
+      end
+      last = voice
+    end
+  end)
+
+  h.it("a race engine isn't a road engine with the same cylinders", function()
+    local road, race = audio.voice(6), audio.voice(6, true)
+    h.assertTrue(race.key ~= road.key)
+    h.assertTrue(race.rpms[3] >= 12000, "it has to reach the revs")
+    h.assertTrue(race.noise < road.noise and race.drive < road.drive, "smooth")
+    h.assertTrue(race.pipeScale > road.pipeScale, "short pipes")
+    h.assertEq(audio.voiceOf(garage.byId("open_wheeler")).key, "6race")
+    h.assertEq(garage.byId("open_wheeler").cylinders, 6)
   end)
 
   h.it("the electric motor is a rough whine, not clean tones", function()

@@ -72,10 +72,13 @@ Arcade's grip when you pick it. Online races always use Arcade.
 gauge turns yellow while a slide is filling it. The tank can't fill while the
 nitro is burning.
 
-**Engine types**: a car's `engineType` is `na` unless it says `turbo`,
-`supercharged` or `electric`. It only changes the sound: a modelled V8 exhaust, a
-turbo whistle and blow-off, a supercharger whine, or an electric motor in place
-of the piston engine. Every car keeps its nitro.
+**Engine sound**: a car's spec sets how it sounds and nothing else, and every car
+keeps its nitro. `cylinders` runs from a clean, thin four up to a rough, heavy
+sixteen, and 0 means electric. `turbos` is 0, 1, 2 or 4: one is a thin high
+whistle that spools fast, and more are lower, louder and slower to build, with a
+deeper blow-off. `supercharged` adds a whine that follows the revs. `raceExhaust`
+is a race engine's smooth, high wail whatever its cylinder count, which is how
+OPEN WHEELER's V6 differs from ROCKET's.
 
 **Slipstream**: sit close behind another car at speed and its wake cuts your
 drag, and on Arcade it pulls you along too. A meter appears above the dash. The

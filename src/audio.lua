@@ -1,16 +1,18 @@
 -- All sound is synthesised, on the first launch only: no audio files ship with the
 -- game, and src/sound_cache.lua keeps the results. The one exception is the
 -- player's own music, which src/radio.lua plays.
--- Most engines are two loops cross-faded by rpm and pitched to match, and
--- spec.engineType adds a layer on top. The "na" V8 is the startup's engine model
--- rendered at a few speeds instead, so it keeps its exhaust note at any rpm.
+-- A piston engine is the startup's engine model rendered at a few speeds for each
+-- cylinder count, so it keeps its exhaust note at any rpm. Turbos, a supercharger
+-- or an electric motor are layers worked out from the car's spec.
 -- Most of the rest is built with sfxr, an
 -- arcade effects synth, from the settings below. The sounds that have to feel
 -- mechanical (startup, gear change, blow-off) are modelled here instead.
 local sfxr = require("src/lib/sfxr")
 local cache = require("src/sound_cache")
+local garage = require("src/entities/garage")
 
-local audio = { voices = {}, ready = false, spool = 0 }
+local audio = { ready = false, spool = 0 }
+local voices = {}  -- audio.voiceOf's results, by key
 
 local RATE = 44100
 local SCRUB_MAX = 0.14
@@ -19,7 +21,7 @@ local LOOSE_IN, LOOSE_OUT = 1.2, 0.8  -- its fade per second: about 0.2 s, 0.25 
 local IMPACT_GAP = 0.12    -- seconds; a car grinding along a wall is one noise
 local NITRO_LEVEL = 0.4
 local NITRO_IN, NITRO_OUT = 12, 5  -- its fade per second: a burst on, a short sigh off
-local SPOOL_UP, SPOOL_DOWN = 1.8, 7  -- how fast the turbo fills and dumps (per s)
+local SPOOL_DOWN = 7        -- how fast a turbo dumps (per s)
 local BLOWOFF_SPOOL = 0.55 -- turbo pressure needed to be heard venting
 local BLOWOFF_LENGTH = 0.55
 local SHIFT_LENGTH = 0.17
@@ -28,16 +30,15 @@ local STARTUP_CATCH = 0.35 -- seconds before the engine fires
 audio.STARTUP_PEAK = 1.1   -- the rev flare tops out and the turbo vents
 audio.STARTUP_LENGTH = 1.7
 local STARTUP_REDLINE = 7000
--- Where each cylinder fires in the cycle, and how hard its pulse reaches the
--- tailpipe. The unevenness is what gives a V8 its lope.
+-- Where each cylinder of a V8 fires in the cycle, and how hard its pulse reaches
+-- the tailpipe. The unevenness is what gives it its lope. audio.voice works these
+-- out for other engines.
 local V8_FIRING = { 0.02, 0.13, 0.27, 0.36, 0.52, 0.61, 0.77, 0.86 }
 local V8_LEVEL = { 1, 0.72, 0.9, 0.62, 0.95, 0.7, 0.84, 0.66 }
-local V8_RPMS = { 1300, 3000, 5400 }  -- the speeds its loops are rendered at
-local V8_OVERRUN_RPM = 3000
--- The limiter cuts the sparks in bursts: of every 16 firings, the first 8 fire.
--- Any more and the exhaust ringing on fills the gaps.
-local V8_LIMIT_BURST, V8_LIMIT_FIRED = 16, 8
-local V8_LOOP, V8_FADE = 0.7, 0.14    -- seconds, before rounding to whole engine cycles
+local LUMP = 0.85                         -- how far a rough engine's firing dips
+local ENGINE_RPMS = { 1300, 3000, 5400 }  -- the speeds a voice's loops are rendered at
+local RACE_RPMS = { 4000, 8000, 12000 }   -- a race engine lives far higher up
+local ENGINE_LOOP, ENGINE_FADE = 0.7, 0.14  -- seconds, before rounding to whole engine cycles
 
 -- The cut pulses of a gear change, as { seconds, level }: uneven, or it's a buzz.
 local SHIFT_PULSES = {
@@ -46,7 +47,7 @@ local SHIFT_PULSES = {
 -- How hard each exhaust resonance rings. A shift leaves the bass to the engine.
 local ENGINE_PIPES = { 1, 0.8, 0.5, 0.28 }
 local SHIFT_PIPES = { 0.1, 0.9, 0.8, 0.4 }
-local V8_PIPES = { 0.6, 0.9, 0.7, 0.35 }  -- more midrange, for a phone speaker
+local RACE_PIPES = { 0.15, 0.7, 0.9, 0.6 }  -- no bass in a short, wide-open pipe
 
 local NOISE, SQUARE = sfxr.WAVEFORM.NOISE, sfxr.WAVEFORM.SQUARE
 
@@ -84,8 +85,16 @@ local NITRO = {
   lowpass = { cutoff = 0.55 }, highpass = { cutoff = 0.3 }, volume = { master = 0.5 },
 }
 
--- Engine type layers, as harmonics for audio.toneData.
-local TURBO_TONE = { [1] = 0.32, [2] = 0.05 }
+-- By number of turbos. One small turbo is a thin high whistle that spools fast.
+-- More are bigger and lower, and their pitches beat against each other. vent is
+-- the blow-off's volume and pitch against a pair's.
+local TURBOS = {
+  [1] = { hz = { 1700 }, level = 0.75, spoolUp = 2.6, ventLevel = 0.8, ventPitch = 1.2 },
+  [2] = { hz = { 1396, 1409 }, level = 1, spoolUp = 1.8, ventLevel = 1, ventPitch = 1 },
+  [4] = { hz = { 1120, 1131, 1144, 1157 }, level = 1.3, spoolUp = 1.2, ventLevel = 1.25, ventPitch = 0.78 },
+}
+local RACE_SPOOL = 5  -- a race engine's turbo is kept spinning for it
+local TURBO_LEVEL = 0.32
 local BLOWER_TONE = { [1] = 0.2, [2] = 0.3, [3] = 0.14, [5] = 0.06 }  -- straight-cut gears
 -- { harmonic, level }. Close-packed, because a few clean partials sliding up
 -- together is the sound of a flying saucer.
@@ -123,34 +132,6 @@ local function soundData(seconds, fn)
   return data
 end
 
--- One engine cycle repeated, so the loop point is inaudible. Each firing
--- pulse differs slightly, which is what makes it sound like an engine.
-function audio.engineData(baseHz, brightness)
-  local period = math.floor(RATE / baseHz + 0.5)
-  local cycles = 8
-  local samples = period * cycles
-  local rng = love.math.newRandomGenerator(77)
-  local phases, levels = {}, {}
-  for h = 1, 26 do
-    phases[h] = rng:random() * math.pi * 2
-    levels[h] = (1 / h ^ (1.25 - brightness * 0.5)) * (0.7 + rng:random() * 0.6)
-  end
-  local fireAmp = {}
-  for i = 1, cycles do fireAmp[i] = 0.82 + rng:random() * 0.36 end
-
-  return soundData(samples / RATE, function(_, i)
-    local u = i / samples
-    local total = 0
-    for h = 1, 26 do
-      total = total + math.sin(u * math.pi * 2 * h * cycles + phases[h]) * levels[h]
-    end
-    local firing = fireAmp[math.floor(u * cycles) + 1]
-    -- Sub-harmonic throb across the whole loop
-    total = total + math.sin(u * math.pi * 2 * cycles / 2) * 0.5
-    return total * firing * 0.26
-  end)
-end
-
 -- A steady tone built from harmonics of baseHz, as { [harmonic] = level }.
 -- Harmonics are whole cycles, so it loops without a click.
 function audio.toneData(baseHz, harmonics)
@@ -160,6 +141,21 @@ function audio.toneData(baseHz, harmonics)
     local total = 0
     for h, level in pairs(harmonics) do
       total = total + math.sin(u * math.pi * 2 * h * 8) * level
+    end
+    return total
+  end)
+end
+
+-- Every turbo's whistle at once. Whole hertz over a whole second, so it loops
+-- without a click and the slow beating between them survives.
+function audio.turboData(turbos)
+  local hz = TURBOS[turbos].hz
+  local level = TURBO_LEVEL / math.sqrt(#hz)
+  return soundData(1, function(t)
+    local total = 0
+    for _, f in ipairs(hz) do
+      local at = t * math.pi * 2 * f
+      total = total + math.sin(at) * level + math.sin(at * 2) * level * 0.15
     end
     return total
   end)
@@ -252,17 +248,53 @@ local function startupRpm(t)
   return 1000 + (STARTUP_REDLINE - 1000) * math.exp(-(t - peak) * 6)
 end
 
+-- What an engine sounds like, from its cylinder count. More cylinders are rougher:
+-- their firing gets less even, the gas noisier, the saturation harder, and the
+-- bass heavier as the pipes get bigger. A V8 is the middle of the range, and
+-- comes out as it always has. A race engine ignores all that: dead even firing
+-- through short pipes, so a V6 at 12,000 rpm is a smooth, high wail.
+function audio.voice(cylinders, race)
+  local rough = race and 0.02 or math.min(1, (cylinders - 3) / 13)
+  local firing, levels = V8_FIRING, V8_LEVEL
+  if race or cylinders ~= 8 then
+    local rng = love.math.newRandomGenerator(cylinders)
+    firing, levels = {}, {}
+    for i = 1, cylinders do
+      firing[i] = (i - 0.9 + (rng:random() - 0.5) * rough * 0.7) / cylinders
+      -- Lumps twice in a cycle, once a turn, or the ear just hears an average.
+      local lump = 0.5 + 0.5 * math.sin((i - 1) / cylinders * math.pi * 4)
+      levels[i] = 1 - (lump * 0.7 + rng:random() * 0.3) * rough * LUMP
+    end
+  end
+  return {
+    key = cylinders .. (race and "race" or ""),
+    cylinders = cylinders,
+    rpms = race and RACE_RPMS or ENGINE_RPMS,
+    firing = firing,
+    levels = levels,
+    pipes = race and RACE_PIPES or { 0.35 + rough * 0.65, 0.9, 0.7, 0.35 },
+    pipeScale = race and 2 or (8 / cylinders) ^ 0.3,
+    noise = 0.25 + rough * 0.65,
+    -- Each burst of gas has to end before the next, or the firing averages out.
+    burst = race and 0.001 or 0.0028 * math.min(1, 8 / cylinders),
+    charge = math.min(1, 8 / cylinders) ^ 0.75,  -- many cylinders are small ones
+    drive = race and 0.6 or 0.6 + math.sqrt(rough) * 0.65,
+    gain = race and 2.4 or 1,  -- with no bass in it, a race engine rings far less
+  }
+end
+
 -- The firing order, run at any rpm. Each call asks strength(level, cylinder) for
 -- what a cylinder that fires this sample delivers, and returns the strongest.
-local function newFiring()
+local function newFiring(voice)
+  local firing, levels = voice.firing, voice.levels
   local phase, cylinder, cycle = 0, 1, 0
   return function(rpm, strength)
     phase = phase + rpm / 120 / RATE  -- a four-stroke cycle is two turns
     local fired = 0
-    while phase >= cycle + V8_FIRING[cylinder] do
-      fired = math.max(fired, strength(V8_LEVEL[cylinder], cylinder))
+    while phase >= cycle + firing[cylinder] do
+      fired = math.max(fired, strength(levels[cylinder], cylinder))
       cylinder = cylinder + 1
-      if cylinder > #V8_FIRING then cylinder, cycle = 1, cycle + 1 end
+      if cylinder > #firing then cylinder, cycle = 1, cycle + 1 end
     end
     return fired
   end
@@ -270,13 +302,16 @@ end
 
 -- Firing pulses leaving through the exhaust. Each call takes the strongest pulse
 -- fired this sample. Hot gas leaving a valve is a rough burst, not a clean click.
-local function newExhaust(pipeLevels)
-  local pipes = { resonator(92, 0.994), resonator(265, 0.99), resonator(710, 0.98), resonator(1900, 0.96) }
-  local pressureDecay = math.exp(-1 / (0.0028 * RATE))
+local function newExhaust(pipeLevels, voice)
+  local scale, noise, charge = voice.pipeScale, voice.noise, voice.charge
+  local pipes = {
+    resonator(92 * scale, 0.994), resonator(265 * scale, 0.99), resonator(710 * scale, 0.98), resonator(1900 * scale, 0.96),
+  }
+  local pressureDecay = math.exp(-1 / (voice.burst * RATE))
   local pressure, body = 0, 0
   return function(fired, white)
-    pressure = math.max(pressure, fired) * pressureDecay
-    local gas = pressure * (0.65 + white * 0.5)
+    pressure = math.max(pressure, fired * charge) * pressureDecay
+    local gas = pressure * (0.65 + white * noise)
     body = body + (gas - body) * 0.015
     local pulse = gas - body  -- only the swing: steady pressure would pin the saturation
     local exhaust = pulse * 0.5
@@ -325,7 +360,8 @@ end
 -- the parts can't drift apart whatever the frame rate does.
 function audio.startupData()
   local rng = love.math.newRandomGenerator(31)
-  local firing, exhaust, vent, knock = newFiring(), newExhaust(ENGINE_PIPES), newVent(), newKnock()
+  local voice = audio.voice(8)
+  local firing, exhaust, vent, knock = newFiring(voice), newExhaust(ENGINE_PIPES, voice), newVent(), newKnock()
 
   return soundData(audio.STARTUP_LENGTH, function(t)
     local rpm = startupRpm(t)
@@ -363,25 +399,26 @@ function audio.startupData()
   end)
 end
 
--- One steady speed of the startup's engine, as a loop. Whole engine cycles, so the
--- firing lines up across the join. mode "overrun" is the throttle shut: weak,
--- uneven pulses, the burble as the revs fall. Mode "limiter" is the sparks cutting
--- at the top of the revs, and the only one driven hard. The rest are driven far
--- less than the startup: that much saturation is thrilling for a second, and
--- square and fuzzy for a whole race.
-function audio.v8Data(rpm, mode)
+-- One steady speed of an engine, as a loop. Whole engine cycles, so the firing
+-- lines up across the join. mode "overrun" is the throttle shut: weak, uneven
+-- pulses, the burble as the revs fall. Mode "limiter" is the sparks cutting at the
+-- top of the revs, and the only one driven hard: of every two engine cycles, the
+-- first one fires. Any more and the exhaust ringing on fills the gaps. The rest
+-- are driven far less than the startup: that much saturation is thrilling for a
+-- second, and square and fuzzy for a whole race.
+function audio.engineData(voice, rpm, mode)
   local overrun, limiter = mode == "overrun", mode == "limiter"
   local cycle = 120 / rpm
-  local seconds = math.ceil(V8_LOOP / cycle) * cycle
-  local fadeTime = math.ceil(V8_FADE / cycle) * cycle
+  local seconds = math.ceil(ENGINE_LOOP / cycle) * cycle
+  local fadeTime = math.ceil(ENGINE_FADE / cycle) * cycle
   local rng = love.math.newRandomGenerator(rpm + (overrun and 1 or limiter and 2 or 0))
-  local firing, exhaust = newFiring(), newExhaust(V8_PIPES)
-  local drive = overrun and 0.35 or limiter and 1 or 0.3 + rpm / 20000
-  local gain = overrun and 0.5 or 0.72
-  local shot = 0
+  local firing, exhaust = newFiring(voice), newExhaust(voice.pipes, voice)
+  local drive = overrun and 0.35 or limiter and 1 or (0.3 + rpm / 20000) * voice.drive
+  local gain = (overrun and 0.5 or 0.72) * voice.gain
+  local shot, cylinders = 0, voice.cylinders
   local function strength(level)
     shot = shot + 1
-    if limiter then return (shot - 1) % V8_LIMIT_BURST < V8_LIMIT_FIRED and level or 0 end
+    if limiter then return (shot - 1) % (cylinders * 2) < cylinders and level or 0 end
     if not overrun then return level end
     return rng:random() < 0.3 and 0 or level * 0.28
   end
@@ -398,7 +435,7 @@ end
 -- phone speaker can't play anything below about 200 Hz.
 function MODELLED.shift()
   local rng = love.math.newRandomGenerator(43)
-  local exhaust, knock = newExhaust(SHIFT_PIPES), newKnock()
+  local exhaust, knock = newExhaust(SHIFT_PIPES, audio.voice(8)), newKnock()
   local nextPulse, slow, slower = 1, 0, 0
   return soundData(SHIFT_LENGTH, function(t)
     local white = rng:random() * 2 - 1
@@ -477,24 +514,35 @@ local function shot(name, render, ...)
   return source
 end
 
+-- The loops of one voice. Only the car's own engine plays, so a voice costs memory
+-- but nothing per frame.
+local function engineLoops(voice)
+  local name = "engine" .. voice.key
+  local engine = { voice = voice, speeds = {} }
+  for i, rpm in ipairs(voice.rpms) do engine.speeds[i] = loop(name .. "_" .. i, audio.engineData, voice, rpm) end
+  engine.overrun = loop(name .. "_overrun", audio.engineData, voice, voice.rpms[2], "overrun")
+  engine.limiter = loop(name .. "_limiter", audio.engineData, voice, voice.rpms[#voice.rpms], "limiter")
+  engine.rival = engine.speeds[2]:clone()
+  return engine
+end
+
 function audio.load()
   if audio.ready or not love.audio then return end
   local ok, err = pcall(function()
     cache.open({ "src/audio.lua", "src/lib/sfxr.lua" })
-    audio.engineLow = loop("engineLow", audio.engineData, 55, 0.1)
-    audio.engineHigh = loop("engineHigh", audio.engineData, 110, 0.6)
-    audio.rivalEngine = loop("rivalEngine", audio.engineData, 82, 0.4)
     audio.scrub = loop("scrub", audio.scrubData)
     audio.road = loop("road", noiseLoop, 1.5, 0.08, 1.8)
     audio.loose = loop("loose", audio.looseData)
     audio.wind = loop("wind", noiseLoop, 1.8, 0.2, 0.8)
     audio.nitro = loop("nitro", audio.nitroData)
-    audio.v8 = {}
-    for i, rpm in ipairs(V8_RPMS) do audio.v8[i] = loop("v8" .. i, audio.v8Data, rpm) end
-    audio.v8Overrun = loop("v8Overrun", audio.v8Data, V8_OVERRUN_RPM, "overrun")
-    audio.v8Limiter = loop("v8Limiter", audio.v8Data, V8_RPMS[#V8_RPMS], "limiter")
-    audio.rivalV8 = audio.v8[2]:clone()
-    audio.turbo = loop("turbo", audio.toneData, 1400, TURBO_TONE)
+    audio.engines, audio.turbos = {}, {}
+    for _, spec in ipairs(garage) do
+      local voice = audio.voiceOf(spec)
+      if voice and not audio.engines[voice.key] then audio.engines[voice.key] = engineLoops(voice) end
+      if TURBOS[spec.turbos] and not audio.turbos[spec.turbos] then
+        audio.turbos[spec.turbos] = loop("turbo" .. spec.turbos, audio.turboData, spec.turbos)
+      end
+    end
     audio.blower = loop("blower", audio.toneData, 380, BLOWER_TONE)
     local motor = cache.get("motor", audio.motorData)
     audio.motor = looping(motor)
@@ -570,9 +618,10 @@ end
 
 -- Turbo pressure lags the throttle, and has to go somewhere when it closes.
 -- Returns true on the moment it vents.
-function audio.spoolStep(spool, onPower, revs, dt)
+-- spoolUp is how fast it fills, per second.
+function audio.spoolStep(spool, onPower, revs, dt, spoolUp)
   local target = onPower and math.min(1, revs * 1.4) or 0
-  local rate = target > spool and SPOOL_UP or SPOOL_DOWN
+  local rate = target > spool and spoolUp or SPOOL_DOWN
   local step = rate * dt
   local nextSpool = spool + math.max(-step, math.min(step, target - spool))
   return nextSpool, spool >= BLOWOFF_SPOOL and not onPower
@@ -598,28 +647,35 @@ function audio.engineLoad(throttle, shifting)
   return 0.45 + (shifting and 0 or math.min(1, throttle) * 0.55)
 end
 
--- How loud the pistons (0..1) and each engine type's layer should be.
-function audio.engineMix(kind, revs, load, spool)
+-- The voice a car's engine uses, or nil for an electric car: no cylinders.
+function audio.voiceOf(spec)
+  if spec.cylinders == 0 then return nil end
+  local key = spec.cylinders .. (spec.raceExhaust and "race" or "")
+  voices[key] = voices[key] or audio.voice(spec.cylinders, spec.raceExhaust)
+  return voices[key]
+end
+
+-- How loud each part of a car's engine should be.
+function audio.engineMix(spec, revs, load, spool)
+  local electric = spec.cylinders == 0
+  local turbo = TURBOS[spec.turbos]
   return {
-    -- An electric car has no pistons to hear: the motor layer stands in for them.
-    -- The V8 is a whole engine by itself.
-    pistons = (kind == "electric" or kind == "na") and 0 or 1,
-    v8 = kind == "na" and 0.34 + revs * 0.34 or 0,
-    -- Every piston engine borrows the V8's cut: sparks cutting sound much alike.
-    limiter = kind == "electric" and 0 or 0.39 + revs * 0.39,
-    turbo = spool ^ 2 * 0.3,
+    exhaust = electric and 0 or 0.34 + revs * 0.34,
+    limiter = electric and 0 or 0.39 + revs * 0.39,
+    turbo = turbo and spool ^ 2 * 0.3 * turbo.level or 0,
     -- A supercharger is geared to the crank, so it whines the instant the revs rise.
-    blower = kind == "supercharged" and (0.08 + revs * 0.32) * load or 0,
-    motor = kind == "electric" and math.min(1, revs * 3) * (0.1 + load * 0.2) or 0,
+    blower = spec.supercharged and (0.08 + revs * 0.32) * load or 0,
+    -- An electric car has no pistons to hear: the motor stands in for them.
+    motor = electric and math.min(1, revs * 3) * (0.1 + load * 0.2) or 0,
   }
 end
 
 -- How much of each rendered speed to play at this rpm, blending between the two
 -- nearest so the exhaust note moves with the revs instead of being pitched up.
-function audio.v8Blend(rpm)
+function audio.engineBlend(rpm, rpms)
   local blend = {}
-  for i, at in ipairs(V8_RPMS) do
-    local below, above = V8_RPMS[i - 1], V8_RPMS[i + 1]
+  for i, at in ipairs(rpms) do
+    local below, above = rpms[i - 1], rpms[i + 1]
     local share = 1
     if rpm < at and below then share = math.max(0, (rpm - below) / (at - below)) end
     if rpm > at and above then share = math.max(0, (above - rpm) / (above - at)) end
@@ -633,41 +689,78 @@ function audio.motorPitch(revs)
   return 0.5 + revs * 1.2
 end
 
-local function updateV8(dt, level, rpm, load, limiting)
-  local power = (load - audio.engineLoad(0, true)) / (audio.engineLoad(1, false) - audio.engineLoad(0, true))
-  local blend = audio.v8Blend(rpm)
-  for i, source in ipairs(audio.v8) do
-    source:setPitch(math.min(3.2, math.max(0.35, rpm / V8_RPMS[i])))
-    fadeTo(source, limiting and 0 or level * blend[i] * (0.3 + power * 0.7), dt, limiting and 30 or 8)
-  end
-  audio.v8Overrun:setPitch(math.min(3.2, math.max(0.35, rpm / V8_OVERRUN_RPM)))
-  fadeTo(audio.v8Overrun, level * (1 - power) * 1.1, dt, 8)
+local function enginePitch(rpm, at)
+  return math.min(3.2, math.max(0.35, rpm / at))
 end
 
-local function updateEngineLayers(dt, model, kind, revs, load)
-  if kind == "turbo" then
-    local onPower = model.throttle > 0.4 and model.shiftTimer == 0
-    local vented
-    audio.spool, vented = audio.spoolStep(audio.spool, onPower, revs, dt)
-    if vented then
-      audio.play("blowoff", audio.blowoffVolume(audio.spool), audio.variedPitch())
-      audio.spool = 0
+local function updateExhaust(dt, engine, mix, model, load)
+  local rpm, limiting = model.rpm, model.limiting
+  local rpms = engine.voice.rpms
+  local power = (load - audio.engineLoad(0, true)) / (audio.engineLoad(1, false) - audio.engineLoad(0, true))
+  local blend = audio.engineBlend(rpm, rpms)
+  for i, source in ipairs(engine.speeds) do
+    source:setPitch(enginePitch(rpm, rpms[i]))
+    fadeTo(source, limiting and 0 or mix.exhaust * blend[i] * (0.3 + power * 0.7), dt, limiting and 30 or 8)
+  end
+  engine.overrun:setPitch(enginePitch(rpm, rpms[2]))
+  fadeTo(engine.overrun, mix.exhaust * (1 - power) * 1.1, dt, 8)
+  engine.limiter:setPitch(math.max(0.35, rpm / rpms[#rpms]))
+  fadeTo(engine.limiter, limiting and mix.limiter or 0, dt, 30)
+end
+
+-- Pressure builds with a lag and has to go somewhere when the throttle shuts. A
+-- race engine's wastegate just opens, with none of a road car's blow-off.
+local function updateTurbo(dt, model, spec, revs)
+  local turbo = TURBOS[spec.turbos]
+  if not turbo then
+    audio.spool = 0
+    return
+  end
+  local onPower = model.throttle > 0.4 and model.shiftTimer == 0
+  local spoolUp = spec.raceExhaust and RACE_SPOOL or turbo.spoolUp
+  local vented
+  audio.spool, vented = audio.spoolStep(audio.spool, onPower, revs, dt, spoolUp)
+  if vented then
+    if not spec.raceExhaust then
+      audio.play("blowoff", audio.blowoffVolume(audio.spool) * turbo.ventLevel, audio.variedPitch() * turbo.ventPitch)
     end
-  else
     audio.spool = 0
   end
+end
 
-  local mix = audio.engineMix(kind, revs, load, audio.spool)
-  updateV8(dt, mix.v8, model.rpm, load, model.limiting)
-  audio.v8Limiter:setPitch(math.max(0.35, model.rpm / V8_RPMS[#V8_RPMS]))
-  fadeTo(audio.v8Limiter, model.limiting and mix.limiter or 0, dt, 30)
-  audio.turbo:setPitch(0.45 + audio.spool * 0.9)
-  fadeTo(audio.turbo, mix.turbo, dt, 10)
+local function updateEngineLayers(dt, model, spec, revs, load)
+  updateTurbo(dt, model, spec, revs)
+  local mix = audio.engineMix(spec, revs, load, audio.spool)
+  local voice = audio.voiceOf(spec)
+  if voice then updateExhaust(dt, audio.engines[voice.key], mix, model, load) end
+  local whistle = audio.turbos[spec.turbos]
+  if whistle then
+    whistle:setPitch(0.45 + audio.spool * 0.9)
+    fadeTo(whistle, mix.turbo, dt, 10)
+  end
   audio.blower:setPitch(math.min(3.2, 0.4 + revs * 1.5))
   fadeTo(audio.blower, mix.blower, dt, 6)
   audio.motor:setPitch(audio.motorPitch(revs))
   fadeTo(audio.motor, mix.motor, dt, 6)
-  return mix.pistons * (model.limiting and 0.2 or 1)
+end
+
+local function updateRival(dt, rival, rivalDistance)
+  local near = rival and math.max(0, 1 - rivalDistance / 500) or 0
+  local voice = rival and audio.voiceOf(rival.spec)
+  local motorLevel = 0
+  if rival and not voice then
+    motorLevel = near * 0.22
+    audio.rivalMotor:setPitch(audio.motorPitch(math.min(1.1, rival.model.rpm / rival.spec.redline)))
+  end
+  fadeTo(audio.rivalMotor, motorLevel, dt, 3)
+  for key, engine in pairs(audio.engines) do
+    local level = 0
+    if voice and voice.key == key then
+      level = near * 0.14
+      engine.rival:setPitch(enginePitch(rival.model.rpm, voice.rpms[2]))
+    end
+    fadeTo(engine.rival, level, dt, 3)
+  end
 end
 
 function audio.update(dt, car, rival, rivalDistance)
@@ -676,15 +769,7 @@ function audio.update(dt, car, rival, rivalDistance)
   local spec = car.spec
   local revs = math.max(0, math.min(1.1, model.rpm / spec.redline))
   local load = audio.engineLoad(model.throttle, model.shiftTimer > 0)
-
-  -- Pitch both loops together; their blend carries the tone change.
-  local lowPitch = math.max(0.35, model.rpm / 1800)
-  local highPitch = math.max(0.35, model.rpm / 4400)
-  audio.engineLow:setPitch(math.min(3.2, lowPitch))
-  audio.engineHigh:setPitch(math.min(3.2, highPitch))
-  local pistons = updateEngineLayers(dt, model, spec.engineType, revs, load)
-  fadeTo(audio.engineLow, (1 - revs * 0.8) * load * 0.5 * pistons, dt, 6)
-  fadeTo(audio.engineHigh, (0.1 + revs * 0.9) * load * 0.42 * pistons, dt, 6)
+  updateEngineLayers(dt, model, spec, revs, load)
 
   local speed = car:getSpeed()
   local slide, offRoad = 0, 0
@@ -707,31 +792,20 @@ function audio.update(dt, car, rival, rivalDistance)
   audio.nitro:setPitch(audio.nitroPitch(model.boostTank / spec.boostTime))
   fadeTo(audio.nitro, boosting and NITRO_LEVEL or 0, dt, boosting and NITRO_IN or NITRO_OUT)
 
-  local rivalLevel, rivalMotorLevel, rivalV8Level = 0, 0, 0
-  if rival then
-    local near = math.max(0, 1 - rivalDistance / 500)
-    if rival.spec.engineType == "electric" then
-      rivalMotorLevel = near * 0.22
-      audio.rivalMotor:setPitch(audio.motorPitch(math.min(1.1, rival.model.rpm / rival.spec.redline)))
-    elseif rival.spec.engineType == "na" then
-      rivalV8Level = near * 0.14
-      audio.rivalV8:setPitch(math.max(0.35, math.min(3.2, rival.model.rpm / V8_RPMS[2])))
-    else
-      rivalLevel = near * 0.22
-      audio.rivalEngine:setPitch(math.max(0.5, math.min(3, rival.model.rpm / 3000)))
-    end
-  end
-  fadeTo(audio.rivalEngine, rivalLevel, dt, 3)
-  fadeTo(audio.rivalMotor, rivalMotorLevel, dt, 3)
-  fadeTo(audio.rivalV8, rivalV8Level, dt, 3)
+  updateRival(dt, rival, rivalDistance)
 end
 
 local function eachLoop(fn)
-  for _, key in ipairs({ "engineLow", "engineHigh", "rivalEngine", "rivalMotor", "rivalV8", "scrub", "road", "loose", "wind", "nitro",
-    "v8Overrun", "v8Limiter", "turbo", "blower", "motor" }) do
+  for _, key in ipairs({ "rivalMotor", "scrub", "road", "loose", "wind", "nitro", "blower", "motor" }) do
     fn(audio[key])
   end
-  for _, source in ipairs(audio.v8) do fn(source) end
+  for _, source in pairs(audio.turbos) do fn(source) end
+  for _, engine in pairs(audio.engines) do
+    for _, source in ipairs(engine.speeds) do fn(source) end
+    fn(engine.overrun)
+    fn(engine.limiter)
+    fn(engine.rival)
+  end
 end
 
 function audio.silence()

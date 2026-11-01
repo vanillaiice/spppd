@@ -16,6 +16,7 @@ return base.define({
   rollBalance = 0.52,
   grip = 1.06,
   looseDrag = 0.85,
+  cylinders = 4,
   peakTorque = 250,
   redline = 8200,
   gears = { 3.6, 2.3, 1.7, 1.3, 1.03, 0.84 },

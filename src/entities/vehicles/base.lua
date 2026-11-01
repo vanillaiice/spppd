@@ -19,7 +19,11 @@ local DEFAULTS = {
   looseGrip = 1.0,      -- multiplier on grass and gravel
   looseDrag = 1.0,      -- share of the off-road speed penalty this car pays, 1 at most
   -- Drivetrain
-  engineType = "na",    -- or "turbo", "supercharged", "electric"; sets the sound only
+  -- These set the sound only.
+  cylinders = 8,        -- more is rougher; 0 is electric
+  turbos = 0,           -- 0, 1, 2 or 4
+  supercharged = false,
+  raceExhaust = false,  -- a race engine's smooth wail, whatever the cylinders
   motor = false,        -- electric motor torque curve instead of a piston engine's
   drive = "RWD",
   awdFront = 0.4,

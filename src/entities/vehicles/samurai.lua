@@ -18,6 +18,7 @@ return base.define({
   looseDrag = 0.6,
   drive = "AWD",
   awdFront = 0.5,
+  cylinders = 8,
   peakTorque = 660,
   redline = 6200,
   gears = { 3.5, 2.25, 1.65, 1.27, 1.0, 0.8 },
