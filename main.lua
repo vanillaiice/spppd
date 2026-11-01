@@ -1,4 +1,5 @@
 -- `love . --test [filter]` runs the headless test suite instead of the game.
+-- `love . --perf` measures a race instead.
 for _, a in ipairs(arg or {}) do
   if a == "--test" then
     function love.load(args)
@@ -56,6 +57,12 @@ function love.load(args)
   loading = coroutine.create(loadGame)
 
   for _, a in ipairs(args) do
+    if a == "--perf" then
+      while loading do stepLoading() end
+      rm.keepRunningUnfocused = true
+      require("tests/perf").start()
+      return
+    end
     if a == "--visual" then
       while loading do stepLoading() end
       rm.keepRunningUnfocused = true
