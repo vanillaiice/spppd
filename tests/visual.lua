@@ -36,6 +36,13 @@ local SCENES = {
   menu = function() state.screen = "splash" require("src/splash").timer = 99 end,
   setup = function() menu.enter() settings.mode = "race" menu.go("setup") end,
   newestcar = function() settings.car = #garage menu.enter() settings.mode = "race" menu.go("setup") end,
+  -- Any one car's panel in race setup: SPPPD_CAR=cyber.
+  carcard = function()
+    for i, spec in ipairs(garage) do
+      if spec.id == os.getenv("SPPPD_CAR") then settings.car = i end
+    end
+    menu.enter() settings.mode = "race" menu.go("setup")
+  end,
   settings = function() menu.enter() menu.go("settings") end,
   freesetup = function()
     menu.enter()

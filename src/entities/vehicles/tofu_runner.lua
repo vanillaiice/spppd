@@ -1,0 +1,27 @@
+local base = require("src/entities/vehicles/base")
+
+return base.define({
+  id = "tofu_runner",
+  name = "TOFU RUNNER",
+  blurb = "A light old rear-drive coupe. Slow on paper, born to slide.",
+  bodyStyle = "notch",
+  color = { 0.94, 0.94, 0.92 },
+  mass = 1040,
+  weightFront = 0.53,
+  cgHeight = 0.5,
+  wheelbase = 2.4,
+  track = 1.42,
+  length = 4.2,
+  width = 1.64,
+  rollBalance = 0.52,
+  grip = 1.06,
+  looseDrag = 0.85,
+  peakTorque = 250,
+  redline = 8200,
+  gears = { 3.6, 2.3, 1.7, 1.3, 1.03, 0.84 },
+  finalDrive = 3.9,
+  dragArea = 0.62,
+  brakeG = 1.3,
+  handbrakeForce = 7000,
+  boostPower = 90000,
+})

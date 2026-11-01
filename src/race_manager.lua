@@ -20,6 +20,7 @@ local audio = require("src/audio")
 local radio = require("src/radio")
 local colors = require("src/colors")
 local network = require("src/network_manager")
+local rumble = require("src/rumble")
 
 local rm = {}
 
@@ -133,6 +134,7 @@ function rm.stop()
     session = nil
   end
   audio.silence()
+  rumble.stop()
 end
 
 function rm.isRunning()
@@ -156,6 +158,7 @@ function rm.setPaused(paused)
   session.paused = paused
   if paused then
     audio.silence()
+    rumble.stop()
     require("src/ui").focus.pause = 1
     touch.reset()
   end
@@ -253,6 +256,7 @@ local function processImpacts()
       if mine and not session.demo then
         session.cam.trauma = math.min(1, session.cam.trauma + math.min(0.6, strength * 0.8))
         audio.impact(math.min(1, 0.25 + strength), strength < 0.15)
+        rumble.crash(strength)
         if session.drift then session.drift.combo = 0 end
       end
     end
@@ -384,6 +388,7 @@ local function updateFinish(dt)
   session.paused = false
   session.toast = nil
   touch.reset()
+  rumble.stop()
   audio.play("finish", 0.6, player.place == 1 and 1 or 0.84)
 end
 
@@ -473,11 +478,15 @@ function rm.update(dt)
       audio.fadeOut(dt)
     else
       audio.update(dt, player, rival, nearest and nearest * 12 or 0)
+      if not session.finishClock and not session.paused then rumble.update(dt, player) end
       -- Downshifts stay silent: a hard stop would rattle through every gear.
       local gear, lastGear = player.model.gear, session.lastGear or 1
       if gear ~= lastGear then
         session.lastGear = gear
-        if gear > lastGear then audio.play("shift", 0.42, audio.variedPitch()) end
+        if gear > lastGear then
+          audio.play("shift", 0.42, audio.variedPitch())
+          rumble.shift()
+        end
       end
     end
   end

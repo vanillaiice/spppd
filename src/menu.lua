@@ -283,6 +283,7 @@ local function settingsRows()
     toggle("MINIMAP", "minimap"),
     toggle("SHOW FPS", "showFps"),
     toggle("AUTO GAS", "autoGas"),
+    toggle("VIBRATION", "vibration"),
   }
   -- A phone always has the touch controls and always fills the screen.
   if not ui.mobile then
@@ -400,7 +401,8 @@ end
 
 local function drawCar(spec, color, cx, cy, s, spin)
   local sprite = sprites.get(spec)
-  local scale = sprite.scale * s * 1.3
+  -- The longest cars would run into the text beside them.
+  local scale = math.min(sprite.scale * s * 1.3, 80 * s / sprite.paint:getWidth())
   love.graphics.setColor(0, 0, 0, 0.45)
   love.graphics.draw(sprite.shadow, cx + 4 * s, cy + 6 * s, spin, scale, scale, sprite.ox, sprite.oy)
   love.graphics.setColor(color)

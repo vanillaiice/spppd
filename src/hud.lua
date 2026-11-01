@@ -136,6 +136,8 @@ local function drawDash(car, sw, sh, s)
   local fill, c = model.boostTank / spec.boostTime, colors.sectorGreen
   if model.boostState == "active" then
     c = colors.sectorPurple
+  elseif model.boostFilling then
+    c = colors.marshal
   elseif model.boostState == "cooldown" then
     c = colors.muted
   end

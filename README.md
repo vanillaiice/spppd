@@ -38,6 +38,10 @@ Gamepads work too, with analogue steering and triggers:
 | Next song in freestyle | D-pad right | D-pad right |
 | Pause | Start | Options |
 
+Pads vibrate with crashes, nitro, gears, kerbs and grass, and phones buzz for
+crashes and nitro. Turn VIBRATION off in Settings if you'd
+rather not have it.
+
 **Touch** controls appear on phones and tablets, and on a desktop after the first
 touch. Use Settings to force them on, which lets a mouse act as one finger.
 
@@ -63,6 +67,10 @@ Arcade's grip when you pick it. Online races always use Arcade.
   the handbrake at speed to drift, and stay on the throttle to keep it going.
 - **Sport**: realistic grip, with driver aids as a safety net.
 - **Sim**: no aids at all. The car will spin if you ask it to.
+
+**Nitro** fills on its own, and three times faster while the car is sliding. The
+gauge turns yellow while a slide is filling it. The tank can't fill while the
+nitro is burning.
 
 **Engine types**: a car's `engineType` is `na` unless it says `turbo`,
 `supercharged` or `electric`. It only changes the sound: a modelled V8 exhaust, a
@@ -141,6 +149,7 @@ loopback.
 - `src/ai_controller.lua` drives through the same inputs as a player, so the AI
   obeys the same physics.
 - `src/touch.lua` is the on-screen stick and buttons, layered over `src/input.lua`.
+- `src/rumble.lua` turns what the car is doing into pad and phone vibration.
 
 The simulation steps at a fixed 120 Hz, so the car behaves the same at any frame
 rate. World units are pixels at 12 px per metre; the vehicle model is in SI units.

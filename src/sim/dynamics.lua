@@ -48,6 +48,10 @@ local LAUNCH_PUSH = 7.5           -- extra pull from a perfect launch (m/s^2), f
 local LAUNCH_TIME = 1.2
 local BOOST_RATED_SPEED = 22    -- speed (m/s) at which the push equals boostPower
 local BOOST_MIN_TANK = 0.25     -- seconds of nitro needed to light it again
+local SLIDE_REFILL = 3          -- how many times faster the tank fills in a slide
+-- Hard cornering on the racing line reaches 18 degrees; a held drift sits past 25.
+local SLIDE_MIN_BETA = math.rad(20)
+local SLIDE_MIN_SPEED = 7       -- m/s; below this a slide is just a spin
 
 local ASPHALT_ROLL = 0.014
 
@@ -171,6 +175,7 @@ function dynamics.new(spec, assist)
     boostState = "ready",
     boostTank = spec.boostTime,  -- seconds of nitro left
     boostHeld = false,
+    boostFilling = false,  -- a slide is filling the tank right now
 
     wheels = {
       { x = a, y = -t, front = true, driven = spec.drive ~= "RWD" },
@@ -309,11 +314,16 @@ end
 
 -- Powertrain ------------------------------------------------------------
 
+-- A real slide, not hard cornering: this is what fills the tank faster.
+function dynamics.sliding(c, speed)
+  return abs(c.beta) > SLIDE_MIN_BETA and speed > SLIDE_MIN_SPEED and not c.reverse
+end
+
 -- Each press switches the nitro on or off, so a tank can be spent in sips. It
--- only refills while off, and braking shuts it so it can't fight the brakes.
--- It can't be lit at the lights, and a button still held when they go out has
--- to be pressed again.
-local function updateBoost(c, input, dt)
+-- only refills while off, faster in a slide, and braking shuts it so it can't
+-- fight the brakes. It can't be lit at the lights, and a button still held when
+-- they go out has to be pressed again.
+local function updateBoost(c, input, speed, dt)
   local spec = c.spec
   local pressed = input.boost and not c.boostHeld
   local braking = input.brake > 0.05
@@ -321,9 +331,12 @@ local function updateBoost(c, input, dt)
   if input.rev then return end
   if c.boostState == "active" then
     c.boostTank = max(0, c.boostTank - dt)
+    c.boostFilling = false
     if pressed or braking or c.boostTank == 0 then c.boostState = "ready" end
   else
     local refill = spec.boostTime / spec.boostCooldown * dt
+    c.boostFilling = dynamics.sliding(c, speed) and c.boostTank < spec.boostTime
+    if c.boostFilling then refill = refill * SLIDE_REFILL end
     c.boostTank = min(spec.boostTime, c.boostTank + refill)
     if c.boostTank < BOOST_MIN_TANK then
       c.boostState = "cooldown"
@@ -453,7 +466,8 @@ function dynamics.step(c, input, vx, vy, r, dt)
   local assist = c.assist
   local wheels = c.wheels
 
-  updateBoost(c, input, dt)
+  local speed = sqrt(vx * vx + vy * vy)
+  updateBoost(c, input, speed, dt)
   updateDrift(c, input, vx, dt)
   updateSteering(c, input, vx, vy, r, dt)
 
@@ -471,7 +485,6 @@ function dynamics.step(c, input, vx, vy, r, dt)
 
   local steer = c.steer
   local cosS, sinS = cos(steer), sin(steer)
-  local speed = sqrt(vx * vx + vy * vy)
   local beta = speed > 2 and atan2(vy, max(abs(vx), 1)) or 0
   local betaRate = (beta - c.beta) / dt
   c.beta = beta

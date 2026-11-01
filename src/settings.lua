@@ -14,6 +14,7 @@ local settings = {
   fullscreen = false,
   touch = "auto",
   autoGas = true,
+  vibration = true,
 
   -- Last race setup
   mode = "race",

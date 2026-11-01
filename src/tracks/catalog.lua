@@ -2,7 +2,7 @@
 -- editor into the save directory.
 local catalog = {}
 
-local BUILTIN = { "lusail", "highlands", "harbour", "boat" }
+local BUILTIN = { "lusail", "highlands", "harbour", "boat", "speedway", "temple", "riviera", "ardennes", "touge", "oasis" }
 local USER_DIR = "tracks"
 
 local function loadDefinition(path)
