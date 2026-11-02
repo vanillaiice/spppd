@@ -371,7 +371,6 @@ end
 menu.hostRows = hostRows
 
 function menu.connect(role)
-  local host, port = settings.server:match("^(.+):(%d+)$")
   local race
   -- Every room gets a fresh code, so a host never has to think of one.
   if role == "host" then
@@ -380,7 +379,8 @@ function menu.connect(role)
     race = { def = entry.def, title = entry.title, laps = settings.laps, time = settings.time }
   end
   local spec = currentCar()
-  network.connect(host or settings.server, tonumber(port) or 8080, role, network.roomCode,
+  local host, port = settings.serverAddress()
+  network.connect(host, port, role, network.roomCode,
     { car = spec.id, paint = settings.hue }, race)
   menu.go("online")
   ui.focus.online = 2  -- START RACE or CANCEL, once the list has shrunk

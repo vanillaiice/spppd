@@ -1,6 +1,7 @@
 -- Everything the game remembers between sessions.
-local SERVER = "spppd.vanillaiice.xyz:8080"
+local SERVER = "spppd.vanillaiice.xyz"
 local OLD_SERVER = "62.169.20.136:8080"
+local SERVER_PORT = 8080  -- when the address doesn't name one
 
 local settings = {
   assists = "arcade",
@@ -83,6 +84,12 @@ function settings.load()
   -- The server used to be known by its address, and every save wrote that down.
   if settings.server == OLD_SERVER then settings.server = SERVER end
   records = loadTable(RECORDS) or {}
+end
+
+-- The server as a host and a port. Only people running their own need a port.
+function settings.serverAddress()
+  local host, port = settings.server:match("^(.+):(%d+)$")
+  return host or settings.server, tonumber(port) or SERVER_PORT
 end
 
 function settings.save()

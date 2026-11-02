@@ -45,8 +45,8 @@ end
 
 local function addBot(role, code, carId, race)
   local client = newBot()
-  local host, port = settings.server:match("^(.+):(%d+)$")
-  client.connect(host, tonumber(port), role, code, { car = carId, paint = #bots + 2 }, race)
+  local host, port = settings.serverAddress()
+  client.connect(host, port, role, code, { car = carId, paint = #bots + 2 }, race)
   local bot = { client = client, car = makeCar() }
   bots[#bots + 1] = bot
   return bot
