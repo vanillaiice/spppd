@@ -29,10 +29,11 @@ arcade car, not samples of a real one.
 | --- | --- |
 | Square waves, plain sfxr | Anything that's the game talking: lights, lap, menus, finish |
 | Stepped noise (sfxr's sample-and-hold) | Crunch, grit, anything mechanical breaking |
-| White noise through a low-pass and a high-pass, moving | Air and rubber: road, wind, off-road, scrub, nitro |
+| White noise through a low-pass and a high-pass, moving | Air and rubber: road, wind, off-road, scrub, nitro, turbo |
 | Noise ringing in resonators | Pipes, dead metal. Never a clean sine for a mechanical sound |
 | Sawtooths a little off each other | Rubber stick-slipping: the squeal |
-| Sines | Only things that really whine: turbo, thump under a crash |
+| Sines | Only things that really whine: thump under a crash, and a turbo's faint whistle, which must wander |
+| A narrow pulse, clean | The supercharger's whine, and nothing else |
 | Slides that fall, noise that coarsens as it dies | How things end |
 
 ### Rulings from play
@@ -61,6 +62,19 @@ These came from the user playing the game. Measurements don't overrule them.
   and not rumble alone. Slide is a low rubber howl, not a higher squeal and not a
   scuff alone. Nitro is gas with a chest, not a deeper push and not an airier can.
 
+- The turbo sounded "like a robot screaming" and too high: a near-pure tone at 1.1 to
+  1.7 kHz, sliding up a 3:1 range to 2.3 kHz. It's now air with a faint wandering whistle
+  under it, picked by ear on the bench out of three, and pressure lifts it by about half
+  an octave. Don't put a clean tone or a wide sweep back.
+- The supercharger is the opposite case, and the only exception to the top-end rules.
+  Three rounds of takes failed for keeping its note low and buried in noise and
+  detuning: "missing that signature whine", "whine should really be dominant, it's like
+  piiiiin". It's now one clean 20% duty pulse, 350 to 1650 Hz, climbing 4.7:1 with the
+  revs, about 5 dB louder than the old one at full revs, with last round's grit
+  under it. Picked by ear out of three. Not a turbo's ruling: don't soften it to fit
+  the rules below. What was "robotic" in the old one was a low stack of harmonics, not
+  a clean note.
+
 ### Who owns which band
 
 Sounds that share a band mask each other, so each thing that has to be heard gets a
@@ -71,9 +85,9 @@ different kind of sound.
 | Band | Owner |
 | --- | --- |
 | 60 Hz to 1 kHz | Engine. Crash thumps pass through. Road and wind sit under it, quietly |
-| 300 Hz to 1 kHz | The engine's phone presence. Keep this strong. The tyre howl's note sits in it, at about 520 Hz |
-| 1 to 2.5 kHz | The howl's harmonics, turbo whistle, menus, the top of the nitro |
-| 3 kHz and up | Nothing steady. Only crash edges and other things that are over quickly |
+| 300 Hz to 1 kHz | The engine's phone presence. Keep this strong. The tyre howl's note sits in it, at about 520 Hz, and so does the turbo's whistle, at 470 to 680 Hz under full pressure |
+| 1 to 2.5 kHz | The howl's harmonics, the turbo's air, menus, the top of the nitro |
+| 3 kHz and up | Nothing steady, but for the supercharger's whine at high revs. Only crash edges and other things that are over quickly |
 
 ### Levels
 
@@ -116,7 +130,8 @@ Car to car, a scene's mix stays within about 4 dB, on either kind of speaker.
   gets: spectral flatness under 0.35 from 200 Hz to 8 kHz, and at most about 5% of its
   energy above 4 kHz. Look at those two, not only loudness. The old nitro read 0.93 and
   about two thirds, and passing every level target said nothing about that. Read `flat` and `high`
-  in `analyze.py`'s spectrum table as faults, not as notes.
+  in `analyze.py`'s spectrum table as faults, not as notes. `blower` is the one
+  exception, by ruling: 21% above 4 kHz at full revs, and 4.5% at its rendered pitch.
 - A steady noise moves, by `wander` or `swell`. Fresh noise that doesn't is a fault on
   the line, not a sound.
 
@@ -143,8 +158,10 @@ and blow-offs, 3% for menus. The start lights and the finish don't: they're sign
 ### Cost
 
 First launch renders everything, on phones with no JIT. `love . --sounds new <folder>`
-prints the time with the JIT off. It's at 2.14 s now, which is over budget: keep it
-within 10% of 1.9 s, which took about 12 s on the Galaxy A04. Anything longer has to pay for itself: shorten a loop, or drop
+prints the time with the JIT off. It's at 2.4 to 2.8 s now, run to run, which is over budget: keep it
+within 10% of 1.9 s, which took about 12 s on the Galaxy A04. Compare several runs, as
+one is too noisy to judge a small change. The supercharger takes about 0.2 s and the
+three turbos about 0.33 s, and shortening their 1.7 s loops is the first place to save. Anything longer has to pay for itself: shorten a loop, or drop
 oversampling somewhere it isn't doing anything.
 
 ## Inventory
@@ -156,7 +173,7 @@ oversampling somewhere it isn't doing anything.
 | `engine<voice>_overrun` | `engineData` | Throttle shut | Loop, pitch follows rpm |
 | `engine<voice>_limiter` | `engineData` | `model.limiting` | Loop, fades in at 30 per second |
 | `turbo1,2,4` | `turboData` | On power, by car | Loop, pitch and volume from pressure |
-| `blower` | `toneData` | Supercharged cars | Loop, pitch and volume from revs |
+| `blower` | `blowerData` | Supercharged cars | Loop, pitch and volume from revs |
 | `motor` | `motorData` | CYBER, and a rival CYBER | Loop, pitch from revs |
 | `scrub` | `bandNoise` | Past the grip limit, off the brakes | Loop, volume from slide, pitch from speed |
 | `squeal` | `squealData` | Well past the limit, off the brakes | Loop, volume from slide, pitch from speed and slide |
@@ -237,8 +254,9 @@ after the rebuild, for the same moment in a race:
 ### Left alone
 
 Measured identical, so not touched by accident: `beep`, `go`, `click`, `select`, `lap`,
-`finish`, `horn`, `turbo1,2,4`, `blower`, `blowoff`, `startup`. These already fit the
-family, and the user had played most of them.
+`finish`, `horn`, `blowoff`, `startup`. These already fit the family, and the
+user had played most of them. `turbo1,2,4` and `blower` were left alone too, and failed
+by ear later: see the rulings.
 
 Nitro and scrub stopped being sfxr presets: at their settings sfxr's noise is plain
 white, so eightfold oversampling did nothing measurable and took 22% of the first
@@ -351,6 +369,13 @@ the same car at the same rpm. `[` and `]` change car.
    with the road. The wall is quite noisy on purpose. `GRIND_MAX` sets it.
 7. **In a race:** the bench can't show how these sit against a real lap, so drive one
    and put a car into a wall. Hear whether crashes startle more than they should.
+8. **Turbo in a race:** picked on the bench, away from a real lap. It's quieter than the
+   old whistle and its note shares the engine's band, so does it still come through on
+   a straight? `TURBO_RMS` and `TURBO_WHISTLE` set that, and `turboPitch` sets the rise.
+9. **Supercharger in a race:** also picked on the bench. It's meant to dominate, so the
+   question is a whole lap: is a held note this loud still good on MUSCLE MONSTER and
+   BAJA BEAST, or tiring? The volume is the `blower` line in `audio.engineMix`, and
+   `blowerPitch` sets the climb.
 
 ## Measuring again
 

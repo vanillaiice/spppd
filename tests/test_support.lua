@@ -342,13 +342,6 @@ h.describe("audio", function()
     h.assertBetween(audio.looseLevel(1, 80), 0.1, 0.26, "no louder than road noise")
   end)
 
-  h.it("synthesises tones that loop without clipping", function()
-    local data = audio.toneData(210, { [2] = 0.14, [4] = 0.06, [7] = 0.3, [10] = 0.09 })
-    local n = data:getSampleCount()
-    h.assertTrue(math.abs(data:getSample(0) - data:getSample(n - 1)) < 0.3, "loop point")
-    h.assertBetween(peakOf(data), 0.1, 0.95, "peak level")
-  end)
-
   h.it("a turbo builds pressure with a lag and vents it once", function()
     local spool, vented = 0, false
     for _ = 1, 10 do spool, vented = audio.spoolStep(spool, true, 1, 1 / 60, 1.8) end
@@ -383,6 +376,45 @@ h.describe("audio", function()
       if math.abs(one:getSample(i) - two:getSample(i)) < 0.02 then same = same + 1 end
     end
     h.assertTrue(same / one:getSampleCount() < 0.2, "the same sound twice")
+  end)
+
+  h.it("a supercharger's whine climbs hard with the revs", function()
+    h.assertBetween(audio.blowerPitch(1) / audio.blowerPitch(0), 4, 5.5, "sweep")
+  end)
+
+  h.it("a supercharger's whine is what you hear of it", function()
+    local data = audio.blowerData()
+    local n = data:getSampleCount()
+    h.assertBetween(peakOf(data), 0.3, 0.95, "peak level")
+    local total, re, im = 0, 0, 0
+    local step = math.pi * 2 * 1000 / data:getSampleRate()  -- whole cycles, so one bin holds it
+    for i = 0, n - 1 do
+      local v = data:getSample(i)
+      total = total + v * v
+      re, im = re + v * math.cos(step * i), im + v * math.sin(step * i)
+    end
+    h.assertTrue((re * re + im * im) * 2 / n / total > 0.2, "the note is lost")
+  end)
+
+  h.it("a turbo's pitch moves too little to scream", function()
+    h.assertBetween(audio.turboPitch(1) / audio.turboPitch(0), 1.2, 1.6, "sweep")
+  end)
+
+  h.it("a turbo stays low and is never one clean tone", function()
+    for _, turbos in ipairs({ 1, 2, 4 }) do
+      local data = audio.turboData(turbos)
+      local n = data:getSampleCount()
+      local crossings = 0
+      for i = 1, n - 1 do
+        if (data:getSample(i - 1) < 0) ~= (data:getSample(i) < 0) then crossings = crossings + 1 end
+      end
+      -- A sine crosses zero twice a cycle, at the same level throughout. Air doesn't.
+      local seconds = n / data:getSampleRate()
+      h.assertTrue(crossings / seconds / 2 * audio.turboPitch(1) < 1500, turbos .. " turbos are too high")
+      local peak, sum = peakOf(data), 0
+      for i = 0, n - 1 do sum = sum + data:getSample(i) ^ 2 end
+      h.assertTrue(peak / math.sqrt(sum / n) > 2.5, turbos .. " turbos have a tone's crest")
+    end
   end)
 
   h.it("turbo whistles join cleanly", function()

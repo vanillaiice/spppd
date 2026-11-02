@@ -161,17 +161,36 @@ local SHOTS = {
   },
 }
 
--- By number of turbos. One small turbo is a thin high whistle that spools fast.
--- More are bigger and lower, and their pitches beat against each other. vent is
--- the blow-off's volume and pitch against a pair's.
+-- By number of turbos. One small turbo spools fast and sits a little higher. More
+-- are bigger and lower. size scales the sound's pitch, and vent is the blow-off's
+-- volume and pitch against a pair's.
 local TURBOS = {
-  [1] = { hz = { 1700 }, level = 0.75, spoolUp = 2.6, ventLevel = 0.8, ventPitch = 1.2 },
-  [2] = { hz = { 1396, 1409 }, level = 1, spoolUp = 1.8, ventLevel = 1, ventPitch = 1 },
-  [4] = { hz = { 1120, 1131, 1144, 1157 }, level = 1.3, spoolUp = 1.2, ventLevel = 1.25, ventPitch = 0.78 },
+  [1] = { size = 1.18, level = 0.75, spoolUp = 2.6, ventLevel = 0.8, ventPitch = 1.2 },
+  [2] = { size = 1, level = 1, spoolUp = 1.8, ventLevel = 1, ventPitch = 1 },
+  [4] = { size = 0.8, level = 1.3, spoolUp = 1.2, ventLevel = 1.25, ventPitch = 0.78 },
 }
 local RACE_SPOOL = 5  -- a race engine's turbo is kept spinning for it
-local TURBO_LEVEL = 0.32
-local BLOWER_TONE = { [1] = 0.2, [2] = 0.3, [3] = 0.14, [5] = 0.06 }  -- straight-cut gears
+-- A turbo is air being forced through a housing, with a faint low whistle in it. A
+-- clean tone sliding up over the air is a theremin, which is what an earlier version
+-- sounded like, so the whistle wanders and never sits on a note. TURBO_WHISTLE is
+-- its Hz and its share of the mix.
+local TURBO_AIR = { lowHz = 1000, damping = 0.8, highHz = 240, gain = 0.8,
+  wander = { { 2, 0.14 }, { 5, 0.08 } }, swell = { { 3, 0.1 }, { 7, 0.07 } } }
+local TURBO_WHISTLE = { 520, 0.3 }
+local TURBO_DRIFT = { { 3, 0.05 }, { 5, 0.03 }, { 11, 0.015 } }
+local TURBO_SECONDS, TURBO_RMS = 1.7, 0.2
+-- A supercharger is one thin, piercing note that climbs hard with the revs, and that
+-- note is the sound: the grit and the engine go under it. It's a narrow pulse, as
+-- BLOWER_PARTS of { harmonic, level }, with no detuning, which only muddied it. What
+-- keeps it from the old flying saucer is a single high note instead of a low stack of
+-- harmonics, and the grit. BLOWER_WHINE is its share of the mix and BLOWER_RING how
+-- much of that is noise ringing at the same pitches.
+local BLOWER_SECONDS, BLOWER_PEAK = 1.7, 0.64
+local BLOWER_HZ = 1000
+local BLOWER_PARTS = { { 1, 1 }, { 2, 0.81 }, { 3, 0.54 }, { 4, 0.25 }, { 6, 0.17 }, { 7, 0.23 } }
+local BLOWER_WHINE, BLOWER_RING = 0.88, 0.12
+local BLOWER_DRIFT = { { 3, 0.05 }, { 5, 0.03 }, { 11, 0.015 } }
+local BLOWER_GRIT = { saws = { 297, 304, 311 }, grit = 0.5, lowHz = 1300, highHz = 200 }
 -- { harmonic, level }. Close-packed, because a few clean partials sliding up
 -- together is the sound of a flying saucer.
 local MOTOR_PARTIALS = { { 1, 0.3 }, { 2, 0.22 }, { 3, 0.2 }, { 4, 0.14 }, { 6, 0.14 }, { 9, 0.1 }, { 13, 0.06 } }
@@ -206,35 +225,6 @@ local function soundData(seconds, fn)
     data:setSample(i, math.max(-1, math.min(1, v)))
   end
   return data
-end
-
--- A steady tone built from harmonics of baseHz, as { [harmonic] = level }.
--- Harmonics are whole cycles, so it loops without a click.
-function audio.toneData(baseHz, harmonics)
-  local samples = math.floor(RATE / baseHz + 0.5) * 8
-  return soundData(samples / RATE, function(_, i)
-    local u = i / samples
-    local total = 0
-    for h, level in pairs(harmonics) do
-      total = total + math.sin(u * math.pi * 2 * h * 8) * level
-    end
-    return total
-  end)
-end
-
--- Every turbo's whistle at once. Whole hertz over a whole second, so it loops
--- without a click and the slow beating between them survives.
-function audio.turboData(turbos)
-  local hz = TURBOS[turbos].hz
-  local level = TURBO_LEVEL / math.sqrt(#hz)
-  return soundData(1, function(t)
-    local total = 0
-    for _, f in ipairs(hz) do
-      local at = t * math.pi * 2 * f
-      total = total + math.sin(at) * level + math.sin(at * 2) * level * 0.15
-    end
-    return total
-  end)
 end
 
 -- A horn is a vibrating diaphragm: bright, buzzy and hard-edged, so it cuts through
@@ -395,6 +385,88 @@ end
 
 function audio.roadData()
   return bandNoise(ROAD, 1.5, 0.25)
+end
+
+-- Air, then a whistle for each turbo. Each has a whole number of cycles in the loop
+-- and they sit a little apart, so it joins up and the bigger cars beat slowly.
+function audio.turboData(turbos)
+  local size = TURBOS[turbos].size
+  local settings = {}
+  for key, value in pairs(TURBO_AIR) do settings[key] = value end
+  settings.lowHz, settings.highHz = TURBO_AIR.lowHz * size, TURBO_AIR.highHz * size
+  local air = bandNoise(settings, TURBO_SECONDS, 0.25)
+  local hz, share = TURBO_WHISTLE[1] * size, TURBO_WHISTLE[2]
+  local cycles, drift = {}, {}
+  for k = 1, turbos do cycles[k] = math.floor(hz * (1 + (k - 1) * 0.012) * TURBO_SECONDS + 0.5) end
+  local mixed = soundData(TURBO_SECONDS, function(t, i)
+    local total = 0
+    for k = 1, turbos do
+      if i % 32 == 0 then drift[k] = wobble(TURBO_DRIFT, t, TURBO_SECONDS, k * 1.7) * 9 end
+      total = total + math.sin(t * math.pi * 2 * cycles[k] / TURBO_SECONDS + drift[k])
+    end
+    return air:getSample(i) * (1 - share) + total / math.sqrt(turbos) * share * 0.3
+  end)
+  local sum, count = 0, mixed:getSampleCount()
+  for i = 0, count - 1 do sum = sum + mixed:getSample(i) ^ 2 end
+  local gain = TURBO_RMS / math.sqrt(sum / count)
+  return soundData(TURBO_SECONDS, function(_, i) return mixed:getSample(i) * gain end)
+end
+
+-- Rough saws, a little apart, each stroke its own size.
+local function blowerGrit()
+  local settings = BLOWER_GRIT
+  local rng = love.math.newRandomGenerator(91)
+  local filter, tune = lowpass(0.9)
+  local cut = highpass(settings.highHz)
+  tune(settings.lowHz)
+  local notes = {}
+  for k, hz in ipairs(settings.saws) do notes[k] = { hz = hz, at = k / 3, step = 0, size = 1 } end
+  local base = soundData(BLOWER_SECONDS + 0.2, function(t, i)
+    local total = 0
+    for k, note in ipairs(notes) do
+      if i % 32 == 0 then note.step = note.hz * (1 + wobble(BLOWER_DRIFT, t, BLOWER_SECONDS, k * 2.1) * 0.5) / RATE end
+      note.at = note.at + note.step
+      if note.at >= 1 then note.at, note.size = note.at - 1, 1 - rng:random() * settings.grit end
+      total = total + (note.at * 2 - 1) * note.size
+    end
+    return cut(filter(total * 0.2))
+  end)
+  return crossfade(base, BLOWER_SECONDS, 0.2, 1)
+end
+
+-- The noise rings by hand here because a resonator gets louder the lower it sits, and
+-- past ±1 soundData's clamp would add a harmonic that nobody asked for.
+local function blowerRinging()
+  local rng = love.math.newRandomGenerator(137)
+  local rings, drive = {}, {}
+  for k, part in ipairs(BLOWER_PARTS) do
+    local hz = BLOWER_HZ * part[1]
+    rings[k] = resonator(hz, 0.997)
+    drive[k] = part[2] * 10 * math.sin(hz * math.pi * 2 / RATE)
+  end
+  local dull, tune = lowpass(0.9)
+  tune(BLOWER_HZ * BLOWER_PARTS[#BLOWER_PARTS][1] * 1.6)  -- a resonator's skirts reach a long way up
+  local base = soundData(BLOWER_SECONDS + 0.2, function()
+    local white, total = rng:random() * 2 - 1, 0
+    for k in ipairs(BLOWER_PARTS) do total = total + rings[k](white) * drive[k] end
+    return dull(total)
+  end)
+  return crossfade(base, BLOWER_SECONDS, 0.2, 1)
+end
+
+-- Whole cycles, so the note joins up by itself and only the noise needs a crossfade.
+function audio.blowerData()
+  local grit, ringing = blowerGrit(), blowerRinging()
+  local cycles = math.floor(BLOWER_HZ * BLOWER_SECONDS + 0.5)
+  local drift = 0
+  return normalised(soundData(BLOWER_SECONDS, function(t, i)
+    if i % 32 == 0 then drift = wobble(BLOWER_DRIFT, t, BLOWER_SECONDS, 1.7) * 2 end
+    local phase = t * math.pi * 2 * cycles / BLOWER_SECONDS + drift
+    local clean = 0
+    for _, part in ipairs(BLOWER_PARTS) do clean = clean + math.sin(phase * part[1]) * part[2] end
+    local whine = clean * 0.3 * (1 - BLOWER_RING) + ringing:getSample(i) * BLOWER_RING
+    return grit:getSample(i) * (1 - BLOWER_WHINE) + whine * BLOWER_WHINE
+  end), BLOWER_PEAK)
 end
 
 function audio.windData()
@@ -855,7 +927,7 @@ function audio.load()
         audio.turbos[spec.turbos] = loop("turbo" .. spec.turbos, audio.turboData, spec.turbos)
       end
     end
-    audio.blower = loop("blower", audio.toneData, 380, BLOWER_TONE)
+    audio.blower = loop("blower", audio.blowerData)
     local motor = cache.get("motor", audio.motorData)
     audio.motor = looping(motor)
     audio.rivalMotor = looping(motor)
@@ -980,6 +1052,17 @@ function audio.hornPitch(spec)
   return math.max(0.7, math.min(1.25, math.sqrt(HORN_MASS / spec.mass)))
 end
 
+-- The note lifts as pressure builds, but only by half an octave or so. A wider sweep
+-- sounds like something screaming.
+function audio.turboPitch(spool)
+  return 0.72 + spool * 0.38
+end
+
+-- Geared to the crank, so it climbs with the revs. That climb is half of the sound.
+function audio.blowerPitch(revs)
+  return 0.35 + revs * 1.3
+end
+
 -- The more pressure there is to dump, the louder it goes.
 function audio.blowoffVolume(spool)
   return 0.3 + spool * 0.4
@@ -1023,7 +1106,7 @@ function audio.engineMix(spec, revs, load, spool)
     limiter = electric and 0 or 0.39 + revs * 0.39,
     turbo = turbo and spool ^ 2 * 0.3 * turbo.level or 0,
     -- A supercharger is geared to the crank, so it whines the instant the revs rise.
-    blower = spec.supercharged and (0.06 + revs * 0.24) * load or 0,
+    blower = spec.supercharged and (0.096 + revs * 0.384) * load or 0,
     -- An electric car has no pistons to hear: the motor stands in for them.
     motor = electric and math.min(1, revs * 3) * (0.1 + load * 0.2) or 0,
   }
@@ -1112,10 +1195,10 @@ local function updateEngineLayers(dt, model, spec, revs, load)
   if voice then updateExhaust(dt, audio.engines[voice.key], mix, model, load, spec) end
   local whistle = audio.turbos[spec.turbos]
   if whistle then
-    whistle:setPitch(0.45 + audio.spool * 0.9)
+    whistle:setPitch(audio.turboPitch(audio.spool))
     fadeTo(whistle, mix.turbo, dt, 10)
   end
-  audio.blower:setPitch(math.min(3.2, 0.4 + revs * 1.5))
+  audio.blower:setPitch(audio.blowerPitch(revs))
   fadeTo(audio.blower, mix.blower, dt, 6)
   audio.motor:setPitch(audio.motorPitch(revs))
   fadeTo(audio.motor, mix.motor, dt, 6)
