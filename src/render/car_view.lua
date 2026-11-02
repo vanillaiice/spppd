@@ -14,6 +14,8 @@ local M = config.METER
 local function wheelFx(car, wheel, trail, speed)
   local x, y = car:wheelWorldPosition(wheel)
   local a = car.body:getAngle()
+  local shift = sprites.layout(car.spec) * M
+  x, y = x + math.cos(a) * shift, y + math.sin(a) * shift
   local nx, ny = -math.sin(a), math.cos(a)
   local surface = wheel.surface
   local loose = surface == "grass" or surface == "gravel"
@@ -66,9 +68,9 @@ end
 
 -- Drawing ----------------------------------------------------------------
 
-local function drawWheel(wheel, steer)
+local function drawWheel(wheel, steer, shift)
   love.graphics.push()
-  love.graphics.translate(wheel.x * M, wheel.y * M)
+  love.graphics.translate((wheel.x + shift) * M, wheel.y * M)
   if wheel.front then love.graphics.rotate(steer) end
   love.graphics.setColor(0.03, 0.03, 0.035)
   love.graphics.rectangle("fill", -0.34 * M, -0.13 * M, 0.68 * M, 0.26 * M, 2)
@@ -138,7 +140,8 @@ function view.draw(car, x, y, angle, alpha)
 
   drawWarp(car, alpha)
   drawSlipstream(car, alpha)
-  for i = 1, 4 do drawWheel(model.wheels[i], model.steer) end
+  local shift = sprites.layout(car.spec)
+  for i = 1, 4 do drawWheel(model.wheels[i], model.steer, shift) end
 
   -- The body leans a pixel or two against the suspension.
   local roll = math.max(-1, math.min(1, model.ay / 12)) * 1.4
@@ -165,12 +168,14 @@ function view.drawLamps(car, x, y, angle)
   local model = car.model
   local braking = model.brake > 0.05
   local reversing = model.reverse
+  local _, head, tail = sprites.layout(car.spec)
+  local tx, ty = -hl * tail[1], hw * tail[2]
   if braking then
-    lamp(x, y, angle, -hl, -hw * 0.62, 1, 0.08, 0.05, 1, 3.4 * M)
-    lamp(x, y, angle, -hl, hw * 0.62, 1, 0.08, 0.05, 1, 3.4 * M)
+    lamp(x, y, angle, tx, -ty, 1, 0.08, 0.05, 1, 3.4 * M)
+    lamp(x, y, angle, tx, ty, 1, 0.08, 0.05, 1, 3.4 * M)
   elseif car.lowBeam or car.highBeam then
-    lamp(x, y, angle, -hl, -hw * 0.62, 0.7, 0.05, 0.04, 0.7, 2.2 * M)
-    lamp(x, y, angle, -hl, hw * 0.62, 0.7, 0.05, 0.04, 0.7, 2.2 * M)
+    lamp(x, y, angle, tx, -ty, 0.7, 0.05, 0.04, 0.7, 2.2 * M)
+    lamp(x, y, angle, tx, ty, 0.7, 0.05, 0.04, 0.7, 2.2 * M)
   end
   if reversing then
     lamp(x, y, angle, -hl, -hw * 0.3, 1, 1, 1, 0.8, 1.8 * M)
@@ -178,8 +183,8 @@ function view.drawLamps(car, x, y, angle)
   end
   if car.lowBeam or car.highBeam then
     local b = car.highBeam and 1 or 0.7
-    lamp(x, y, angle, hl * 0.92, -hw * 0.66, 1, 0.96, 0.82, b, 2.6 * M)
-    lamp(x, y, angle, hl * 0.92, hw * 0.66, 1, 0.96, 0.82, b, 2.6 * M)
+    lamp(x, y, angle, hl * head[1], -hw * head[2], 1, 0.96, 0.82, b, 2.6 * M)
+    lamp(x, y, angle, hl * head[1], hw * head[2], 1, 0.96, 0.82, b, 2.6 * M)
   end
 end
 

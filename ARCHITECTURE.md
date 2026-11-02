@@ -124,6 +124,7 @@ src/
   render/track_renderer.lua  Track to meshes; road, ground and gravel shaders
   render/car_view.lua     Draws cars, spawns tyre smoke and marks
   render/car_sprites.lua  Generates car sprites
+  render/car_plans.lua    Hand-drawn top views of the cars
   render/environment.lua  Time of day and track themes
   render/textures.lua     Generated textures
   vfx_manager.lua         Particle systems

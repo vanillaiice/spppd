@@ -21,6 +21,23 @@ h.describe("environment", function()
   end)
 end)
 
+h.describe("car sprites", function()
+  h.it("every car's shapes can be filled and fit on its sprite", function()
+    local sprites = require("src/render/car_sprites")
+    for _, spec in ipairs(require("src/entities/garage")) do
+      local polygons, halfWidth, halfHeight = sprites.polygons(spec)
+      for i, coords in ipairs(polygons) do
+        local label = spec.id .. " polygon " .. i
+        h.assertTrue(pcall(love.math.triangulate, coords), label .. " can't be triangulated")
+        for c = 1, #coords, 2 do
+          h.assertBetween(coords[c], -halfWidth, halfWidth, label .. " length")
+          h.assertBetween(coords[c + 1], -halfHeight, halfHeight, label .. " width")
+        end
+      end
+    end
+  end)
+end)
+
 h.describe("settings", function()
   h.it("round-trips through a file", function()
     settings.laps = 7

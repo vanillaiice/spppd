@@ -1,34 +1,17 @@
 -- Draws each car model once into canvases. Paint is white so the sprite can
 -- be tinted to any colour; glass, lights and details sit on a second layer.
+local plans = require("src/render/car_plans")
+
 local sprites = {}
 
 local RES = 22 -- sprite px per metre of car
+local SHARPNESS = 2 -- canvases hold this many pixels for each sprite px
 
 -- Half-width profile, rear to front. x runs -1..1 along the car, y 0..1 across.
 local STYLES = {
-  hatch = {
-    outline = { { -1, 0.72 }, { -0.97, 0.9 }, { -0.8, 0.98 }, { -0.2, 1 }, { 0.3, 0.98 }, { 0.72, 0.93 }, { 0.92, 0.8 }, { 1, 0.45 }, { 1, 0 } },
-    screen = { 0.3, 0.02 }, rearScreen = { -0.62, -0.82 }, roofWidth = 0.68, hood = true,
-  },
-  sedan = {
-    outline = { { -1, 0.68 }, { -0.96, 0.86 }, { -0.8, 0.96 }, { -0.2, 1 }, { 0.4, 1 }, { 0.8, 0.94 }, { 0.95, 0.76 }, { 1, 0.42 }, { 1, 0 } },
-    screen = { 0.36, 0.08 }, rearScreen = { -0.44, -0.66 }, roofWidth = 0.66, hood = true, wing = 0.74, scoop = true,
-  },
-  coupe = {
-    outline = { { -1, 0.6 }, { -0.95, 0.84 }, { -0.74, 1 }, { -0.36, 1 }, { 0.1, 0.9 }, { 0.5, 0.92 }, { 0.82, 0.84 }, { 0.96, 0.62 }, { 1, 0.32 }, { 1, 0 } },
-    screen = { 0.34, 0.04 }, rearScreen = { -0.34, -0.58 }, roofWidth = 0.56, wing = 0.86, vents = true,
-  },
-  suv = {
-    outline = { { -1, 0.78 }, { -0.97, 0.92 }, { -0.84, 1 }, { 0.3, 1 }, { 0.76, 0.97 }, { 0.94, 0.84 }, { 1, 0.56 }, { 1, 0 } },
-    screen = { 0.42, 0.14 }, rearScreen = { -0.72, -0.86 }, roofWidth = 0.74, hood = true, sunroof = true,
-  },
   muscle = {
     outline = { { -1, 0.74 }, { -0.97, 0.92 }, { -0.84, 0.98 }, { -0.3, 0.96 }, { 0.3, 0.98 }, { 0.8, 0.96 }, { 0.97, 0.82 }, { 1, 0.5 }, { 1, 0 } },
     screen = { 0.3, 0.02 }, rearScreen = { -0.4, -0.62 }, roofWidth = 0.62, stripes = true, scoop = true,
-  },
-  offroad = {
-    outline = { { -1, 0.86 }, { -0.98, 0.96 }, { -0.9, 1 }, { 0.76, 1 }, { 0.94, 0.96 }, { 1, 0.8 }, { 1, 0 } },
-    screen = { 0.46, 0.3 }, rearScreen = { -0.8, -0.9 }, roofWidth = 0.8, rack = true, spare = true,
   },
   fastback = {
     outline = { { -1, 0.6 }, { -0.97, 0.8 }, { -0.84, 0.92 }, { -0.42, 1 }, { 0.08, 0.95 }, { 0.5, 0.97 }, { 0.8, 0.88 }, { 0.94, 0.66 }, { 1, 0.32 }, { 1, 0 } },
@@ -38,11 +21,6 @@ local STYLES = {
   notch = {
     outline = { { -1, 0.74 }, { -0.97, 0.92 }, { -0.84, 0.98 }, { 0.3, 0.98 }, { 0.82, 0.96 }, { 0.97, 0.84 }, { 1, 0.52 }, { 1, 0 } },
     screen = { 0.3, 0.04 }, rearScreen = { -0.46, -0.68 }, roofWidth = 0.68, hood = true, popups = { 0.72, 0.56 }, sills = true,
-  },
-  wedge = {
-    outline = { { -1, 0.8 }, { -0.97, 0.96 }, { -0.74, 1 }, { -0.14, 0.98 }, { 0.32, 0.86 }, { 0.7, 0.66 }, { 0.92, 0.46 }, { 1, 0.24 }, { 1, 0 } },
-    screen = { 0.22, -0.1 }, rearScreen = { -0.34, -0.48 }, roofWidth = 0.5, rearTaper = 0.9, wing = 0.84, vents = true,
-    ducts = true, popups = { 0.56, 0.42 }, lamps = { 0.74, 0.4 },
   },
   hyper = {
     outline = { { -1, 0.62 }, { -0.96, 0.84 }, { -0.76, 1 }, { -0.3, 1 }, { 0.16, 0.9 }, { 0.58, 0.92 }, { 0.86, 0.84 }, { 0.97, 0.6 }, { 1, 0.26 }, { 1, 0 } },
@@ -60,12 +38,10 @@ local STYLES = {
   },
 }
 
-local function smoothOutline(points)
-  -- Mirror the half profile, then round it off with Chaikin corner cutting.
-  local poly = {}
-  for i = 1, #points do poly[#poly + 1] = { points[i][1], points[i][2] } end
-  for i = #points - 1, 2, -1 do poly[#poly + 1] = { points[i][1], -points[i][2] } end
-  for _ = 1, 2 do
+for name, plan in pairs(plans) do STYLES[name] = plan end
+
+local function chaikin(poly, passes)
+  for _ = 1, passes do
     local nextPoly = {}
     for i = 1, #poly do
       local a, b = poly[i], poly[i % #poly + 1]
@@ -74,6 +50,55 @@ local function smoothOutline(points)
     end
     poly = nextPoly
   end
+  return poly
+end
+
+local function smoothOutline(points)
+  -- Mirror the half profile, then round it off with Chaikin corner cutting.
+  local poly = {}
+  for i = 1, #points do poly[#poly + 1] = { points[i][1], points[i][2] } end
+  for i = #points - 1, 1, -1 do poly[#poly + 1] = { points[i][1], -points[i][2] } end
+  return chaikin(poly, 2)
+end
+
+-- Rounds each corner by its own radius in metres (the third number of a point,
+-- or the plan's `corner`), so long edges stay straight and a nose can be sharp.
+-- Chaikin can't do that: it cuts a fixed share of every edge.
+local function filletOutline(points, hl, hw, corner, metres)
+  local half = {}
+  for i = 1, #points do half[i] = points[i] end
+  for i = #points - 1, 1, -1 do half[#half + 1] = { points[i][1], -points[i][2], points[i][3] } end
+  local poly = {}
+  -- Two curves that each take half an edge meet on the same point, and
+  -- triangulating fails on a repeated point.
+  local function add(x, y)
+    local last = poly[#poly] or poly[1]
+    if not last or math.abs(last[1] - x) + math.abs(last[2] - y) > 1e-4 then poly[#poly + 1] = { x, y } end
+  end
+  local count = #half
+  for i = 1, count do
+    local p, a, b = half[i], half[(i - 2) % count + 1], half[i % count + 1]
+    local ax, ay = (a[1] - p[1]) * hl, (a[2] - p[2]) * hw
+    local bx, by = (b[1] - p[1]) * hl, (b[2] - p[2]) * hw
+    local la, lb = math.sqrt(ax * ax + ay * ay), math.sqrt(bx * bx + by * by)
+    local cut = math.min((p[3] or corner) * metres, la / 2, lb / 2)
+    if cut <= 0 then
+      add(p[1], p[2])
+    else
+      local sx, sy = ax / la * cut, ay / la * cut
+      local ex, ey = bx / lb * cut, by / lb * cut
+      for step = 0, 4 do
+        local t = step / 4
+        local u = 1 - t
+        -- A quadratic curve with the original corner as its control point.
+        local x = sx * u * u + ex * t * t
+        local y = sy * u * u + ey * t * t
+        add(p[1] + x / hl, p[2] + y / hw)
+      end
+    end
+  end
+  local first, last = poly[1], poly[#poly]
+  if math.abs(last[1] - first[1]) + math.abs(last[2] - first[2]) <= 1e-4 then poly[#poly] = nil end
   return poly
 end
 
@@ -130,8 +155,64 @@ local function drawOpenDetails(hl, hw)
   love.graphics.rectangle("fill", -0.985 * hl - 0.8, -0.1 * hw, 3, 0.2 * hw, 1)
 end
 
+local function outlineCoords(poly, hl, hw, inset)
+  local coords = {}
+  for _, p in ipairs(poly) do
+    coords[#coords + 1] = p[1] * (hl - inset)
+    coords[#coords + 1] = p[2] * (hw - inset)
+  end
+  return coords
+end
+
+local function fillCoords(coords)
+  for _, t in ipairs(love.math.triangulate(coords)) do love.graphics.polygon("fill", t) end
+end
+
+-- The edge falls away evenly all round, nose and flanks alike.
+local function drawPlanPaint(poly, hl, hw)
+  love.graphics.setColor(0.62, 0.62, 0.64)
+  fillCoords(outlineCoords(poly, hl, hw, 0))
+  love.graphics.setColor(0.84, 0.84, 0.86)
+  fillCoords(outlineCoords(poly, hl, hw, 0.9))
+  love.graphics.setColor(1, 1, 1)
+  fillCoords(outlineCoords(poly, hl, hw, 2.2))
+end
+
+-- The filled polygons of one plan part, in outline coordinates.
+local function partPolygons(part)
+  local function build(points, flip, closed)
+    local poly = {}
+    for i = 1, #points, 2 do poly[#poly + 1] = { points[i], points[i + 1] * flip } end
+    if closed then
+      for i = #points - 1, 1, -2 do poly[#poly + 1] = { points[i], -points[i + 1] } end
+    end
+    return chaikin(poly, part.soft or 0)
+  end
+  if part.solo then return { build(part.solo, 1) } end
+  if part.pair then return { build(part.pair, 1), build(part.pair, -1) } end
+  if part.across then return { build(part.across, 1, true) } end
+  return {}
+end
+
+local function drawPart(part, hl, hw)
+  love.graphics.setColor(part[1])
+  for _, poly in ipairs(partPolygons(part)) do fillCoords(outlineCoords(poly, hl, hw, 0)) end
+  if part.trace then
+    love.graphics.setLineWidth(part.width or 0.8)
+    for _, flip in ipairs({ 1, -1 }) do
+      local coords = {}
+      for i = 1, #part.trace, 2 do
+        coords[#coords + 1] = part.trace[i] * hl
+        coords[#coords + 1] = part.trace[i + 1] * flip * hw
+      end
+      love.graphics.line(coords)
+    end
+  end
+end
+
 local function drawPaint(style, poly, hl, hw)
   if style.open then return drawOpenPaint(poly, hl, hw) end
+  if style.parts then return drawPlanPaint(poly, hl, hw) end
   love.graphics.setColor(0.62, 0.62, 0.64)
   fillPoly(poly, hl, hw, 1)
   love.graphics.setColor(0.84, 0.84, 0.86)
@@ -146,8 +227,12 @@ local function drawPaint(style, poly, hl, hw)
   quad(hl, hw, sc[2], -style.roofWidth, sc[2], style.roofWidth, rs[1], style.roofWidth * 0.98, rs[1], -style.roofWidth * 0.98)
 end
 
-local function drawDetails(style, poly, hl, hw, spec)
+local function drawDetails(style, hl, hw)
   if style.open then return drawOpenDetails(hl, hw) end
+  if style.parts then
+    for _, part in ipairs(style.parts) do drawPart(part, hl, hw) end
+    return
+  end
   local sc, rs, roof = style.screen, style.rearScreen, style.roofWidth
   local glassA = { 0.07, 0.10, 0.13, 1 }
   local glassB = { 0.13, 0.19, 0.25, 1 }
@@ -246,38 +331,11 @@ local function drawDetails(style, poly, hl, hw, spec)
     love.graphics.setColor(0.04, 0.04, 0.05)
     quad(hl, hw, 0.62, -0.2, 0.62, 0.2, 0.5, 0.24, 0.5, -0.24)
   end
-  if style.vents then
-    love.graphics.setColor(0.05, 0.05, 0.06)
-    for _, x in ipairs({ -0.62, -0.7, -0.78 }) do
-      quad(hl, hw, x, -0.34, x, 0.34, x - 0.04, 0.34, x - 0.04, -0.34)
-    end
-  end
-  if style.sunroof then
-    love.graphics.setColor(0.06, 0.08, 0.1)
-    love.graphics.rectangle("fill", -0.3 * hl, -0.42 * hw, 0.42 * hl, 0.84 * hw, 3)
-  end
   if style.glassRoof then
     love.graphics.setColor(glassA)
     quad(hl, hw, sc[2] - 0.03, -roof * 0.96, sc[2] - 0.03, roof * 0.96, rs[1] + 0.03, roof * 0.96, rs[1] + 0.03, -roof * 0.96)
     love.graphics.setColor(glassB)
     quad(hl, hw, sc[2] - 0.08, -roof * 0.7, sc[2] - 0.08, -roof * 0.1, rs[1] + 0.1, -roof * 0.1, rs[1] + 0.1, -roof * 0.7)
-  end
-  if style.rack then
-    love.graphics.setColor(0.08, 0.08, 0.09)
-    love.graphics.setLineWidth(1.6)
-    for x = -0.6, 0.1, 0.17 do
-      love.graphics.line(x * hl, -roof * 0.86 * hw, x * hl, roof * 0.86 * hw)
-    end
-    love.graphics.line(-0.65 * hl, -roof * 0.86 * hw, 0.14 * hl, -roof * 0.86 * hw)
-    love.graphics.line(-0.65 * hl, roof * 0.86 * hw, 0.14 * hl, roof * 0.86 * hw)
-  end
-  if style.spare then
-    love.graphics.setColor(0.05, 0.05, 0.05)
-    love.graphics.rectangle("fill", -hl - 3, -0.34 * hw, 5, 0.68 * hw, 2)
-  end
-  if style.wing then
-    love.graphics.setColor(0.05, 0.05, 0.06)
-    quad(hl, hw, -style.wing - 0.04, -0.94, -style.wing - 0.04, 0.94, -style.wing - 0.13, 0.94, -style.wing - 0.13, -0.94)
   end
 
   -- Lamps, unlit. The glow is added at runtime.
@@ -292,15 +350,38 @@ local function drawDetails(style, poly, hl, hw, spec)
   end
 end
 
+local function bodyOutline(style, hl, hw)
+  if style.parts then return filletOutline(style.outline, hl, hw, style.corner, RES) end
+  return smoothOutline(style.outline)
+end
+
+-- Every filled polygon of a car as flat coordinates in sprite px, for the tests.
+function sprites.polygons(spec)
+  local style = STYLES[spec.bodyStyle] or STYLES.sedan
+  local hl, hw = spec.length * RES / 2, spec.width * RES / 2
+  local list = { outlineCoords(bodyOutline(style, hl, hw), hl, hw, 0) }
+  for _, part in ipairs(style.parts or {}) do
+    for _, poly in ipairs(partPolygons(part)) do list[#list + 1] = outlineCoords(poly, hl, hw, 0) end
+  end
+  return list, hl + 8, hw + 8
+end
+
+-- How far the wheels sit from where the physics puts them, in metres, and where
+-- the lamps are as fractions of the half length and half width.
+function sprites.layout(spec)
+  local style = STYLES[spec.bodyStyle] or STYLES.sedan
+  return style.axleShift or 0, style.headlamp or { 0.92, 0.66 }, style.taillamp or { 1, 0.62 }
+end
+
 function sprites.get(spec)
   sprites.cache = sprites.cache or {}
   local key = spec.id
   if sprites.cache[key] then return sprites.cache[key] end
 
   local style = STYLES[spec.bodyStyle] or STYLES.sedan
-  local poly = smoothOutline(style.outline)
-  local width, height = spec.length * RES + 16, spec.width * RES + 16
   local hl, hw = spec.length * RES / 2, spec.width * RES / 2
+  local poly = bodyOutline(style, hl, hw)
+  local width, height = (spec.length * RES + 16) * SHARPNESS, (spec.width * RES + 16) * SHARPNESS
 
   local function layer(draw)
     local canvas = love.graphics.newCanvas(width, height, { mipmaps = "auto" })
@@ -309,6 +390,7 @@ function sprites.get(spec)
     love.graphics.setCanvas(canvas)
     love.graphics.clear(0, 0, 0, 0)
     love.graphics.translate(width / 2, height / 2)
+    love.graphics.scale(SHARPNESS)
     draw()
     love.graphics.pop()
     canvas:setFilter("linear", "linear")
@@ -317,10 +399,10 @@ function sprites.get(spec)
   end
 
   local sprite = {
-    scale = 12 / RES, -- sprite px to world px (see config.METER)
+    scale = 12 / RES / SHARPNESS, -- canvas px to world px (see config.METER)
     ox = width / 2, oy = height / 2,
     paint = layer(function() drawPaint(style, poly, hl, hw) end),
-    detail = layer(function() drawDetails(style, poly, hl, hw, spec) end),
+    detail = layer(function() drawDetails(style, hl, hw) end),
     shadow = layer(function()
       for i = 1, 8 do
         love.graphics.setColor(1, 1, 1, 0.13)
