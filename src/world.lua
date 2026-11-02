@@ -20,6 +20,14 @@ local function postSolve(a, b, contact, normal1, tangent1, normal2, tangent2)
   -- too gentle to be an event, and goes on for as long as the car stays on it.
   if carA then carA.scraped = true end
   if carB then carB.scraped = true end
+  -- A crash is judged on all of a hit, so this comes before the small ones are
+  -- dropped. The event list has a cap, and a hit can be spread over contacts.
+  if carA and carB then
+    carA.touchedCar, carB.touchedCar = true, true
+  elseif carA or carB then
+    local car = carA or carB
+    car.fenceImpulse = car.fenceImpulse + impulse
+  end
   if impulse < 200 * M then return end
   if #world.events >= 16 then return end
   local x, y = contact:getPositions()

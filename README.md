@@ -33,6 +33,8 @@ by itself unless you turn Auto Gas off.
 
 ## Good to know
 
+- **Fences** bite: a hard hit wrecks the car, which costs you over a second and all your
+  speed. Glancing off one is fine, and so is being shoved into one by another car.
 - **Handling** is set in race setup. Arcade is the default, with big grip and a held
   drift on the handbrake. Sport adds realistic grip with driver aids, and Sim has no
   aids at all. Online races always use Arcade.

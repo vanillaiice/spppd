@@ -11,6 +11,7 @@ local touch = require("src/touch")
 local audio = require("src/audio")
 local radio = require("src/radio")
 local world = require("src/world")
+local config = require("src/config")
 
 local flow = {}
 
@@ -174,6 +175,33 @@ local function steps()
   end)
   step(3, function()
     expect(rm.race().player:getSpeed() < 8, "R resets the car to the track")
+    -- Straight into the fence at 50 m/s.
+    local race = rm.race()
+    local car = race.player
+    local s = race.track.samples[car.trackIndex]
+    local M = config.METER
+    local reach = s.w / 2 + s.barrierr - 6 * M
+    car:teleport(s.x + s.nx * reach, s.y + s.ny * reach, math.atan2(s.ny, s.nx))
+    car.body:setLinearVelocity(s.nx * 50 * M, s.ny * 50 * M)
+  end)
+  step(25, function()
+    local car = rm.race().player
+    expect(car.wreck, "a hard hit on a fence wrecks the car")
+    flow.wreckIndex = car.wreckIndex
+    love.graphics.captureScreenshot("flow-wreck.png")
+    love.keypressed("w", "w", false)
+    press("r")
+  end)
+  step(3, function()
+    local car = rm.race().player
+    expect(car.wreck and car.input.throttle == 0, "the wreck takes no orders, and R can't skip it")
+    love.keyreleased("w")
+  end)
+  step(110, function()
+    local car = rm.race().player
+    expect(not car.wreck and car.trackIndex == flow.wreckIndex, "it goes back to the road where it hit")
+    expect(car.ghostTimer > 0 and car:getSpeed() < 3, "stopped, and out of the way of the traffic")
+    love.graphics.captureScreenshot("flow-recovered.png")
     love.keypressed("w", "w", false)
   end)
   step(400, function()

@@ -37,7 +37,7 @@ end
 local function makeCar()
   local wheels = { { slide = 0 }, { slide = 0 }, { slide = 0 }, { slide = 0 } }
   return {
-    curX = 0, curY = 0, curA = 0, distance = 0,
+    curX = 0, curY = 0, curA = 0, distance = 0, ghostTimer = 0,
     body = { getLinearVelocity = function() return 0, 0 end },
     model = { steer = 0, rpm = 3000, throttle = 0, brake = 0, gear = 1, wheels = wheels, boostState = "ready" },
   }

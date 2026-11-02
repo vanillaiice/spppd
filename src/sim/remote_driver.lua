@@ -6,6 +6,7 @@ RemoteDriver.__index = RemoteDriver
 local MAX_EXTRAPOLATION = 0.25
 local SNAP_DISTANCE = 300
 local FOLLOW_RATE = 12
+local GHOST_HOLD = 0.2  -- seconds, so it outlasts the gap between packets
 
 -- `source()` returns the latest state and its age in seconds, or nil.
 function RemoteDriver.new(source)
@@ -42,6 +43,9 @@ function RemoteDriver:update(car, race, dt)
   model.boostState = state.nitro and "active" or "ready"
   for _, wheel in ipairs(model.wheels) do wheel.slide = state.slide or 0 end
   car.horn = state.horn or false
+  -- Their game put them back on the road, so they're a ghost there. Solid here,
+  -- they'd be a stopped car on the racing line that only this driver can hit.
+  if state.ghost and not stale then car:ghost(GHOST_HOLD) end
   if state.lowBeam ~= nil then car.lowBeam, car.highBeam = state.lowBeam, state.highBeam end
 
   -- Their own game counts their laps. A copy worked out from a smoothed position

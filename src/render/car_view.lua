@@ -64,6 +64,12 @@ function view.updateFx(car, dt)
     end
     fx.gear = model.gear
   end
+
+  -- A wreck smokes from under the bonnet until it's put back on the road.
+  if car.wreck then
+    local front = car.length / 2 - 4
+    vfx.tyreSmoke(x + math.cos(a) * front, y + math.sin(a) * front, 0, 0, 0.8)
+  end
 end
 
 -- Drawing ----------------------------------------------------------------

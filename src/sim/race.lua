@@ -32,6 +32,13 @@ local WRONG_WAY_TIME = 1.2
 local SHORTCUT_JUMP = 45 * M
 local FINISH_GRACE = 25
 
+-- A fence wrecks a car that loses this much speed to it, in m/s. Speed rather
+-- than force, or heavy cars would wreck first and light ones could bounce for free.
+local CRASH_SPEED = 15
+local CRASH_MEMORY = 0.15  -- seconds; a nose and then the tail swinging in are one hit
+local WRECK_TIME = 1.2     -- seconds out of the car's hands before it goes back
+local SHUNT_GRACE = 0.4    -- seconds after touching a car when a fence can't wreck it
+
 -- Seats can have gaps, because someone left the lobby. The grid doesn't.
 local function gridPlace(online, slot)
   local place = 1
@@ -55,6 +62,8 @@ function Race.new(opts)
   self.rng = love.math.newRandomGenerator(self.seed)
   self.cars = {}
   self.onLap = opts.onLap
+  self.onCrash = opts.onCrash
+  self.onRecover = opts.onRecover
 
   world.load(self.track)
 
@@ -179,6 +188,12 @@ function Race:standings()
   return order
 end
 
+local function placeOnLine(car, s)
+  car:teleport(s.lineX, s.lineY, math.atan2(s.ty, s.tx), 2.5)
+  car.trackIndex = s.index
+  car.lapClean = false
+end
+
 function Race:respawn(car)
   local track = self.track
   if not track then
@@ -186,10 +201,51 @@ function Race:respawn(car)
     return
   end
   local index = car.trackIndex or 1
-  local s = track.samples[(index + 1) % track.count + 1]
-  car:teleport(s.lineX, s.lineY, math.atan2(s.ty, s.tx), 2.5)
-  car.trackIndex = s.index
-  car.lapClean = false
+  placeOnLine(car, track.samples[(index + 1) % track.count + 1])
+end
+
+-- Back to where it hit, not where it slid to. Going on from there made a wreck
+-- quicker than braking, so the slide comes off its distance here: a long one is
+-- past what updateProgress would count.
+local function recover(self, car)
+  local track = self.track
+  local s = track.samples[car.wreckIndex]
+  local delta = (s.s - car.trackS + track.length / 2) % track.length - track.length / 2
+  car.distance = car.distance + delta
+  car.trackS = s.s
+  placeOnLine(car, s)
+  if self.onRecover then self.onRecover(car) end
+end
+
+local function wreck(self, car, hit)
+  car.wreck = WRECK_TIME
+  car.wreckIndex = car.trackIndex
+  local input = car.input
+  input.throttle, input.brake, input.steer = 0, 1, 0
+  input.handbrake, input.boost, input.shiftUp, input.shiftDown = false, false, false, false
+  input.wrecked = true
+  if self.onCrash then self.onCrash(car, hit) end
+end
+
+-- A fence can wreck a car, but another car can't, and that includes being shoved
+-- into a fence by one. Each game judges its own cars, as it does their laps.
+function Race:updateCrash(car, dt)
+  if car.remote then return end
+  car.shunted = car.touchedCar and SHUNT_GRACE or math.max(0, car.shunted - dt)
+  car.touchedCar = false
+  car.fenceHit = car.fenceHit * math.exp(-dt / CRASH_MEMORY) + car.fenceImpulse / (car.spec.mass * M)
+  car.fenceImpulse = 0
+
+  if car.wreck then
+    car.wreck = car.wreck - dt
+    if car.wreck <= 0 or car.finished then
+      car.wreck = nil
+      car.input.brake, car.input.wrecked = 0, false
+      if not car.finished then recover(self, car) end
+    end
+  elseif car.fenceHit >= CRASH_SPEED and car.shunted == 0 and self.phase == "racing" and not car.finished then
+    wreck(self, car, car.fenceHit)
+  end
 end
 
 function Race:updateProgress(car, dt)
@@ -309,6 +365,8 @@ local function allFinished(self)
 end
 
 Race.FINISH_GRACE = FINISH_GRACE
+Race.CRASH_SPEED = CRASH_SPEED
+Race.WRECK_TIME = WRECK_TIME
 
 function Race:step(dt)
   if self.phase == "countdown" then
@@ -340,7 +398,7 @@ function Race:step(dt)
   else
     self.time = self.time + dt
     for _, car in ipairs(self.cars) do
-      if car.driver then car.driver:update(car, self, dt) end
+      if car.driver and not car.wreck then car.driver:update(car, self, dt) end
     end
   end
 
@@ -352,6 +410,7 @@ function Race:step(dt)
   world.step(dt)
   for _, car in ipairs(self.cars) do
     car:afterStep()
+    self:updateCrash(car, dt)
     if self.track then self:updateProgress(car, dt) end
   end
 

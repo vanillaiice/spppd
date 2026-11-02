@@ -28,6 +28,7 @@ local rm = {}
 local M = config.METER
 local DT = config.PHYSICS_DT
 local SCRAPE_FADE = 12  -- per second, so a car off the wall is silent in 0.08 s
+local CRASH_SOUND = 3   -- a wreck is always the biggest crash, however heavy the car
 
 local session -- everything that belongs to the current race
 
@@ -84,6 +85,8 @@ function rm.start(opts)
     online = opts.online,
     manualGearbox = settings.gearbox == "manual",
     onLap = function(car, time, clean) rm.onLap(car, time, clean) end,
+    onCrash = function(car, hit) rm.onCrash(car, hit) end,
+    onRecover = function(car) rm.onRecover(car) end,
   })
 
   local timeName = opts.time or "day"
@@ -235,6 +238,18 @@ function rm.onLap(car, time, clean)
   end
 end
 
+function rm.onCrash(car, hit)
+  if not session or car ~= session.race.player or session.demo then return end
+  rm.setToast("CRASHED", colors.kerb, Race.WRECK_TIME + 0.3)
+  session.cam.trauma = 1
+  audio.impact(math.max(CRASH_SOUND, hit * car.spec.mass / 9000), car.spec)
+end
+
+function rm.onRecover(car)
+  if not session or car ~= session.race.player or session.demo then return end
+  audio.play("select", 0.5)
+end
+
 -- Simulation ----------------------------------------------------------------
 
 local function handleControls()
@@ -252,7 +267,7 @@ local function handleControls()
     settings.camera = settings.camera == "chase" and "fixed" or "chase"
     settings.save()
   end
-  if input.consume("respawn") and race.phase == "racing" and not car.finished then
+  if input.consume("respawn") and race.phase == "racing" and not car.finished and not car.wreck then
     race:respawn(car)
     audio.play("select", 0.5)
   end

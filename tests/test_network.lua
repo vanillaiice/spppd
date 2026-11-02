@@ -95,7 +95,7 @@ end
 
 local function fakeCar(distance, finish)
   local wheels = { { slide = 0 }, { slide = 0 }, { slide = 0.5 }, { slide = 0 } }
-  return { curX = 10, curY = 20, curA = 1, body = { getLinearVelocity = function() return 1, 2 end },
+  return { curX = 10, curY = 20, curA = 1, ghostTimer = 0, body = { getLinearVelocity = function() return 1, 2 end },
     model = { steer = 0, rpm = 3000, throttle = 1, brake = 0, gear = 2, wheels = wheels, boostState = "active", reverse = false },
     distance = distance or 0, finishTime = finish, horn = true, lowBeam = true, highBeam = false }
 end
@@ -138,6 +138,11 @@ h.describe("network", function()
     h.assertTrue(not s.reverse and not s.lowBeam)
     h.assertEq(s.slide, 0.75)
     h.assertTrue(network.unpackState(network.packState(stateOf({ reverse = true, lowBeam = true }))).reverse)
+  end)
+
+  h.it("a rival back on the road is a ghost here too", function()
+    h.assertTrue(network.unpackState(network.packState(stateOf({ ghost = true }))).ghost)
+    h.assertTrue(not network.unpackState(network.packState(stateOf({}))).ghost)
   end)
 
   h.it("rejects malformed packets", function()

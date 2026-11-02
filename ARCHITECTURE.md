@@ -337,6 +337,9 @@ without any Box2D callback touching those systems. Any contact at all also sets
 `car.scraped`, because a car dragging along a wall is far below that threshold.
 `race_manager` turns that into `car.scraping`, 0 to 1, for the sound.
 
+The same callback adds each hit from a fence to `car.fenceImpulse`, whatever its size,
+and sets `car.touchedCar` on a contact between cars. See "Wrecks" in section 9.
+
 ---
 
 ## 6. The vehicle model
@@ -778,6 +781,30 @@ respawns. Only clean laps count as a best lap.
 
 Going backwards at over 4 m/s for 1.2 s shows WRONG WAY. Pressing reset (`R`) moves
 the car two samples ahead on the racing line, stationary, and ghosted for 2.5 s.
+
+### Wrecks
+
+Fences can wreck a car. `Race:updateCrash` keeps `car.fenceHit`, the speed in m/s lost
+to fences, which is impulse over mass and fades with a 0.15 s time constant, so a nose
+and then the tail swinging in count as one hit. Using speed means every car has the
+same limit, however heavy it is.
+
+At `CRASH_SPEED` (15 m/s) the car is wrecked for `WRECK_TIME` (1.2 s). Its controls are
+cut and the brake is held. `input.wrecked` stops that brake finding reverse and stops
+the slide earning nitro. Then the car goes back to the racing line where it hit, not
+where it slid to, stationary and ghosted for 2.5 s, and the lap is spoiled. The slide
+comes off `car.distance`. Without that, a wreck is quicker than braking, because a
+strong car regains corner speed in moments.
+
+Roughly, 15 m/s is a 20 degree hit at 70 m/s, a 30 degree hit at 40 m/s, or a head-on
+at 45 km/h. In 20 races of six AI cars nobody reached it, while a bot holding full
+throttle with no brakes loses to clean driving on every track. `tests/test_race.lua`
+checks that on the four tracks where the fences used to be quickest.
+
+Other cars never wreck you. For `SHUNT_GRACE` (0.4 s) after touching a car, a fence
+can't either, so nobody can be punted into one. Cars past the flag don't crash, and
+each game judges only its own cars. A ghost is sent in the sync packet's flags, or a
+stopped car on the racing line would be solid on everyone else's screen.
 
 ### Standings and finishing
 
@@ -1288,7 +1315,7 @@ forwards with the sender's seat, as `2|sync|...`, so a client can't pose as anot
 | `sync\|round\|seq\|x\|y\|a\|vx\|vy\|steer\|rpm\|throttle\|brake\|gear\|flags\|slide\|distance\|finish` | Everyone | Car state, about 100 bytes, 20 Hz |
 
 `paint` is an index into `PAINTS` in `menu.lua`, so that list's order is part of the
-protocol. `flags` holds the horn, reverse, nitro and the two beams.
+protocol. `flags` holds the horn, reverse, nitro, the two beams and whether the car is a ghost.
 
 ### Versions
 

@@ -335,7 +335,7 @@ local function updateBoost(c, input, speed, dt)
     if pressed or braking or c.boostTank == 0 then c.boostState = "ready" end
   else
     local refill = spec.boostTime / spec.boostCooldown * dt
-    c.boostFilling = dynamics.sliding(c, speed) and c.boostTank < spec.boostTime
+    c.boostFilling = dynamics.sliding(c, speed) and c.boostTank < spec.boostTime and not input.wrecked
     if c.boostFilling then refill = refill * SLIDE_REFILL end
     c.boostTank = min(spec.boostTime, c.boostTank + refill)
     if c.boostTank < BOOST_MIN_TANK then
@@ -360,7 +360,7 @@ local function resolvePedals(c, input, vx, dt)
     else
       return 0, 0
     end
-  elseif brake > 0.05 and throttle < 0.05 and vx < 0.8 then
+  elseif brake > 0.05 and throttle < 0.05 and vx < 0.8 and not input.wrecked then
     c.stoppedOnBrake = c.stoppedOnBrake + dt
     if c.stoppedOnBrake > REVERSE_DELAY then
       c.reverse = true

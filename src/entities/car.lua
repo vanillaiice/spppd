@@ -55,6 +55,13 @@ function Car.new(spec, x, y, angle, opts)
   self.distance = 0
   self.ghostTimer = 0
 
+  -- How the fences are treating the car, maintained by the race logic.
+  self.fenceImpulse = 0  -- since the last step, as Box2D reports it
+  self.fenceHit = 0      -- m/s of speed lost to them just now
+  self.touchedCar = false
+  self.shunted = 0       -- seconds until a hit is the car's own fault again
+  self.wreck = nil       -- seconds until it's put back on the road
+
   -- Previous and current pose for render interpolation.
   local a = angle or 0
   self.prevX, self.prevY, self.prevA = x, y, a
@@ -136,6 +143,12 @@ function Car:interpolated(alpha)
     self.prevA + da * alpha
 end
 
+-- For a while, other cars pass straight through this one.
+function Car:ghost(seconds)
+  if self.ghostTimer <= 0 then self.fixture:setMask(world.CATEGORY_CAR) end
+  self.ghostTimer = math.max(self.ghostTimer, seconds)
+end
+
 -- Put the car back on the road, briefly passing through other cars.
 function Car:teleport(x, y, angle, ghostTime)
   local body = self.body
@@ -151,10 +164,8 @@ function Car:teleport(x, y, angle, ghostTime)
   self.model.slipstream = 0
   self.model.gear = 1
   self.model.reverse = false
-  if ghostTime then
-    self.ghostTimer = ghostTime
-    self.fixture:setMask(world.CATEGORY_CAR)
-  end
+  self.fenceImpulse, self.fenceHit = 0, 0
+  if ghostTime then self:ghost(ghostTime) end
 end
 
 return Car
