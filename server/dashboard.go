@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"crypto/subtle"
 	_ "embed"
 	"fmt"
 	"html/template"
@@ -62,11 +63,22 @@ func isLoopbackHost(host string) bool {
 	return ip != nil && ip.IsLoopback()
 }
 
-// guard keeps other websites away. The dashboard has no login, so a page open
-// in the same browser could otherwise reach it through the tunnel.
-func guard(next http.Handler) http.Handler {
+// guard decides who reaches the dashboard, which can close rooms and ban people.
+// With a token, anyone holding it gets in, which is how it runs in a container,
+// where connections never look local. Without one, only this machine does: the
+// connection has to come from loopback, and so does the name it asked for, which
+// stops a web page using DNS tricks to reach it through a local browser. Either
+// way, another site can't make a browser post to it.
+func guard(next http.Handler, token string) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if !isLoopbackHost(r.Host) {
+		if token != "" {
+			_, password, _ := r.BasicAuth()
+			if subtle.ConstantTimeCompare([]byte(password), []byte(token)) != 1 {
+				w.Header().Set("WWW-Authenticate", `Basic realm="SPPPD relay"`)
+				http.Error(w, "the dashboard needs its password", http.StatusUnauthorized)
+				return
+			}
+		} else if !isLoopbackHost(r.RemoteAddr) || !isLoopbackHost(r.Host) {
 			http.Error(w, "the dashboard only answers on localhost", http.StatusForbidden)
 			return
 		}
@@ -83,7 +95,7 @@ func guard(next http.Handler) http.Handler {
 	})
 }
 
-func newDashboard(relay *Relay) http.Handler {
+func newDashboard(relay *Relay, token string) http.Handler {
 	pages := template.Must(template.New("dashboard").Funcs(template.FuncMap{
 		"age": formatAge, "bytes": formatBytes, "clock": formatClock,
 	}).Parse(dashboardHTML))
@@ -144,5 +156,5 @@ func newDashboard(relay *Relay) http.Handler {
 		relay.Unban(r.FormValue("ip"))
 		return nil
 	}))
-	return guard(mux)
+	return guard(mux, token)
 }

@@ -41,16 +41,26 @@ local ZOOM = {
 
 local playerDriver = {}
 function playerDriver:revs()
+  if session.paused then return 0 end
   return math.max(input.throttle(), touch.revs())
 end
 
 -- Read at the lights too, so a press there is used up and can't fire at the go.
 function playerDriver:nitroButton()
+  if session.paused then return false end
   local tapped = input.consume("boost")
   return tapped or input.isDown("boost")
 end
 
 function playerDriver:update(car)
+  -- Only an online race runs on behind the pause menu. The keys are working the
+  -- menu, so the car coasts rather than taking them as driving.
+  if session.paused then
+    local held = car.input
+    held.throttle, held.brake, held.steer = 0, 0, 0
+    held.handbrake, held.boost, held.shiftUp, held.shiftDown = false, false, false, false
+    return
+  end
   input.applyTo(car.input, settings.gearbox == "manual")
   touch.applyTo(car.input)
 end
@@ -230,7 +240,7 @@ end
 local function handleControls()
   local race = session.race
   local car = race.player
-  car.horn = input.isDown("horn") and not session.paused
+  car.horn = input.isDown("horn")
   if input.consume("lowBeam") then
     car.lowBeam = not car.lowBeam
     if car.lowBeam then car.highBeam = false end
@@ -389,7 +399,7 @@ end
 -- The flag falls for the player here, while the rest may race on for a while.
 local function updateFinish(dt)
   local player = session.race.player
-  if session.demo or not player.finished then return end
+  if session.demo or not (player.finished or player.timedOut) then return end
   if session.finishClock then
     session.finishClock = session.finishClock + dt
     return
@@ -421,11 +431,52 @@ local function updateCamera(dt)
   cam.shakeY = (love.math.random() - 0.5) * 22 * shake
 end
 
+local function carInSeat(race, slot)
+  for _, car in ipairs(race.cars) do
+    if car.slot == slot and car ~= race.player then return car end
+  end
+  return nil
+end
+
+local function updateOnline(dt)
+  local race = session.race
+  race:syncClock()
+  session.netTimer = (session.netTimer or 0) - dt
+  if session.netTimer <= 0 then
+    session.netTimer = 1 / 20
+    network.sendCar(race.player)
+  end
+
+  for _, slot in ipairs(network.takeDepartures()) do
+    local car = carInSeat(race, slot)
+    if car and race:peerLeft(car) and not network.lost then
+      rm.setToast(car.name .. " LEFT THE RACE", colors.kerb, 4)
+    end
+  end
+  -- Why the others vanished, which isn't that they all left.
+  if network.lost and not session.lostShown then
+    session.lostShown = true
+    rm.setToast(network.lost:upper(), colors.kerb, 5)
+  end
+
+  local player = race.player
+  if race.flagFell and not session.flagShown then
+    session.flagShown = true
+    if not player.finished then
+      rm.setToast(string.format("FLAG IS OUT  %d SECONDS LEFT", race.FINISH_GRACE), colors.marshal, 4)
+    end
+  end
+end
+
 function rm.update(dt)
   -- An online race can't stop for one player: the menu opens over it instead.
   if not session or (session.paused and not session.opts.online) then return end
   local race = session.race
-  if not session.demo then handleControls() end
+  if session.paused then
+    race.player.horn = false
+  elseif not session.demo then
+    handleControls()
+  end
 
   session.accumulator = math.min(session.accumulator + dt, DT * config.MAX_STEPS_PER_FRAME)
   while session.accumulator >= DT do
@@ -451,17 +502,7 @@ function rm.update(dt)
   end
   session.alpha = session.accumulator / DT
 
-  if session.opts.online then
-    session.netTimer = (session.netTimer or 0) - dt
-    if session.netTimer <= 0 then
-      session.netTimer = 1 / 20
-      network.sendCar(race.player)
-    end
-    if network.peerGone and not session.peerGoneShown then
-      session.peerGoneShown = true
-      if race:peerLeft() then rm.setToast("YOUR RIVAL LEFT THE RACE", colors.kerb, 4) end
-    end
-  end
+  if session.opts.online then updateOnline(dt) end
 
   updateFinish(dt)
   updateDrift(dt)

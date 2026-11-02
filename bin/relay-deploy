@@ -1,0 +1,17 @@
+#!/usr/bin/env bash
+set -euo pipefail
+cd "$(dirname "$0")/.."
+
+# The dashboard's password lives outside the repository; the first run creates it.
+env_file="${SPPPD_ENV:-$HOME/.config/hblabs/spppd.env}"
+if [ ! -f "$env_file" ]; then
+  mkdir -p "$(dirname "$env_file")"
+  (umask 077 && printf 'SPPPD_DASHBOARD_TOKEN=%s\n' "$(openssl rand -hex 24)" > "$env_file")
+  echo "Created $env_file; the dashboard's password is in there."
+fi
+set -a; . "$env_file"; set +a
+
+make relay-linux
+
+# Reboot works for a first deploy too. Anyone racing is told the server is restarting.
+exec "${KAMAL_BIN:-kamal}" accessory reboot relay "$@"

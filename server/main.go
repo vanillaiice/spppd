@@ -1,16 +1,23 @@
-// Relay server for SPPPD online races. One player hosts a room, another joins
-// with its code, and from then on every packet is forwarded to the partner.
+// Relay server for SPPPD online races. A host opens a room, up to three others
+// join with its code, and from then on every packet goes to the rest of the
+// room, stamped with the seat it came from. The relay reads nothing it forwards.
 package main
 
 import (
+	"bytes"
+	"context"
 	"flag"
 	"fmt"
 	"log"
 	"net"
 	"net/http"
+	"os"
+	"os/signal"
 	"sort"
+	"strconv"
 	"strings"
 	"sync"
+	"syscall"
 	"time"
 )
 
@@ -18,7 +25,12 @@ const (
 	maxCodeLength  = 16
 	maxPacketBytes = 2048
 	maxEvents      = 200
+	maxRoomPlayers = 4
+	maxPerIP       = 16 // a whole LAN party can share one address
+	maxRateEntries = 1 << 16
 )
+
+var eventPrefix = []byte("event|")
 
 // Sender delivers a packet to an address. Tests replace the real socket.
 type Sender func(data []byte, to *net.UDPAddr)
@@ -26,9 +38,34 @@ type Sender func(data []byte, to *net.UDPAddr)
 type Client struct {
 	Addr     *net.UDPAddr
 	LastSeen time.Time
-	Since    time.Time
-	RoomCode string
-	Partner  *Client
+	Room     *Room
+	Slot     int // 1 to maxRoomPlayers
+}
+
+// Room is a group of up to four drivers. Seat 1 is the host. A locked room has
+// started racing and takes nobody new. Its code stays taken until it empties.
+type Room struct {
+	Code   string
+	Proto  string
+	Since  time.Time
+	Locked bool
+	Seats  [maxRoomPlayers]*Client
+}
+
+func (room *Room) members() []*Client {
+	out := make([]*Client, 0, maxRoomPlayers)
+	for _, client := range room.Seats {
+		if client != nil {
+			out = append(out, client)
+		}
+	}
+	return out
+}
+
+// rateBucket is a token bucket for one IP.
+type rateBucket struct {
+	tokens float64
+	last   time.Time
 }
 
 // Traffic counts packets and bytes in each direction.
@@ -53,26 +90,35 @@ type Event struct {
 }
 
 type Relay struct {
-	mu      sync.Mutex
-	clients map[string]*Client
-	rooms   map[string]*Client
-	banned  map[string]bool
-	events  []Event
-	total   Traffic
-	sampled Traffic
-	rate    Traffic
-	started time.Time
-	send    Sender
-	now     func() time.Time
+	mu         sync.Mutex
+	clients    map[string]*Client
+	rooms      map[string]*Room
+	banned     map[string]bool
+	perIP      map[string]int
+	buckets    map[string]*rateBucket
+	rate       float64 // packets a second per IP, 0 for no limit
+	maxPlayers int
+	events     []Event
+	total      Traffic
+	sampled    Traffic
+	perSecond  Traffic
+	dropped    uint64
+	started    time.Time
+	send       Sender
+	now        func() time.Time
 }
 
 func NewRelay(send Sender) *Relay {
 	r := &Relay{
-		clients: make(map[string]*Client),
-		rooms:   make(map[string]*Client),
-		banned:  make(map[string]bool),
-		started: time.Now(),
-		now:     time.Now,
+		clients:    make(map[string]*Client),
+		rooms:      make(map[string]*Room),
+		banned:     make(map[string]bool),
+		perIP:      make(map[string]int),
+		buckets:    make(map[string]*rateBucket),
+		rate:       300,
+		maxPlayers: 2000,
+		started:    time.Now(),
+		now:        time.Now,
 	}
 	r.send = func(data []byte, to *net.UDPAddr) {
 		r.total.PacketsOut++
@@ -104,6 +150,31 @@ func (r *Relay) refuse(reason string, addr *net.UDPAddr) {
 	r.record(fmt.Sprintf("[REFUSED] %v: %s", addr, reason))
 }
 
+// allow spends one token from an IP's bucket. Callers hold the lock.
+func (r *Relay) allow(ip string) bool {
+	if r.rate <= 0 {
+		return true
+	}
+	now := r.now()
+	burst := r.rate * 2
+	bucket := r.buckets[ip]
+	if bucket == nil {
+		// Forged sources can't grow this without limit.
+		if len(r.buckets) >= maxRateEntries {
+			return false
+		}
+		bucket = &rateBucket{tokens: burst, last: now}
+		r.buckets[ip] = bucket
+	}
+	bucket.tokens = min(burst, bucket.tokens+now.Sub(bucket.last).Seconds()*r.rate)
+	bucket.last = now
+	if bucket.tokens < 1 {
+		return false
+	}
+	bucket.tokens--
+	return true
+}
+
 // Handle processes one packet from addr.
 func (r *Relay) Handle(data []byte, addr *net.UDPAddr) {
 	r.mu.Lock()
@@ -111,128 +182,242 @@ func (r *Relay) Handle(data []byte, addr *net.UDPAddr) {
 
 	r.total.PacketsIn++
 	r.total.BytesIn += uint64(len(data))
-	if r.banned[addr.IP.String()] {
+	ip := addr.IP.String()
+	if r.banned[ip] {
+		return
+	}
+	if len(data) > maxPacketBytes || !r.allow(ip) {
+		r.dropped++
 		return
 	}
 
-	key := addr.String()
-	client := r.clients[key]
-	parts := strings.SplitN(string(data), "|", 3)
-	isEvent := len(parts) >= 2 && parts[0] == "event"
+	client := r.clients[addr.String()]
+	if client != nil {
+		client.LastSeen = r.now()
+	}
+	if !bytes.HasPrefix(data, eventPrefix) {
+		if client != nil {
+			r.forward(client, data)
+		}
+		return
+	}
 
+	parts := strings.SplitN(string(data), "|", 4)
 	if client == nil {
-		if isEvent && len(parts) == 3 {
-			r.register(parts[1], parts[2], addr)
-		}
+		r.register(parts, addr)
 		return
 	}
-
-	client.LastSeen = r.now()
-
-	if isEvent {
-		switch parts[1] {
-		case "leave":
-			r.event("[LEAVE] %v", client.Addr)
-			r.drop(client)
-			return
-		case "host":
-			// The acknowledgement may have been lost, so repeat it.
-			if client.Partner == nil {
-				r.send([]byte("event|hosting|"+client.RoomCode), client.Addr)
-				return
-			}
-		case "join":
-			if client.Partner != nil {
-				r.send([]byte("event|start_race|join"), client.Addr)
-				return
-			}
-		}
-	}
-
-	if client.Partner != nil {
-		r.send(data, client.Partner.Addr)
+	switch parts[1] {
+	case "leave":
+		r.event("[LEAVE] %v", client.Addr)
+		r.remove(client)
+	case "lock":
+		client.Room.Locked = true
+	case "host", "join":
+		// The answer may have been lost, so repeat it.
+		r.tell(client)
 	}
 }
 
-func (r *Relay) register(intent, code string, addr *net.UDPAddr) {
-	// Stragglers from a race that just ended aren't asking for a room.
-	if intent != "host" && intent != "join" {
+// forward passes a packet to the rest of the room, stamped with its sender's
+// seat so nobody can pose as someone else. Callers hold the lock.
+func (r *Relay) forward(from *Client, data []byte) {
+	out := make([]byte, 0, len(data)+2)
+	out = strconv.AppendInt(out, int64(from.Slot), 10)
+	out = append(out, '|')
+	out = append(out, data...)
+	for _, client := range from.Room.Seats {
+		if client != nil && client != from {
+			r.send(out, client.Addr)
+		}
+	}
+}
+
+// tell sends one client the room as it stands: its own seat, the room's code,
+// the seats taken, and whether it has locked.
+func (r *Relay) tell(client *Client) {
+	room := client.Room
+	seats := make([]string, 0, maxRoomPlayers)
+	for _, member := range room.members() {
+		seats = append(seats, strconv.Itoa(member.Slot))
+	}
+	locked := 0
+	if room.Locked {
+		locked = 1
+	}
+	r.send([]byte(fmt.Sprintf("event|room|%d|%s|%s|%d", client.Slot, room.Code, strings.Join(seats, ","), locked)), client.Addr)
+}
+
+func (r *Relay) announce(room *Room) {
+	for _, member := range room.members() {
+		r.tell(member)
+	}
+}
+
+func validCode(code string) bool {
+	if code == "" || len(code) > maxCodeLength {
+		return false
+	}
+	for _, c := range []byte(code) {
+		if !(c >= 'A' && c <= 'Z' || c >= 'a' && c <= 'z' || c >= '0' && c <= '9') {
+			return false
+		}
+	}
+	return true
+}
+
+func validProto(proto string) bool {
+	if proto == "" || len(proto) > 4 {
+		return false
+	}
+	_, err := strconv.Atoi(proto)
+	return err == nil
+}
+
+// seat adds a client to a room. Callers have checked there's a free seat.
+func (r *Relay) seat(room *Room, slot int, addr *net.UDPAddr) *Client {
+	client := &Client{Addr: addr, LastSeen: r.now(), Room: room, Slot: slot}
+	room.Seats[slot-1] = client
+	r.clients[addr.String()] = client
+	r.perIP[addr.IP.String()]++
+	return client
+}
+
+// register handles a host or join from an unknown address. Stragglers from a
+// race that just ended aren't asking for a room, and get no answer.
+func (r *Relay) register(parts []string, addr *net.UDPAddr) {
+	if len(parts) < 3 || (parts[1] != "host" && parts[1] != "join") {
 		return
 	}
-	if code == "" || len(code) > maxCodeLength {
-		r.refuse("Room codes are 1 to 16 characters", addr)
+	// Clients from before protocol 2 send event|host|CODE, and show this.
+	if len(parts) == 3 {
+		r.refuse("This game is out of date. Update it to play online", addr)
+		return
+	}
+	intent, proto, code := parts[1], parts[2], parts[3]
+	if !validProto(proto) {
+		return
+	}
+	if !validCode(code) {
+		r.refuse("Room codes are 1 to 16 letters or numbers", addr)
+		return
+	}
+	if len(r.clients) >= r.maxPlayers {
+		r.refuse("The server is full", addr)
+		return
+	}
+	if r.perIP[addr.IP.String()] >= maxPerIP {
+		r.refuse("Too many connections from your address", addr)
 		return
 	}
 
-	client := &Client{Addr: addr, LastSeen: r.now(), Since: r.now(), RoomCode: code}
 	switch intent {
 	case "host":
 		if _, taken := r.rooms[code]; taken {
 			r.refuse("That room code is taken", addr)
 			return
 		}
-		r.rooms[code] = client
-		r.clients[addr.String()] = client
-		r.send([]byte("event|hosting|"+code), addr)
+		room := &Room{Code: code, Proto: proto, Since: r.now()}
+		r.rooms[code] = room
+		r.tell(r.seat(room, 1, addr))
 		r.event("[HOST] %v created room %q", addr, code)
 	case "join":
-		host, found := r.rooms[code]
+		room, found := r.rooms[code]
 		if !found {
 			r.refuse("No room with that code", addr)
 			return
 		}
-		client.Partner = host
-		host.Partner = client
-		r.clients[addr.String()] = client
-		delete(r.rooms, code)
-		r.event("[JOIN] %v joined room %q with %v", addr, code, host.Addr)
-		r.send([]byte("event|start_race|host"), host.Addr)
-		r.send([]byte("event|start_race|join"), addr)
+		if room.Proto != proto {
+			r.refuse("That room is on a different version of the game", addr)
+			return
+		}
+		if room.Locked {
+			r.refuse("That race has already started", addr)
+			return
+		}
+		for slot := 1; slot <= maxRoomPlayers; slot++ {
+			if room.Seats[slot-1] == nil {
+				r.seat(room, slot, addr)
+				r.event("[JOIN] %v joined room %q in seat %d", addr, code, slot)
+				r.announce(room)
+				return
+			}
+		}
+		r.refuse("That room is full", addr)
 	}
 }
 
-// drop removes a client and tells its partner, who is removed too.
-func (r *Relay) drop(client *Client) {
-	delete(r.clients, client.Addr.String())
-	if r.rooms[client.RoomCode] == client {
-		delete(r.rooms, client.RoomCode)
+func (r *Relay) forget(client *Client) {
+	key := client.Addr.String()
+	if r.clients[key] != client {
+		return
 	}
-	if partner := client.Partner; partner != nil {
-		r.send([]byte("event|error|Opponent disconnected"), partner.Addr)
-		delete(r.clients, partner.Addr.String())
-		client.Partner, partner.Partner = nil, nil
+	delete(r.clients, key)
+	ip := client.Addr.IP.String()
+	if r.perIP[ip]--; r.perIP[ip] <= 0 {
+		delete(r.perIP, ip)
 	}
+	client.Room.Seats[client.Slot-1] = nil
+}
+
+// closeRoom empties a room, telling everyone in it why.
+func (r *Relay) closeRoom(room *Room, reason string) {
+	for _, member := range room.members() {
+		r.send([]byte("event|closed|"+reason), member.Addr)
+		r.forget(member)
+	}
+	delete(r.rooms, room.Code)
+}
+
+// remove takes one client out. A lobby can't go on without its host, because
+// the race is the host's to set. A locked room can: everything needed to race
+// again is already with the others.
+func (r *Relay) remove(client *Client) {
+	room := client.Room
+	r.forget(client)
+	if client.Slot == 1 && !room.Locked {
+		r.closeRoom(room, "The host left the room")
+		return
+	}
+	if len(room.members()) == 0 {
+		delete(r.rooms, room.Code)
+		return
+	}
+	r.announce(room)
 }
 
 // Sweep runs once a second. It drops clients that have gone quiet, giving
-// waiting hosts longer, and works out the traffic rates.
+// someone alone in a room longer, works out the traffic rates, and repeats each
+// room's state, so a lost update heals and clients know the relay is alive.
 func (r *Relay) Sweep(racing, waiting time.Duration) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
-	r.rate = r.total.minus(r.sampled)
+	r.perSecond = r.total.minus(r.sampled)
 	r.sampled = r.total
 
 	now := r.now()
 	for _, client := range r.clients {
 		limit := waiting
-		if client.Partner != nil {
+		if len(client.Room.members()) > 1 {
 			limit = racing
 		}
 		if now.Sub(client.LastSeen) > limit {
 			r.event("[TIMEOUT] %v", client.Addr)
-			r.drop(client)
+			r.remove(client)
+		}
+	}
+	for _, room := range r.rooms {
+		r.announce(room)
+	}
+	for ip, bucket := range r.buckets {
+		if now.Sub(bucket.last) > 10*time.Second {
+			delete(r.buckets, ip)
 		}
 	}
 }
 
-// closeClient removes a client on the dashboard's orders. Callers hold the lock.
-func (r *Relay) closeClient(client *Client) {
-	r.send([]byte("event|error|Room closed by the server"), client.Addr)
-	r.drop(client)
-}
-
-// Close removes the client at addr, along with anyone racing it.
+// Close removes the room the client at addr is in, with everyone in it.
 func (r *Relay) Close(addr string) bool {
 	r.mu.Lock()
 	defer r.mu.Unlock()
@@ -241,12 +426,13 @@ func (r *Relay) Close(addr string) bool {
 	if client == nil {
 		return false
 	}
-	r.event("[CLOSE] %v in room %q", client.Addr, client.RoomCode)
-	r.closeClient(client)
+	r.event("[CLOSE] room %q", client.Room.Code)
+	r.closeRoom(client.Room, "Room closed by the server")
 	return true
 }
 
 // Ban ignores an IP until Unban or a restart, and removes its clients now.
+// Anyone else in their rooms carries on without them.
 func (r *Relay) Ban(ip string) bool {
 	parsed := net.ParseIP(ip)
 	if parsed == nil {
@@ -260,7 +446,8 @@ func (r *Relay) Ban(ip string) bool {
 	r.event("[BAN] %s", ip)
 	for _, client := range r.clients {
 		if client.Addr.IP.String() == ip {
-			r.closeClient(client)
+			r.send([]byte("event|closed|Removed by the server"), client.Addr)
+			r.remove(client)
 		}
 	}
 	return true
@@ -276,30 +463,42 @@ func (r *Relay) Unban(ip string) {
 	}
 }
 
-// Room is a host waiting for a driver.
-type Room struct {
-	Code, Host, HostIP string
-	Age                time.Duration
+// Shutdown tells everyone the relay is going away.
+func (r *Relay) Shutdown() {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	for _, room := range r.rooms {
+		r.closeRoom(room, "The server is restarting")
+	}
 }
 
-// Race is a pair of connected drivers.
-type Race struct {
-	Code              string
-	First, Second     string
-	FirstIP, SecondIP string
-	Age               time.Duration
+// Driver is one seat in a room, for the dashboard.
+type Driver struct {
+	Slot int
+	Addr string
+	IP   string
+}
+
+// RoomView is a room as the dashboard shows it.
+type RoomView struct {
+	Code    string
+	Drivers []Driver
+	First   string // any address in the room, which is what /close takes
+	Age     time.Duration
 }
 
 // Snapshot is a copy of the relay's state, safe to read without the lock.
 type Snapshot struct {
 	Uptime  time.Duration
 	Players int
-	Rooms   []Room
-	Races   []Race
+	Rooms   []RoomView // still open to join
+	Races   []RoomView // locked and racing
 	Banned  []string
 	Events  []Event // newest first
 	Total   Traffic
 	Rate    Traffic
+	Dropped uint64
 }
 
 func (r *Relay) Snapshot() Snapshot {
@@ -311,33 +510,28 @@ func (r *Relay) Snapshot() Snapshot {
 		Uptime:  now.Sub(r.started),
 		Players: len(r.clients),
 		Total:   r.total,
-		Rate:    r.rate,
+		Rate:    r.perSecond,
+		Dropped: r.dropped,
 	}
-	for code, host := range r.rooms {
-		snap.Rooms = append(snap.Rooms, Room{
-			Code: code, Host: host.Addr.String(), HostIP: host.Addr.IP.String(), Age: now.Sub(host.Since),
-		})
-	}
-	for key, client := range r.clients {
-		partner := client.Partner
-		if partner == nil || key > partner.Addr.String() {
-			continue // each pair is listed once
+	for code, room := range r.rooms {
+		view := RoomView{Code: code, Age: now.Sub(room.Since)}
+		for _, member := range room.members() {
+			view.Drivers = append(view.Drivers, Driver{Slot: member.Slot, Addr: member.Addr.String(), IP: member.Addr.IP.String()})
 		}
-		started := client.Since
-		if partner.Since.After(started) {
-			started = partner.Since
+		if len(view.Drivers) > 0 {
+			view.First = view.Drivers[0].Addr
 		}
-		snap.Races = append(snap.Races, Race{
-			Code: client.RoomCode, Age: now.Sub(started),
-			First: key, FirstIP: client.Addr.IP.String(),
-			Second: partner.Addr.String(), SecondIP: partner.Addr.IP.String(),
-		})
+		if room.Locked {
+			snap.Races = append(snap.Races, view)
+		} else {
+			snap.Rooms = append(snap.Rooms, view)
+		}
 	}
 	for ip := range r.banned {
 		snap.Banned = append(snap.Banned, ip)
 	}
 	sort.Slice(snap.Rooms, func(i, j int) bool { return snap.Rooms[i].Code < snap.Rooms[j].Code })
-	sort.Slice(snap.Races, func(i, j int) bool { return snap.Races[i].First < snap.Races[j].First })
+	sort.Slice(snap.Races, func(i, j int) bool { return snap.Races[i].Code < snap.Races[j].Code })
 	sort.Strings(snap.Banned)
 	for i := len(r.events) - 1; i >= 0; i-- {
 		snap.Events = append(snap.Events, r.events[i])
@@ -347,9 +541,12 @@ func (r *Relay) Snapshot() Snapshot {
 
 func main() {
 	listen := flag.String("addr", ":8080", "UDP address to listen on")
-	racing := flag.Duration("race-timeout", 5*time.Second, "drop a racer after this long without packets")
-	waiting := flag.Duration("wait-timeout", 60*time.Second, "drop a waiting host after this long without packets")
-	dashboard := flag.String("dashboard", "", "HTTP address for the dashboard, which has no login, so keep it on loopback (off if empty)")
+	racing := flag.Duration("race-timeout", 5*time.Second, "drop a driver in a shared room after this long without packets")
+	waiting := flag.Duration("wait-timeout", 60*time.Second, "drop someone alone in a room after this long without packets")
+	rate := flag.Float64("rate", 300, "packets a second allowed from one IP, 0 for no limit")
+	players := flag.Int("max-players", 2000, "players the relay takes at once")
+	dashboard := flag.String("dashboard", "", "HTTP address for the dashboard (off if empty)")
+	token := flag.String("dashboard-token", os.Getenv("SPPPD_DASHBOARD_TOKEN"), "password for the dashboard; without one it only answers on loopback")
 	flag.Parse()
 
 	addr, err := net.ResolveUDPAddr("udp", *listen)
@@ -368,11 +565,13 @@ func main() {
 			log.Printf("[SEND] %v: %v", to, err)
 		}
 	})
+	relay.rate = *rate
+	relay.maxPlayers = *players
 
 	if *dashboard != "" {
 		go func() {
 			log.Printf("Dashboard listening on %s", *dashboard)
-			log.Fatalf("Dashboard stopped: %v", http.ListenAndServe(*dashboard, newDashboard(relay)))
+			log.Fatalf("Dashboard stopped: %v", http.ListenAndServe(*dashboard, newDashboard(relay, *token)))
 		}()
 	}
 
@@ -382,7 +581,16 @@ func main() {
 		}
 	}()
 
-	buffer := make([]byte, maxPacketBytes)
+	stop, _ := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	go func() {
+		<-stop.Done()
+		relay.Shutdown()
+		log.Print("Relay server stopped")
+		os.Exit(0)
+	}()
+
+	// One byte over the limit, so an oversized packet is seen rather than cut.
+	buffer := make([]byte, maxPacketBytes+1)
 	for {
 		n, remote, err := conn.ReadFromUDP(buffer)
 		if err != nil || n == 0 {

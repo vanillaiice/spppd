@@ -26,7 +26,7 @@ local settings = {
   difficulty = "pro",
   time = "day",
 
-  server = "127.0.0.1:8080",
+  server = "62.169.20.136:8080",
 }
 
 local records = {}

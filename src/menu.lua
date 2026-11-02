@@ -50,6 +50,16 @@ local VOLUMES = { 0, 0.2, 0.4, 0.6, 0.8, 1 }
 local VOLUME_NAMES = { [0] = "OFF", [0.2] = "20%", [0.4] = "40%", [0.6] = "60%", [0.8] = "80%", [1] = "100%" }
 local MUSIC_HINT = "Drop MP3, OGG, FLAC, WAV here, or press to open the folder."
 
+-- What a player should know before going online. ARCHITECTURE.md explains why.
+menu.ONLINE_NOTES = {
+  "Online is new, so expect rough edges.",
+  "Stay in the game. Away for 5 seconds and you're out of the race, with no way back in.",
+  "Nobody checks results, so a changed game can cheat. Race people you trust.",
+  "A slow connection makes cars look late, and contact can look wrong.",
+  "Everyone in a room needs the same version of the game.",
+  "The server sees your IP address. Other drivers don't.",
+}
+
 -- Weak, so a saved track that's been changed lets go of its old build. The
 -- race drives the same Track, which nothing changes once it's built.
 local trackCache = setmetatable({}, { __mode = "k" })
@@ -119,7 +129,7 @@ function menu.startRace(extra)
   extra = extra or {}
   local spec = currentCar()
   menu.demoRunning = false
-  local mode = settings.mode
+  local mode = extra.online and "race" or settings.mode
   local entry = mode ~= "freestyle" and (extra.entry or currentEntry()) or nil
   rm.start({
     mode = mode,
@@ -127,10 +137,10 @@ function menu.startRace(extra)
     track = entry and cachedTrack(entry).track,
     spec = spec,
     color = currentColor(spec),
-    laps = mode == "race" and settings.laps or 9999,
+    laps = extra.laps or (mode == "race" and settings.laps or 9999),
     opponents = mode == "race" and settings.opponents or 0,
     difficulty = settings.difficulty,
-    time = settings.time,
+    time = extra.time or settings.time,
     fromEditor = extra.fromEditor,
     online = extra.online,
   })
@@ -323,7 +333,17 @@ local function onlineRows()
       ui.editing.field = "room"
     end }
   if busy then
-    return { room, { label = "CANCEL", activate = function() network.disconnect() end }, back }
+    local rows = { room }
+    if network.isLeader() then
+      local startable = network.canStart()
+      -- The list skips a disabled row, so focus has to come back when it opens.
+      if startable and not menu.startable then ui.focus.online = 2 end
+      menu.startable = startable
+      rows[2] = { label = "START RACE", disabled = not startable, activate = function() network.startRace() end }
+    end
+    rows[#rows + 1] = { label = "CANCEL", activate = function() network.disconnect() end }
+    rows[#rows + 1] = back
+    return rows
   end
   return {
     { label = "SERVER", value = function()
@@ -352,15 +372,18 @@ menu.hostRows = hostRows
 
 function menu.connect(role)
   local host, port = settings.server:match("^(.+):(%d+)$")
+  local race
   -- Every room gets a fresh code, so a host never has to think of one.
-  if role == "host" then network.roomCode = network.generateCode() end
+  if role == "host" then
+    network.roomCode = network.generateCode()
+    local entry = currentEntry()
+    race = { def = entry.def, title = entry.title, laps = settings.laps, time = settings.time }
+  end
   local spec = currentCar()
-  network.connect(host or settings.server, tonumber(port) or 8080, role, network.roomCode, {
-    car = spec.id, paint = settings.hue, track = settings.track,
-    laps = settings.laps, time = settings.time,
-  })
+  network.connect(host or settings.server, tonumber(port) or 8080, role, network.roomCode,
+    { car = spec.id, paint = settings.hue }, race)
   menu.go("online")
-  ui.focus.online = 2  -- CANCEL, once the list has shrunk
+  ui.focus.online = 2  -- START RACE or CANCEL, once the list has shrunk
 end
 
 function menu.testDrive(doc, track)
@@ -416,6 +439,27 @@ local function drawCar(spec, color, cx, cy, s, spin)
   love.graphics.draw(sprite.detail, cx, cy, spin, scale, scale, sprite.ox, sprite.oy)
 end
 
+local function drawOnlineNotes(x, y, w, s)
+  local size = 6 * s
+  local font = ui.font(size)
+  local inner = w - 12 * s
+  local gap = 4 * s
+  local height = 22 * s
+  local heights = {}
+  for i, note in ipairs(menu.ONLINE_NOTES) do
+    local _, lines = font:getWrap(note, inner)
+    heights[i] = #lines * font:getHeight() * font:getLineHeight() + gap
+    height = height + heights[i]
+  end
+  ui.panel(x, y, w, height, 0.82)
+  ui.text("BEFORE YOU RACE", x + 6 * s, y + 7 * s, size, colors.kerb)
+  local ty = y + 20 * s
+  for i, note in ipairs(menu.ONLINE_NOTES) do
+    ui.text(note, x + 6 * s, ty, size, colors.paint, "left", inner)
+    ty = ty + heights[i]
+  end
+end
+
 local function drawSetupPreview(sw, sh, boardW, s, carOnly)
   local x = boardW + 14 * s
   local w = sw - x - 14 * s
@@ -436,6 +480,8 @@ local function drawSetupPreview(sw, sh, boardW, s, carOnly)
       best and colors.sectorPurple or colors.muted)
   end
 
+  if carOnly then drawOnlineNotes(x, 14 * s, w, s) end
+
   local spec = currentCar()
   local panelH = 72 * s
   local py = sh - panelH - 14 * s
@@ -446,6 +492,39 @@ local function drawSetupPreview(sw, sh, boardW, s, carOnly)
   ui.text(string.format("%.0f KW  %s  %.0f KG", dynamics.peakPower(spec) / 1000, spec.drive, spec.mass),
     tx, py + 21 * s, 6 * s, colors.marshal)
   ui.text(spec.blurb, tx, py + 33 * s, 6 * s, colors.muted, "left", w - 90 * s)
+end
+
+-- Who's in the room and what they're racing for, down the side of the lobby.
+local function drawLobby(sw, sh, boardW, s)
+  local x = boardW + 14 * s
+  local w = sw - x - 14 * s
+  if w < 120 * s then return end
+  local setup = network.setup
+  local rowH = 15 * s
+  ui.panel(x, 14 * s, w, 44 * s + rowH * network.MAX_PLAYERS, 0.82)
+  ui.text(setup and setup.title or "GETTING THE RACE...", x + 6 * s, 21 * s, 8 * s, colors.marshal)
+  if setup then
+    local laps = setup.laps == 1 and "1 LAP" or setup.laps .. " LAPS"
+    ui.text(laps .. "  " .. (TIME_NAMES[setup.time] or "DAY"), x + 6 * s, 35 * s, 6 * s, colors.paint)
+  end
+
+  local drivers = network.peerList()
+  table.insert(drivers, { slot = network.slot, car = network.me.car, paint = network.me.paint, have = network.def ~= nil, you = true })
+  table.sort(drivers, function(a, b) return a.slot < b.slot end)
+  local y = 52 * s
+  for i, driver in ipairs(drivers) do
+    local ry = y + (i - 1) * rowH
+    local spec = driver.car and garage.byId(driver.car)
+    if spec then
+      local paint = PAINTS[driver.paint or 1]
+      love.graphics.setColor(paint and paint.color or spec.color)
+      love.graphics.rectangle("fill", x + 6 * s, ry + s, 3 * s, 8 * s)
+    end
+    ui.text("P" .. driver.slot .. "  " .. (spec and spec.name or "..."), x + 13 * s, ry + 2 * s, 6 * s,
+      driver.you and colors.marshal or colors.paint)
+    local note = driver.you and "YOU" or (driver.slot == network.leader and "HOST") or (not driver.have and "GETTING TRACK") or ""
+    ui.text(note, x, ry + 2 * s, 6 * s, colors.muted, "right", w - 6 * s)
+  end
 end
 
 local function drawControls(sw, sh, s, w)
@@ -522,6 +601,8 @@ function menu.draw(sw, sh)
     local focused = ui.list(menu.screen, rows, x, y, listW, rowH, size, s)
     if menu.screen == "setup" or menu.screen == "host" then
       drawSetupPreview(sw, sh, w, s)
+    elseif menu.screen == "online" and network.slot then
+      drawLobby(sw, sh, w, s)
     elseif menu.screen == "online" then
       drawSetupPreview(sw, sh, w, s, true)
     end
@@ -545,35 +626,41 @@ end
 
 function menu.update(dt)
   rm.update(dt)
-  if menu.screen == "online" then
-    network.update(dt)
-    if network.ready then
-      network.ready = false
-      menu.startOnline()
-    end
+  if menu.screen == "online" then menu.updateOnline(dt) end
+end
+
+-- Runs in the menus and in a race, because a rematch starts from the results.
+function menu.updateOnline(dt)
+  network.update(dt)
+  if network.ready then
+    network.ready = false
+    menu.startOnline()
   end
 end
 
+-- Nothing here touches the saved settings: this race is the host's, not yours.
 function menu.startOnline()
-  local cfg = network.session
-  settings.track = cfg.track
-  settings.laps = cfg.laps
-  settings.time = cfg.time
-  settings.mode = "race"
-  local entry = catalog.find(cfg.track)
-  if not entry then
-    network.fail("You don't have the track " .. tostring(cfg.track))
+  local cfg = network.raceConfig()
+  local entry = { name = "online", title = cfg.title, def = cfg.def }
+  -- A shared track came from someone else, so a bad one can't be allowed to throw.
+  if not pcall(cachedTrack, entry) then
+    network.fail("The host's track couldn't be built")
     return
   end
-  local peer = garage.byId(cfg.peerCar)
-  local paint = PAINTS[cfg.peerPaint or 1]
+  local peers = {}
+  for _, peer in ipairs(cfg.peers) do
+    local spec = garage.byId(peer.car)
+    local paint = PAINTS[peer.paint or 1]
+    peers[#peers + 1] = {
+      slot = peer.slot, spec = spec, color = paint and paint.color or spec.color,
+      state = network.stateOf(peer.slot),
+    }
+  end
   menu.startRace({
-    entry = entry,
-    online = {
-      slot = cfg.slot, peerSpec = peer, peerColor = paint and paint.color or peer.color,
-      state = network.latestPeerState,
-    },
+    entry = entry, laps = cfg.laps, time = TIME_NAMES[cfg.time] and cfg.time or "day",
+    online = { slot = cfg.slot, peers = peers, startIn = network.startIn },
   })
+  network.raceLoaded()
 end
 
 -- Pause and results overlays ---------------------------------------------------
@@ -604,7 +691,8 @@ function menu.drawPause(sw, sh)
   local y = sh * 0.3
   ui.panel(x, y, w, 76 * s, 0.95)
   ui.kerb(x, y, w, 3 * s, s)
-  ui.text("PAUSED", x, y + 10 * s, 8 * s, colors.marshal, "center", w)
+  -- An online race can't stop for one player, and their car is coasting.
+  ui.text(rm.isOnline() and "RACE STILL RUNNING" or "PAUSED", x, y + 10 * s, 8 * s, colors.marshal, "center", w)
   local fromEditor = rm.opts().fromEditor
   local rows = {
     { label = "RESUME", activate = function() rm.setPaused(false) end },
@@ -633,7 +721,7 @@ function menu.drawResults(sw, sh)
   ui.panel(x, y, w, h, 0.95)
   ui.kerb(x, y, w, 3 * s, s)
 
-  local heading, headingColor = hud.finishHeading(race.player.place)
+  local heading, headingColor = hud.finishHeading(race.player.place, race.player.timedOut)
   ui.text(heading, x, y + 12 * s, 12 * s, headingColor, "center", w)
 
   local listY = y + 36 * s
@@ -646,6 +734,7 @@ function menu.drawResults(sw, sh)
     ui.text(i .. "  " .. car.name, x + 10 * s, ry, 6 * s, colors.paint)
     -- The panel opens with the others still out there: they fill in as they finish.
     local t = car.finished and hud.formatTime(car.finishTime)
+      or (car.retired and "LEFT THE RACE")
       or (race.phase == "finished" and "DID NOT FINISH" or "RACING")
     ui.text(t, x, ry, 6 * s, colors.muted, "right", w - 10 * s)
   end
@@ -655,6 +744,14 @@ function menu.drawResults(sw, sh)
   local rows = {}
   if not rm.isOnline() then
     rows[1] = { label = "RACE AGAIN", activate = function() rm.restart() end }
+  elseif network.canRematch() then
+    local voted, total = network.rematchCount()
+    if network.hasVoted() then
+      rows[1] = { label = string.format("WAITING %d/%d", voted, total), disabled = true }
+    else
+      rows[1] = { label = voted > 0 and string.format("REMATCH %d/%d", voted, total) or "REMATCH",
+        activate = function() network.voteRematch() end }
+    end
   end
   rows[#rows + 1] = { label = rm.opts().fromEditor and "BACK TO EDITOR" or "QUIT TO MENU", activate = quitRace }
   ui.list("results", rows, x + 8 * s, y + h - 36 * s, w - 16 * s, 15 * s, 7 * s, s)

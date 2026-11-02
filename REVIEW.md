@@ -6,99 +6,73 @@ each roadmap item will have to change, and the rules worth keeping.
 Severity is my judgement. "Confirmed" means I ran it. "From the code" means I traced
 it by reading and didn't run it.
 
-Issues 1 and 2 and the cleanup list were fixed on the `cleanup` branch. The numbers
-below stay as they were, so references to them still hold.
+Issues 1 and 2 and the cleanup list were fixed on the `cleanup` branch. Issues 3 to 11
+were fixed on `online-deploy`, along with shared tracks, rematch and 3-4 players, and the
+abuse protection a public relay needs. The numbers stay as they were, so references to
+them still hold.
 
-## Online design limits
+## Fixed online issues
 
-All from the code. These matter most for rematch and ranked play.
+Each of these has a test. `ARCHITECTURE.md` section 16 describes how they work now.
 
-**3. Races don't start together.** Each client starts its countdown when its own
-`rm.start` returns, and nothing lines the two up. How far apart they land depends on
-the handshake:
+| Issue | Was | Now |
+| --- | --- | --- |
+| 3 | Clients started apart by up to a load time | Everyone counts down on the leader's clock. Within 30 ms on loopback with a 1234.5 s clock difference |
+| 4 | Both could see YOU WIN | Each client sends its own finish time on the shared clock, and nobody estimates another car's laps |
+| 5 | Version mismatches failed silently | The relay compares protocol numbers and refuses with a message, including clients from before this |
+| 6 | Tracks matched by name | Tracks match by a hash of their shape |
+| 7 | Late packets moved the rival backwards | Sync carries a sequence number and a round |
+| 8 | Keys reached the car behind the pause menu | The car coasts while paused online |
+| 9 | Any error read as the rival leaving | `event\|error` and `event\|closed` are separate, and the toast gives the real reason |
+| 10 | Gaps in connecting | No `pairing` state to get stuck in. `fail` always sends `leave`. Online doesn't touch saved settings. `joined` is gone |
+| 11 | The dashboard's Host check could be forged | It checks the connection itself, or a password |
 
-- If one side's `seen=1` arrives before the other's next 0.25 s resend, which is usual
-  on a quick link, that side loads straight away and sends its own `seen=1` only when
-  `rm.start` returns. The other client's lights then go out at least one load time
-  later (222 to 326 ms on this desktop with the JIT off, more on a phone).
-- At best both load together, and the gap is up to 0.25 s plus latency plus the
-  difference in load times.
+Other problems fixed along the way, none of them in the review:
 
-**4. Each player can see a different result.** Both clients decide laps and finishes
-locally, and the rival's progress comes from a smoothed copy of its position. Finish
-times aren't exchanged, and `race.time` starts at a different moment on each side, so
-both can see YOU WIN.
+- A car unknown to this version of the game crashed `menu.startOnline`, and `paint` and
+  `time` weren't checked. All of it came straight from another player.
+- A rival who quit mid-race left their car on the road as a wall.
+- The relay read packets into a 2048-byte buffer, so a longer one was cut and forwarded.
+- A driver who stopped sending kept their last velocity for 5 s.
+- FINISHED P2 read as a driver's name. It's now FINISHED 2ND.
+- Closing the game sent no `leave`, so the others waited for the relay's sweep.
+- A new leader had no copy of the track's text, so a `need` packet would have crashed it.
 
-**5. A version mismatch fails silently.** There's no protocol version. Adding `horn`
-made sync packets one field longer. An older client ignores the extra field, but a new
-client rejects the shorter packet. So between an old and a new client, the new one
-sees the rival sit on the grid while the old one sees a normal race. The link still
-looks healthy, because any packet refreshes `lastHeard`.
+## Online limits that remain
 
-**6. Tracks are matched by name only.** A saved track of the same name but a different
-shape races on two different roads, with no warning.
+The ONLINE screen warns players about the ones they can run into (`menu.ONLINE_NOTES`).
 
-**7. Sync has no sequence number.** A late packet can replace a newer one, moving the
-rival backwards briefly. It's cheap to fix.
+**Clients are still trusted.** Each one is the authority on its own car, laps and
+finish time, so a modified client can cheat. That's fine between friends with a room
+code, and it's why ranked play needs what's described below.
 
-**8. An online pause leaves the car driving.** The race keeps running, as intended,
-but keyboard and pad input still reach the car behind the menu, while touch input is
-reset. The up and down keys work the throttle and brake while also moving the menu
-focus.
+**No reconnecting.** A phone that goes to the background for more than 5 s is dropped
+by the relay. It can finish the race alone, but it can't get back in, and nor can
+anyone who loses signal.
 
-**9. Some errors read as the rival leaving.** Once racing, any `event|error` sets
-`peerGone`, so a dashboard close or a ban shows YOUR RIVAL LEFT THE RACE.
+**The clock assumes a symmetric link.** Half a ping is a guess at one way's delay. If
+one direction is much slower than the other, starts differ by half that difference.
+Nothing here has been measured over the real internet or a phone network: everything
+under Test results ran on loopback or a LAN.
 
-**10. Smaller gaps in connecting:**
+**Everyone goes through one relay.** Two players next to each other but far from the
+server still see each other late. Extrapolation covers at most 0.25 s, so collisions
+at high ping will look wrong.
 
-- `pairing` has no timeout, so a lost error packet leaves the player on "Driver
-  found" until CANCEL.
-- A joiner missing the host's track calls `network.fail`, which closes the socket
-  without sending `leave`. The host then races alone for about 5 s before the relay's
-  sweep reports it.
-- `menu.startOnline` overwrites `settings.track`, `laps` and `time` before checking
-  the track exists.
-- `handleEvent` handles a `joined` event the relay never sends.
+**A blocking load.** `rm.start` stops the loop, so a phone that takes over 5 s to load
+gets dropped by the relay. The A04 hasn't been measured since the world got heavier.
 
-**11. The dashboard's Host check isn't access control.** Bound to `:9090`, as it was
-on 2026-11-01, a browser on the LAN gets a 403. But anyone can send `Host: localhost`
-with curl and reach `/ban` and `/close`, since requests without an `Origin` pass.
-Keep it on `127.0.0.1`, as the README says.
+**A hostile track is bounded, not cheap.** The limits stop a hang, but a 20 km track
+still takes seconds to build on a phone. Only someone you've shared a room code with
+can send you one.
 
 ## What the roadmap will touch
 
-**Sharing tracks online.**
-
-- Don't send track files as Lua. `setfenv` stops a file reaching anything, but it
-  doesn't stop a loop that never ends, and LuaJIT will load precompiled bytecode, which
-  isn't safe to run from an untrusted source. Today those files are the player's own.
-  Once they come from a stranger they need a plain data format and a parser, with
-  limits on node count and values.
-- Packets stop at 2048 bytes on the relay, and a large track doesn't fit. ARDENNES is
-  about 15 kB as source. That needs chunks and acknowledgements, on a protocol that has
-  neither. The relay forwards opaque packets, so only clients change.
-- It also resolves issue 6.
-
-**Rematch.** Needs a fix for issue 3 first, or every rematch inherits the skew.
-`quitRace` disconnects and `rm.restart` is hidden online, so the connection has to
-outlive a race. The relay doesn't need changing, because a pair stays paired.
-
-**3-4 players.** A real rewrite of the pairing model.
-
-| Assumes two players | Where |
-| --- | --- |
-| `Client.Partner` is one pointer, and forwarding has one target | `server/main.go` |
-| `rooms` holds a host until the first join removes it | `server/main.go` |
-| Packets carry no sender id | `network_manager.lua` |
-| One `peerState`, `peerHello` and `session.peerCar` | `network_manager.lua` |
-| `self.cars[2]`, `peerSlot`, `Race:peerLeft` | `sim/race.lua` |
-| `seen` is one flag, so a three-way start needs a real ready check | `network_manager.lua` |
-
 **Ranked play and profiles.** The current design can't support them without a
-referee. Clients are authoritative over their own cars and results (issues 3 and 4),
-and the relay reads nothing it forwards. Trustworthy results need the server to at
-least agree a start time and collect finish times, plus authentication and abuse
-protection. That's a real server, not a change to the relay.
+referee. Clients are authoritative over their own cars and results, and the relay reads
+nothing it forwards. Trustworthy results need a server that checks them, plus accounts.
+That's a real server, not a change to the relay. The shared start and shared results
+are a start on what it would need.
 
 **Elimination and sprint races.** Elimination fits the current rules. Sprint needs
 open-ended tracks, and `Track` assumes a closed loop everywhere: `wrap`, lap distance,
@@ -112,18 +86,24 @@ These aren't enforced by anything except tests and review:
 - Sliding is the only way to earn nitro.
 - New cars go on the end of `garage`. New paints go on the end of `PAINTS`, which is
   part of the wire protocol.
+- Nothing that comes from another player runs as code or is trusted as a number.
 - Online races use ARCADE, because tiers change grip.
 - Default towards fun over realism, and keep realism behind SPORT and SIM.
-- Lengthening the sync packet stops new clients reading old ones (issue 5).
+- Changing any packet between clients needs a new `network.PROTOCOL`.
 - Pad changes are pad only. The keyboard stays as it is.
 
 ## Test results
 
-Results on the `cleanup` branch. The relay didn't change, so its row is from `c88f172`:
+Results on the `online-deploy` branch, 2026-11-02:
 
 | Run | Result |
 | --- | --- |
-| `love . --test` | 511 passed, 0 failed. Per-car and per-track tests expand the 199 `it` blocks |
-| `go vet`, `go test -race` | Clean, 33 passed |
-| `love . --test network` against a live relay | 9 passed, including the two tests that skip without one |
-| `make test-visual` | Passed, 83 checks, on GL and on GLES |
+| `love . --test` | 561 passed, 0 failed |
+| `go vet`, `go test -race` | Clean, 51 passed |
+| `love . --test network` against a live relay | 29 passed |
+| The same, through the production container | 28 passed, before the warning's test was added: `alpine:3.20`, `nobody`, read-only root, no capabilities |
+| `make test-visual` | Passed, 84 checks, on GL and on GLES |
+| `make test-online-visual` | Passed, 46 checks, on GL and on GLES, with the screens checked by eye |
+
+No real phone, no second machine and no real network were part of these runs, and
+the relay hasn't been deployed.

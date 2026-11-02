@@ -57,6 +57,8 @@ local function drawTower(race, s)
     local gap
     if car == leader then
       gap = "LEAD"
+    elseif car.retired then
+      gap = "OUT"
     elseif car.finished and car.finishTime and leader.finishTime then
       gap = string.format("+%.1f", car.finishTime - leader.finishTime)
     else
@@ -192,13 +194,14 @@ local function drawStartLights(race, sw, sh, s)
   end
   if race.phase == "countdown" then
     ui.panel((sw - 200 * s) / 2, y + 15 * s, 200 * s, 12 * s, 0.8)
-    ui.text("HOLD THE REVS ON THE WHITE BAR", 0, y + 18 * s, 6 * s, colors.paint, "center", sw)
+    ui.text(race.holding and "WAITING FOR THE OTHER DRIVERS" or "HOLD THE REVS ON THE WHITE BAR",
+      0, y + 18 * s, 6 * s, colors.paint, "center", sw)
   end
 end
 
 function hud.lightsOn(race)
   if race.phase ~= "countdown" then return 0 end
-  return math.min(5, math.floor(race.timer / (race.startDelay / 6)))
+  return math.max(0, math.min(5, math.floor(race.timer / (race.startDelay / 6))))
 end
 
 local function drawPaceNote(ctx, sw, s)
@@ -245,9 +248,13 @@ local function drawToast(ctx, sw, sh, s)
   ui.text(t.text, 0, y, size, { c[1], c[2], c[3], alpha }, "center", sw)
 end
 
-function hud.finishHeading(place)
+local ORDINALS = { "1ST", "2ND", "3RD", "4TH", "5TH", "6TH" }
+
+-- "P2" is a seat online, so a place reads as a place.
+function hud.finishHeading(place, timedOut)
+  if timedOut then return "DID NOT FINISH", colors.kerb end
   if place == 1 then return "YOU WIN", colors.marshal end
-  return "FINISHED P" .. place, colors.paint
+  return "FINISHED " .. (ORDINALS[place] or place), colors.paint
 end
 
 -- Two rows of chequers across the width, drifting along like a waved flag.
@@ -286,7 +293,7 @@ local function drawFinishBanner(race, clock, sw, sh, s)
 
   local alpha = math.max(0, math.min(1, (clock - BANNER_IN * 0.5) / BANNER_IN)) * open
   local car = race.player
-  local heading, c = hud.finishHeading(car.place)
+  local heading, c = hud.finishHeading(car.place, car.timedOut)
   ui.text(heading, 0, y + 6 * s, 20 * s, { c[1], c[2], c[3], alpha }, "center", sw)
   local m = colors.muted
   ui.text(hud.formatTime(car.finishTime), 0, y + 30 * s, 8 * s, { m[1], m[2], m[3], alpha }, "center", sw)

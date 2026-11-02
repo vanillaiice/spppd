@@ -32,6 +32,16 @@ local WRONG_WAY_TIME = 1.2
 local SHORTCUT_JUMP = 45 * M
 local FINISH_GRACE = 25
 
+-- Seats can have gaps, because someone left the lobby. The grid doesn't.
+local function gridPlace(online, slot)
+  local place = 1
+  if online.slot < slot then place = place + 1 end
+  for _, driver in ipairs(online.peers) do
+    if driver.slot < slot then place = place + 1 end
+  end
+  return place
+end
+
 function Race.new(opts)
   local self = setmetatable({}, Race)
   self.mode = opts.mode or "race"    -- race | trial | freestyle
@@ -40,7 +50,7 @@ function Race.new(opts)
   self.phase = "countdown"
   self.timer = 0
   self.time = 0
-  self.startDelay = opts.startDelay or 3.6
+  self.startDelay = opts.startDelay or config.START_DELAY
   self.seed = opts.seed or os.time()
   self.rng = love.math.newRandomGenerator(self.seed)
   self.cars = {}
@@ -50,11 +60,15 @@ function Race.new(opts)
 
   local spec = opts.spec or garage[1]
   local online = opts.online
+  self.online = online ~= nil
+  -- Seconds to lights out on the clock everyone shares, or nil until it's called.
+  self.startIn = online and online.startIn
+  self.gone = {}
   -- Tiers change how much grip a car has, so an online race has to share one.
   local handling = online and dynamics.DEFAULT_ASSIST or opts.assist or dynamics.DEFAULT_ASSIST
   self.handling = handling
   local slot = 1
-  if self.mode == "race" and self.track then slot = online and online.slot or (opts.opponents or 0) + 1 end
+  if self.mode == "race" and self.track then slot = online and gridPlace(online, online.slot) or (opts.opponents or 0) + 1 end
   local x, y, angle, index = 0, 0, -math.pi / 2, nil
   if self.track then x, y, angle, index = self.track:gridSlot(slot) end
 
@@ -69,13 +83,16 @@ function Race.new(opts)
   self.cars[1] = self.player
 
   if online then
-    local peerSlot = online.slot == 1 and 2 or 1
-    local px, py, pa, pi = self.track:gridSlot(peerSlot)
-    local peer = Car.new(online.peerSpec, px, py, pa, { name = "RIVAL", color = online.peerColor })
-    peer.remote = true
-    peer.driver = RemoteDriver.new(online.state)
-    peer.trackIndex = pi
-    self.cars[2] = peer
+    self.player.slot = online.slot
+    for _, driver in ipairs(online.peers) do
+      local px, py, pa, pi = self.track:gridSlot(gridPlace(online, driver.slot))
+      local peer = Car.new(driver.spec, px, py, pa, { name = "P" .. driver.slot, color = driver.color })
+      peer.remote = true
+      peer.slot = driver.slot
+      peer.driver = RemoteDriver.new(driver.state)
+      peer.trackIndex = pi
+      self.cars[#self.cars + 1] = peer
+    end
   elseif self.mode == "race" and self.track then
     self:spawnOpponents(opts, slot)
   end
@@ -132,7 +149,9 @@ end
 
 function Race:destroy()
   for _, car in ipairs(self.cars) do car:destroy() end
+  for _, car in ipairs(self.gone) do car:destroy() end
   self.cars = {}
+  self.gone = {}
   self.order = {}
   world.destroy()
 end
@@ -143,8 +162,13 @@ end
 
 -- Where the car sits in the full race distance, for standings.
 local function rank(a, b)
-  if a.finished and b.finished then return a.finishTime < b.finishTime end
+  if a.finished and b.finished then
+    -- Every screen has to agree, even on a dead heat.
+    if a.finishTime ~= b.finishTime then return a.finishTime < b.finishTime end
+    return (a.slot or 0) < (b.slot or 0)
+  end
   if a.finished ~= b.finished then return a.finished end
+  if (a.retired or false) ~= (b.retired or false) then return b.retired or false end
   return a.distance > b.distance
 end
 
@@ -174,6 +198,8 @@ function Race:updateProgress(car, dt)
   local index, s, lateral, off = track:locate(x, y, car.trackIndex)
   local previous = car.trackS
   car.trackIndex, car.trackS, car.lateral = index, s, lateral
+  -- Their own game counts their laps, and sends the answer.
+  if car.remote then return end
 
   local delta = s - previous
   local length = track.length
@@ -239,22 +265,40 @@ local function coolDown(self, car)
 end
 
 function Race:onPlayerFinished()
-  self.finishGrace = FINISH_GRACE
+  if not self.online then self.finishGrace = FINISH_GRACE end
   coolDown(self, self.player)
 end
 
--- The other player has gone. Someone who already took the flag only went home,
--- so their car drives on rather than freezing on the road just past the line.
--- Returns true if they quit a race they hadn't finished.
-function Race:peerLeft()
-  local peer = self.cars[2]
-  if peer.finished then
-    peer.remote = false
-    coolDown(self, peer)
+-- Another driver has gone. Someone who already took the flag only went home, so
+-- their car drives on rather than freezing on the road just past the line.
+-- Someone who quit takes their car with them, or it would sit on the road as a
+-- wall. They stay in the standings. Returns true if they quit mid-race.
+function Race:peerLeft(car)
+  if car.finished then
+    car.remote = false
+    coolDown(self, car)
     return false
   end
-  peer.retired = true
+  car.retired = true
+  car.body:setActive(false)
+  for i, other in ipairs(self.cars) do
+    if other == car then
+      table.remove(self.cars, i)
+      break
+    end
+  end
+  self.gone[#self.gone + 1] = car
   return true
+end
+
+-- Everyone agrees when the race ends: 25 seconds after the first car home, by
+-- the clock they share. Whoever isn't over the line by then didn't finish.
+local function firstFinish(self)
+  local first
+  for _, car in ipairs(self.order) do
+    if car.finished and (not first or car.finishTime < first) then first = car.finishTime end
+  end
+  return first
 end
 
 local function allFinished(self)
@@ -264,9 +308,19 @@ local function allFinished(self)
   return true
 end
 
+Race.FINISH_GRACE = FINISH_GRACE
+
 function Race:step(dt)
   if self.phase == "countdown" then
-    self.timer = self.timer + dt
+    if self.startIn then
+      -- The lights follow the shared clock. A game that loaded late joins in
+      -- part way through them, and nobody's lights start until everyone's ready.
+      local left = self.startIn()
+      self.holding = left == nil
+      self.timer = left and self.startDelay - left or 0
+    else
+      self.timer = self.timer + dt
+    end
     for _, car in ipairs(self.cars) do
       car.input.throttle, car.input.steer = 0, 0
       car.input.handbrake = false
@@ -309,6 +363,28 @@ function Race:step(dt)
       self.phase = "finished"
     end
   end
+
+  if self.online and self.phase == "racing" then
+    local first = firstFinish(self)
+    self.flagFell = first
+    if first and (self.time >= first + FINISH_GRACE or allFinished(self)) then
+      self.phase = "finished"
+      local player = self.player
+      if not player.finished then
+        player.timedOut = true
+        coolDown(self, player)
+      end
+    end
+  end
+end
+
+-- Once a frame in an online race. A slow frame slows the simulation down, and a
+-- phone mustn't get a better time by being slow, so the race clock keeps up with
+-- the real one. It never runs back, so lap times stay whole.
+function Race:syncClock()
+  if not self.startIn or self.phase == "countdown" then return end
+  local left = self.startIn()
+  if left and -left > self.time then self.time = -left end
 end
 
 return Race

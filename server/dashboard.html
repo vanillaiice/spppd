@@ -38,6 +38,7 @@ th { font-size: 12px; font-weight: 500; color: var(--muted); }
 tr:last-child td { border-bottom: 0; }
 .mono { font-family: ui-monospace, monospace; font-size: 13px; font-variant-numeric: tabular-nums; }
 .actions { display: flex; gap: 6px; justify-content: flex-end; }
+.driver { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 2px 0; }
 .empty { margin: 0; padding: 12px 14px; color: var(--muted); background: var(--panel); border: 1px solid var(--line); border-radius: 6px; }
 form { margin: 0; }
 button, input {
@@ -90,35 +91,19 @@ button:hover { border-color: var(--accent); color: var(--accent); }
   <div class="stat"><b>{{.Rate.PacketsIn}}</b><span>packets/s in, {{.Rate.PacketsOut}} out</span></div>
   <div class="stat"><b>{{bytes .Rate.BytesIn}}</b><span>per second in, {{bytes .Rate.BytesOut}} out</span></div>
   <div class="stat"><b>{{age .Uptime}}</b><span>up, {{bytes .Total.BytesIn}} received</span></div>
+  <div class="stat"><b>{{.Dropped}}</b><span>packets dropped by the rate limit</span></div>
 </div>
 
 <h2>Waiting rooms</h2>
 {{if .Rooms}}<div class="table"><table>
-  <tr><th>Code</th><th>Host</th><th>Waiting</th><th></th></tr>
-  {{range .Rooms}}<tr>
-    <td class="mono">{{.Code}}</td>
-    <td class="mono">{{.Host}}</td>
-    <td>{{age .Age}}</td>
-    <td><div class="actions">
-      <form hx-post="/close" hx-target="#live" hx-swap="innerHTML"><input type="hidden" name="addr" value="{{.Host}}"><button>Close</button></form>
-      <form hx-post="/ban" hx-target="#live" hx-swap="innerHTML" hx-confirm="Ban {{.HostIP}}?"><input type="hidden" name="ip" value="{{.HostIP}}"><button>Ban</button></form>
-    </div></td>
-  </tr>{{end}}
+  <tr><th>Code</th><th>Drivers</th><th>Open for</th><th></th></tr>
+  {{range .Rooms}}{{template "room" .}}{{end}}
 </table></div>{{else}}<p class="empty">No rooms waiting.</p>{{end}}
 
 <h2>Races</h2>
 {{if .Races}}<div class="table"><table>
   <tr><th>Code</th><th>Drivers</th><th>Running</th><th></th></tr>
-  {{range .Races}}<tr>
-    <td class="mono">{{.Code}}</td>
-    <td class="mono">{{.First}}<br>{{.Second}}</td>
-    <td>{{age .Age}}</td>
-    <td><div class="actions">
-      <form hx-post="/close" hx-target="#live" hx-swap="innerHTML"><input type="hidden" name="addr" value="{{.First}}"><button>Close</button></form>
-      <form hx-post="/ban" hx-target="#live" hx-swap="innerHTML" hx-confirm="Ban {{.FirstIP}}?"><input type="hidden" name="ip" value="{{.FirstIP}}"><button>Ban first</button></form>
-      <form hx-post="/ban" hx-target="#live" hx-swap="innerHTML" hx-confirm="Ban {{.SecondIP}}?"><input type="hidden" name="ip" value="{{.SecondIP}}"><button>Ban second</button></form>
-    </div></td>
-  </tr>{{end}}
+  {{range .Races}}{{template "room" .}}{{end}}
 </table></div>{{else}}<p class="empty">No races running.</p>{{end}}
 
 <h2>Banned IPs</h2>
@@ -136,3 +121,14 @@ button:hover { border-color: var(--accent); color: var(--accent); }
   {{range .Events}}<div><time>{{clock .At}}</time>{{.Text}}</div>{{end}}
 </div>{{else}}<p class="empty">Nothing has happened yet.</p>{{end}}
 {{end}}
+
+{{define "room"}}<tr>
+  <td class="mono">{{.Code}}</td>
+  <td class="mono">{{range .Drivers}}<div class="driver">P{{.Slot}} {{.Addr}}
+    <form hx-post="/ban" hx-target="#live" hx-swap="innerHTML" hx-confirm="Ban {{.IP}}?"><input type="hidden" name="ip" value="{{.IP}}"><button>Ban</button></form>
+  </div>{{end}}</td>
+  <td>{{age .Age}}</td>
+  <td><div class="actions">
+    <form hx-post="/close" hx-target="#live" hx-swap="innerHTML"><input type="hidden" name="addr" value="{{.First}}"><button>Close</button></form>
+  </div></td>
+</tr>{{end}}

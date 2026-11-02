@@ -413,9 +413,11 @@ local function steps()
   return list
 end
 
-function flow.start()
+flow.press, flow.expect = press, expect
+
+-- `pace` runs frames at real speed, for anything talking to a real server.
+function flow.run(list, pace)
   local keyboard = love.keyboard.isDown
-  local list = steps()
   local index, waited = 1, 0
   local update = love.update
   local isDown = keyboard
@@ -435,7 +437,12 @@ function flow.start()
       if result ~= "again" then index = index + 1 end
     end
     update(1 / 60)
+    if pace then love.timer.sleep(1 / 60) end
   end
+end
+
+function flow.start()
+  flow.run(steps())
 end
 
 return flow

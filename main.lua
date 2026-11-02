@@ -36,8 +36,8 @@ local audio = require("src/audio")
 local radio = require("src/radio")
 local post = require("src/render/post")
 local textures = require("src/render/textures")
-local network = require("src/network_manager")
 local catalog = require("src/tracks/catalog")
+local network = require("src/network_manager")
 
 -- Slow phones take seconds over this, so it runs a step at a time between
 -- frames, with the splash on screen.
@@ -81,6 +81,10 @@ function love.load(args)
           require("tests/flow").start()
           return
         end
+        if b == "online" then
+          require("tests/flow_online").start()
+          return
+        end
         if b == "listen" then
           require("tests/sound/listen").start()
           return
@@ -90,6 +94,11 @@ function love.load(args)
       return
     end
   end
+end
+
+-- Says goodbye, so nobody waits for the relay to notice.
+function love.quit()
+  network.disconnect()
 end
 
 function love.update(dt)
@@ -107,7 +116,7 @@ function love.update(dt)
       ui.nav.back, ui.nav.ok = nil, nil
     end
     rm.update(dt)
-    network.update(dt)
+    menu.updateOnline(dt)
   elseif state.screen == "editor" then
     editor.update(dt)
   end

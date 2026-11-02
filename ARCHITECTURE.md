@@ -1,12 +1,11 @@
 # SPPPD Architecture
 
-This describes the code as it stands at commit `c88f172` (version 2.1.0, 2026-11-01),
-plus the fixes on the `cleanup` branch. It explains how the game works and nothing
-else. `REVIEW.md` holds the review and recommendations, and `ROADMAP.md` holds what's
+This describes the code as it stands at version 2.2.0 (2026-11-02). It explains how
+the game works and nothing else. `REVIEW.md` holds the review and recommendations, and `ROADMAP.md` holds what's
 agreed but not built.
 
-Numbers in the tables were measured from the code on that commit unless a section
-says otherwise.
+Numbers in the tables were measured from the code at `c88f172` (version 2.1.0) unless
+a section says otherwise.
 
 ## Contents
 
@@ -95,8 +94,10 @@ each thing at a time:
 ```
 main.lua            LÖVE callbacks; chooses the game, --test, --perf or --visual
 conf.lua            Window and module setup; turns graphics off for --test
-Makefile            run, test*, server, zip, apk, apk-perf, win64, win32
+Makefile            run, test*, server, deploy-relay, zip, apk, apk-perf, win64, win32
 android/apk.sh      Builds and signs the test APK
+config/deploy.yml   The relay as a Kamal accessory
+bin/relay-deploy    Builds the relay and deploys it
 assets/fonts/       Press Start 2P (SIL OFL)
 
 src/
@@ -143,10 +144,11 @@ src/
   editor.lua              Track editor screen
   editor_model.lua        Track editing with no drawing
   tracks/manifest.lua     The ten built-in track definitions
-  tracks/catalog.lua      Finds built-in and saved tracks
+  tracks/catalog.lua      Finds built-in and saved tracks, by name or by shape
+  tracks/wire.lua         Tracks as checked plain text, for sending to other players
 
 server/
-  main.go                 Relay: rooms, forwarding, sweeps, bans
+  main.go                 Relay: rooms, forwarding, limits, sweeps, bans
   dashboard.go, .html     Admin page
   htmx.min.js             htmx 2.0.4 (0BSD), embedded in the binary
   *_test.go               33 tests
@@ -155,6 +157,7 @@ tests/
   run.lua, harness.lua    Headless runner
   test_*.lua              Nine suites
   flow.lua                Plays the real game through real input handlers
+  flow_online.lua         The same online, against bots and a real relay
   visual.lua              Scripted screenshots and audio recording
   perf.lua                Frame timing
 ```
@@ -180,6 +183,7 @@ keeps them, turns vsync off and uses the same test identity.
 | `love . --test [filter]` | `tests/run.lua`, then quit with its result. Main returns before loading any game module |
 | `love . --perf` | `tests/perf.lua` after a blocking load |
 | `love . --visual flow` | `tests/flow.lua` |
+| `love . --visual online` | `tests/flow_online.lua`, with `SPPPD_RELAY` set |
 | `love . --visual <scene> [out] [frames]` | One scene from `tests/visual.lua` |
 
 ### Loading behind the splash
@@ -219,7 +223,7 @@ if input.consume("pause") and not rm.isFinished() then
   ui.nav.back, ui.nav.ok = nil, nil   -- Esc and Start also work the menu
 end
 rm.update(dt)
-network.update(dt)
+menu.updateOnline(dt)   -- network, and a rematch starts from here
 ```
 
 `love.draw` draws the current screen, then the pause or results overlay if one is up.
@@ -743,7 +747,7 @@ A player who takes the flag gets an AI driver with `skill = 0.7` for the cool-do
 | `race` | Yes | 1 to 20 | Player last, up to 5 AI | At the flag |
 | `trial` | Yes | 9999 | Alone, slot 1 | Never |
 | `freestyle` | None, a concrete apron | 9999 | Alone | Never |
-| Online | Yes | Host's choice | Host slot 1, joiner slot 2 | At the flag |
+| Online | Yes | Host's choice | Two to four drivers, in seat order | 25 s after the first car home |
 
 Difficulty sets AI skill:
 
@@ -777,11 +781,16 @@ the car two samples ahead on the racing line, stationary, and ghosted for 2.5 s.
 
 ### Standings and finishing
 
-`rank` sorts finished cars by finish time, then everyone else by `distance`.
+`rank` sorts finished cars by finish time, then everyone else by `distance`, with
+anyone who quit an online race last.
 
 When the player finishes, `finishGrace` starts at 25 s and the player's car goes to AI
 control. The phase becomes `finished` when that runs out or every car has finished or
 retired. Cars still running then show DID NOT FINISH.
+
+An online race ends differently, so that every screen agrees: 25 s after the first
+finish time anyone sends, on the shared clock, whether or not that was this player. A
+player still racing then gets `timedOut`, the DID NOT FINISH heading and the AI.
 
 The finish is shown in three stages, driven by `session.finishClock`:
 
@@ -827,10 +836,13 @@ hasn't been measured.
 
 ### `rm.update(dt)`
 
-1. Return if paused, unless online. An online race can't stop for one player.
+1. Return if paused, unless online. An online race can't stop for one player, so it
+   runs on behind the menu with the car coasting: `playerDriver` ignores the keys,
+   which are working the menu.
 2. `handleControls`: horn, lights, camera, reset, next song.
 3. Fixed-step loop: `race:step`, impacts, start-light beeps, launch toast.
-4. Online: send the car at most every 1/20 s, and react to the rival leaving.
+4. Online: pull the race clock up to the shared one, send the car at most every
+   1/20 s, and react to drivers leaving or the connection going.
 5. `updateFinish`, the freestyle drift counter, ghost recording, pace note, camera,
    per-car effects, particles.
 6. Radio announcement and toast timer.
@@ -1161,7 +1173,7 @@ Most screens show a panel down the left with a live demo race behind it.
 | `main` | RACE, TIME TRIAL, FREESTYLE, ONLINE, TRACK EDITOR (not on phones), SETTINGS, CONTROLS, CREDITS, QUIT |
 | `setup` | Track, car, paint, laps, opponents, difficulty, time, handling, radio rows in freestyle, START |
 | `settings` | Volume, camera, zoom, gearbox, units, effects, toggles, touch and fullscreen on desktop |
-| `online` | Server, car, paint, HOST A ROOM, room code, JOIN A ROOM. Shrinks to CANCEL once connecting |
+| `online` | Server, car, paint, HOST A ROOM, room code, JOIN A ROOM, with `menu.ONLINE_NOTES` beside them. Once in a room it shrinks to the code, START RACE for the host and CANCEL, with the race and its drivers beside it |
 | `host` | Track, laps, time, START ROOM |
 
 ### HUD
@@ -1215,100 +1227,214 @@ tracks are Lua files loaded with `setfenv(chunk, {})`, so they can't reach anyth
 
 ## 16. Online play
 
-Online is two players through a dumb UDP relay. The relay pairs them and then forwards
-packets. It understands nothing about the race.
+Online is two to four players through a dumb UDP relay. The relay seats them in a room
+and then forwards packets. It understands nothing about the race.
 
 ### Trust and authority
 
 Each client is the only authority over its own car and simulates nothing for the
-other:
+others:
 
-- It sends its pose at 20 Hz through the relay.
-- The peer's car (`car.remote = true`) has no tyre model running and is positioned by
-  `RemoteDriver`.
-- Each client runs its own race rules, on its own clock, with its own view of the
-  other car.
+- It sends its pose, progress and finish time at 20 Hz through the relay.
+- Another driver's car (`car.remote = true`) has no tyre model running and is positioned
+  by `RemoteDriver`.
+- Each client counts its own laps. Nobody works out anyone else's.
 
-There's no shared simulation and no referee.
+There's no shared simulation and no referee. A client could lie about its finish time,
+which is fine between friends and is why ranked play needs more (see `REVIEW.md`).
+
+`menu.ONLINE_NOTES` tells players this on the ONLINE screen, along with the other limits
+they can run into: no way back after 5 s away, late cars on a slow connection, and that
+the server sees their IP address. Other drivers don't, because everything goes through
+the relay. Keep those notes true when any of this changes. The pause menu's title says
+RACE STILL RUNNING online, since nothing stops.
+
+### Seats and the leader
+
+The relay gives each client a seat, 1 to 4. Seat 1 is the host. The **leader** is
+whoever is in the lowest seat, and it's the one with a job to do: it publishes the race,
+hands out the track, answers clock pings and calls each start. If the host leaves a
+race, the next seat becomes the leader and everything carries on, because everyone
+already holds what's needed to race again. A lobby is different: the race is the host's
+to set, so the relay closes the room if the host leaves before the first start.
+
+Grid order is seat order with the gaps closed. Other drivers show as P1 to P4.
+
+### Nothing waits for an answer
+
+There are no acknowledgements. Every client repeats its state four times a second, and
+the relay repeats each room's state once a second, so a lost packet costs a moment
+rather than a retry and there's only one path through the code. `make test-online` runs
+a track transfer with 15% of packets dropped in each direction.
 
 ### Packets
 
-All packets are `|`-separated text, at most 2048 bytes.
+All packets are `|`-separated text, at most 2048 bytes. The relay stamps whatever it
+forwards with the sender's seat, as `2|sync|...`, so a client can't pose as another.
 
 | Packet | Direction | Purpose |
 | --- | --- | --- |
-| `event\|host\|CODE` | Client to relay | Create a room. Repeated every 0.25 s, which also keeps a waiting room alive |
-| `event\|join\|CODE` | Client to relay | Join a room. Repeated the same way |
+| `event\|host\|proto\|CODE` | Client to relay | Create a room. Repeated until answered |
+| `event\|join\|proto\|CODE` | Client to relay | Join a room. Repeated until answered |
+| `event\|lock\|` | Client to relay | The race has started, so take nobody new |
 | `event\|leave\|` | Client to relay | Leaving |
-| `event\|hosting\|CODE` | Relay to host | Room exists |
-| `event\|start_race\|host` or `join` | Relay to client | Paired |
-| `event\|error\|reason` | Relay to client | Refused, or the partner has gone |
-| `event\|hello\|car\|paint\|track\|laps\|time\|seen` | Peer to peer | Race setup. Sent every 0.25 s |
-| `sync\|x\|y\|a\|vx\|vy\|steer\|rpm\|throttle\|brake\|gear\|horn` | Peer to peer | Car state, about 66 bytes, 20 Hz |
+| `event\|room\|seat\|CODE\|seats\|locked` | Relay to client | Your seat and who's here. On any change, and every second |
+| `event\|error\|reason` | Relay to client | Refused entry |
+| `event\|closed\|reason` | Relay to client | Removed: a closed room, a ban, a restart |
+| `hello\|car\|paint\|have\|ready\|vote` | Everyone | Who I am, whether I hold the track, the round I'm ready for and the round I've asked for |
+| `setup\|round\|hash\|chunks\|laps\|time\|startAt\|title` | Leader | The race, and when it starts |
+| `ping\|t`, `pong\|seat\|t\|leaderTime` | Clients and leader | Finding the leader's clock |
+| `need\|hash\|1,2,3`, `chunk\|hash\|n\|text` | Clients and leader | Fetching a track |
+| `sync\|round\|seq\|x\|y\|a\|vx\|vy\|steer\|rpm\|throttle\|brake\|gear\|flags\|slide\|distance\|finish` | Everyone | Car state, about 100 bytes, 20 Hz |
 
 `paint` is an index into `PAINTS` in `menu.lua`, so that list's order is part of the
-protocol. There's no protocol version.
+protocol. `flags` holds the horn, reverse, nitro and the two beams.
+
+### Versions
+
+`network.PROTOCOL` goes in `host` and `join`. The relay doesn't interpret it, so it
+doesn't need updating when the game's protocol changes. It keeps the host's number with
+the room and refuses a joiner with a different one, with a message saying so. A client
+from before protocol 2 sends no number and is told to update. **Change `PROTOCOL` when
+any packet between clients changes.**
 
 ### Connecting
 
 ```
  Host                       Relay                      Joiner
-  │  event|host|ABC234        │                           │
+  │  event|host|2|ABC234      │                           │
   │──────────────────────────▶│                           │
-  │  event|hosting|ABC234     │                           │
-  │◀──────────────────────────│                           │  status: waiting
-  │                           │     event|join|ABC234     │
+  │  event|room|1|ABC234|1|0  │                           │
+  │◀──────────────────────────│                           │  status: lobby
+  │                           │     event|join|2|ABC234   │
   │                           │◀──────────────────────────│
-  │  event|start_race|host    │    event|start_race|join  │
-  │◀──────────────────────────│──────────────────────────▶│  status: pairing
+  │  event|room|1|...|1,2|0   │    event|room|2|...|1,2|0 │
+  │◀──────────────────────────│──────────────────────────▶│  status: lobby
   │                           │                           │
-  │  hello, seen=0  ──────────┼─────────────────────────▶ │  learns the host's setup
-  │  ◀────────────────────────┼──────────  hello, seen=1  │
-  │  ready: rm.start blocks   │                           │
-  │                           │                           │
-  │  hello, seen=1  ──────────┼─────────────────────────▶ │  ready: rm.start blocks
+  │  setup, hello  ───────────┼─────────────────────────▶ │  has it, or fetches it
+  │  ◀────────────────────────┼─────────  hello, have=1   │
+  │  START RACE               │                           │
+  │  event|lock|, round=1  ───┼─────────────────────────▶ │  status: loading
+  │  rm.start blocks          │                           │  rm.start blocks
+  │  ◀────────────────────────┼────────  hello, ready=1   │
+  │  setup, startAt  ─────────┼─────────────────────────▶ │  lights on the shared clock
   │  sync 20 Hz  ◀────────────┼─────────────▶  sync 20 Hz │  status: racing
 ```
-
-`seen` means "I've heard your hello", which is how both sides know it's safe to start.
-After starting, a client keeps resending hello until the first `sync` arrives. The
-host's track, laps and time win, and each side brings its own car and paint. Both must
-have a track of that name.
 
 Client status moves like this:
 
 ```
- idle ─connect─▶ connecting ─hosting─▶ waiting ─start_race─▶ pairing ─seen─▶ racing
-                     │                                          │
-                     └── 6 s silent, or event|error ─▶ error ◀──┘
+ idle ─connect─▶ connecting ─room─▶ lobby ─round starts─▶ loading ─built─▶ racing
+                     │                │                      ▲                │
+                     └─ 6 s silent, refused, room closed     └──── rematch ───┘
+                                      ▼
+                                    error
 ```
+
+During a race the connection going doesn't stop anything. `network.lost` holds why, the
+others are marked as gone, and the player can finish alone.
+
+### Starting together
+
+Everyone counts down on the leader's clock. Each client pings the leader and keeps the
+last eight answers: `offset = leaderTime + rtt / 2 - now`. It uses the one with the
+quickest ping, because that's the one least held up on the way. Clients need three
+answers before they count as ready.
+
+The grid holds with the lights dark, saying WAITING FOR THE OTHER DRIVERS, until every
+client reports the round built. The leader then sets `startAt` to 1 s plus the lights
+from now, and each client converts that to its own clock once and keeps it, so a late
+packet costs nothing. `Race` takes `startIn`, the seconds left, and sets its timer from
+it each step, so a client that loaded late joins part way through the lights instead of
+starting late. The leader gives up on a client after 20 s.
+
+`network.startIn()` keeps counting below zero once the race is on, which makes it the
+race clock too. `Race:syncClock` pulls `race.time` up to it once a frame. A phone below
+15 fps runs its simulation slowly, and without this it would also get a flattering
+time. It never runs back, so lap times stay whole. Measured through a real relay with
+one client's clock 1234.5 s out, the two starts agreed to within 30 ms on loopback. On
+a real link the error is half the difference between the two directions' delay.
+
+### Results
+
+Every client sends its own `distance` and `finish` in each sync, so these need no
+special delivery. `RemoteDriver` copies them onto the car, and `updateProgress` stops
+early for a remote car, so nothing estimates another car's laps from a smoothed
+position. Finish times are all on the shared clock, so sorting them gives the same order
+on every screen, down to seat number on a dead heat.
+
+The banner at the line can say YOU WIN for the fraction of a second before a closer
+rival's time arrives. The results panel, 3 s later, is right.
 
 ### Remote cars
 
 `RemoteDriver:update` runs every fixed step:
 
-1. Take the latest state and its age in seconds, capped at 0.25.
+1. Take the latest state and its age in seconds. Past 0.25 s the driver has stopped
+   sending, so treat their speed as zero.
 2. Extrapolate: `target = position + velocity × age`.
 3. Move the body a fraction of the way there, `1 - exp(-dt × 12)`, or all of the way
    if it's over 25 m out.
-4. Copy steering, rpm, throttle, brake, gear and horn into the model.
+4. Copy steering, rpm, pedals, gear, reverse, nitro, tyre slide, horn and headlights
+   into the car, then progress and finish.
 
 The remote car is still a real Box2D body, so the local car bounces off it. Its
 velocity and pose are overwritten each step, so collisions only push the local car.
-`slipstream.wake` reads its velocity, so each player can draw a tow from the other.
+`slipstream.wake` reads its velocity, so each player can draw a tow from the others.
 
-Not sent, so these don't show on the rival: nitro, reverse, slip (no smoke on tarmac)
-and headlight choice.
+`seq` numbers each sync, so a late packet can't move a car backwards. `round` numbers
+each race, so a straggler from the last one can't appear in a rematch.
+
+### Sharing tracks
+
+Tracks are matched by shape. `catalog.fingerprint` hashes the text form of a track, so
+two tracks are the same exactly when their hashes match, whatever they're called, and a
+saved track of the same name but a different shape is simply a different track.
+
+A joiner who has the hash uses their own copy. Otherwise they fetch it: every 0.25 s
+they name up to eight chunks they're missing, and the leader sends those, 1000 bytes
+each, which stays under a typical path's MTU. The whole text is checked against the
+hash. Anyone else who needs the same chunks takes them as they pass.
+
+Track files are Lua, which is fine for a player's own but can't be run from a stranger:
+`setfenv` doesn't stop a loop that never ends, and LuaJIT loads bytecode. So `wire.lua`
+sends plain text, and `wire.decode` refuses anything outside its limits before it can
+reach `Track.new`:
+
+| Limit | Value |
+| --- | --- |
+| Text | 64 kB |
+| Nodes | 4 to 1500 |
+| Points in all, and in one Bézier curve | 3000, and 64, because a curve's cost grows with the square |
+| Coordinates | Within ±100000 |
+| Widths, scale, runoff | 1 to 400, 1 to 8, 2 to 30 |
+| Lap length | 20 km |
+| Title | 24 printable ASCII characters. The font has no more, and invalid UTF-8 raises an error |
+
+`Track.new` still runs inside `pcall`. A shared track stays in memory and isn't saved,
+and an online race doesn't touch the player's saved track, laps or time.
+
+The same care applies to everything from another player: `unpackState` refuses
+infinities, NaN and absurd positions, and clamps pedals and gears. An unknown car falls
+back to the first one.
+
+### Rematch
+
+REMATCH on the results sets `vote` to the next round. When everyone still in the room
+has asked, the leader starts it, using the same room, track and cars. Each client tears
+down the old race and builds the new one, and the start works as it did the first time.
+It needs at least one other driver left.
 
 ### Leaving
 
-- `event|leave|` makes the relay tell the partner `Opponent disconnected`.
-- If that's lost, 6 s without a packet sets `network.peerGone` on the client, and the
-  relay's own 5 s sweep does the same job from its side.
-- A rival who'd already finished only went home, so their car goes to AI and no toast
+- `event|leave|`, or 5 s of silence at the relay, makes it send everyone the new room.
+- A driver who'd already finished only went home, so their car goes to AI and no toast
   shows.
-- A rival who quit mid-race is marked `retired`, and the player sees YOUR RIVAL LEFT
-  THE RACE.
+- A driver who quit mid-race takes their car off the road, or it would sit there as a
+  wall. They stay in the standings as LEFT THE RACE, behind everyone else.
+- A closed room or a restart arrives as `event|closed|` with its reason, and the toast
+  says that, not that someone left.
+- 6 s of hearing nothing at all means the client has lost the relay.
 
 ### The relay
 
@@ -1317,37 +1443,60 @@ and headlight choice.
 | Field | Meaning |
 | --- | --- |
 | `clients` | Everyone, keyed by `ip:port` |
-| `rooms` | Waiting hosts only, keyed by room code. A code is free again the moment someone joins |
+| `rooms` | Rooms by code, with their seats. A code is taken until the room empties |
 | `banned` | IPs ignored until restart |
+| `perIP` | Connections from each IP |
+| `buckets` | Rate limit state for each IP |
 | `events` | Last 200 lines for the dashboard |
-| `total`, `rate` | Traffic counters |
+| `total`, `perSecond`, `dropped` | Traffic counters |
 
 **`Handle(data, addr)`** runs for every packet:
 
 ```
  count it
  banned?               ignore
- unknown client?       register if it's host or join, otherwise ignore
+ too big, over rate?   drop and count
  refresh LastSeen
- event|leave           drop the client and tell the partner
- event|host, unpaired  resend hosting (the acknowledgement may have been lost)
- event|join, paired    resend start_race
- otherwise             forward to the partner, if any
+ not an event?         stamp with the seat and forward to the rest of the room
+ unknown client?       register if it's host or join, otherwise ignore
+ event|leave           remove the client and tell the room
+ event|lock            lock the room
+ event|host or join    resend the room (the answer may have been lost)
 ```
 
 Forwarding doesn't parse anything, which keeps the relay independent of the game
-protocol. `refuse` writes to the dashboard but not the log, because anyone can send
-those as fast as they like.
+protocol. `event|` packets are never forwarded, so a client can't fake one from the
+relay. `refuse` writes to the dashboard but not the log, because anyone can send those
+as fast as they like.
 
-**`Sweep`** runs once a second: it computes traffic rates and drops clients silent for
-over 5 s if paired or 60 s if waiting. Dropping a client also removes its partner.
+**`Sweep`** runs once a second: it computes traffic rates, drops clients silent for over
+5 s if they share a room or 60 s if alone, repeats every room, and clears old rate
+buckets.
 
 Concurrency is simple: one goroutine reads the socket, one sweeps, HTTP handlers run
 on their own, and all of them hold `mu`. `Sender` is a function, so tests run the
 whole relay with no socket.
 
-There's no rate limiting and no authentication. As agreed, the relay runs locally only
-and nothing is deployed.
+### Abuse protection
+
+The relay is public, so it limits what any one address can cost:
+
+| Limit | Value | When reached |
+| --- | --- | --- |
+| Packets from one IP | 300 a second, burst of 600 (`-rate`) | Dropped and counted on the dashboard |
+| Packet size | 2048 bytes | Dropped and counted |
+| Connections from one IP | 16 | Refused |
+| Players on the relay | 2000 (`-max-players`) | Refused |
+| Rate buckets | 65536, cleared after 10 s idle | Forged sources can't grow memory without limit |
+| Room codes | 1 to 16 letters and numbers | Refused |
+
+Four players on one connection use about 130 packets a second. Room codes from the game
+are 6 characters from 32, so about a billion, and the rate limit puts guessing one out
+of reach. The longest refusal is about five times the size of what prompted it, but a
+forged source gets the same rate limit, which caps that at under 20 kB/s, so the relay
+isn't worth abusing as a reflector.
+
+There are no accounts.
 
 ### The dashboard
 
@@ -1363,10 +1512,33 @@ every 2 s and swaps in fresh tables.
 | `/ban` | POST | Ban an IP and remove its clients |
 | `/unban` | POST | Remove a ban |
 
-It has no login, so `guard` protects it from other websites: a request's `Host` must
-be loopback, and a non-GET request's `Origin` must match. That stops a web page in the
-same browser from reaching it. It doesn't restrict anyone who can reach the port, so
-the README binds it to `127.0.0.1`.
+`guard` decides who gets in:
+
+- **With `-dashboard-token`** (or `SPPPD_DASHBOARD_TOKEN`), anyone with the password,
+  over HTTP Basic with any username. That's how it runs in a container, where no
+  connection looks local.
+- **Without one**, only this machine: the connection must come from loopback, and the
+  `Host` must be loopback too, which stops a page using DNS tricks through a local
+  browser. Forging `Host` from another machine gets nowhere.
+- Either way, a non-GET request's `Origin` must match, so another site can't make a
+  browser post to it.
+
+### Deploying
+
+The relay runs as a Kamal accessory on the hblabs server: `alpine:3.20` with the static
+binary uploaded beside it, so there's no image to build or registry to push to. It runs
+as `nobody` on a read-only root with every capability dropped. UDP 8080 is public, and
+the dashboard is published on the server's loopback only. Docker's published ports go
+past UFW, as 80 and 443 do, so the firewall needs no rule.
+
+```
+make deploy-relay                                      # first run makes the password
+ssh -L 9090:127.0.0.1:9090 vanillaiice@62.169.20.136   # then http://localhost:9090
+```
+
+`bin/relay-deploy` keeps the password in `~/.config/hblabs/spppd.env`, outside the
+repository. Deploying restarts the relay, and anyone racing is told. Bans don't survive
+that.
 
 ---
 
@@ -1381,7 +1553,7 @@ test runs.
 | --- | --- | --- |
 | `settings.lua` | Preferences and the last race setup | `settings.save` |
 | `records.lua` | Best lap and ghost per track and car, keyed `track/car` | `settings.submitLap` |
-| `tracks/*.lua` | Editor tracks | `catalog.save` |
+| `tracks/*.lua` | Editor tracks | `catalog.save`. A track shared online isn't saved |
 | `music/` | The player's songs | `radio.addFile`, or by hand |
 | `soundcache/<md5>/` | Rendered WAVs | `sound_cache` |
 
@@ -1396,7 +1568,9 @@ positions, hence "new cars go on the end".
 | --- | --- |
 | `make run` | Runs the game |
 | `make server` | `dist/relay` |
-| `make zip` | `dist/spppd-2.1.0.love`. Tests stay out |
+| `make relay-linux` | `dist/relay-linux`, static, for the server |
+| `make deploy-relay` | Tests the relay, then deploys it. See [Deploying](#deploying) |
+| `make zip` | `dist/spppd-2.2.0.love`. Tests stay out |
 | `make win64 win32` | Windows zips. To this project, these are what a release means |
 | `make apk` | Test APK, self-signed, application id `xyz.hblabs.spppd` |
 | `make apk-perf` | APK that runs `--perf` at launch |
@@ -1416,8 +1590,9 @@ there. There are no tags and no CI.
 | `make test-visual` | `tests/flow.lua`: real handlers with graphics and sound | A display, and no pointer over the window |
 | `make listen` | `tests/sound/listen.lua`: old and new sounds side by side | A display and ears |
 | `make sound-report` | Measures every sound and the mix, old against new | `tests/sound/requirements.txt` |
-| `make test-server` | Go vet, then 33 tests with the race detector | Go |
-| `make test-online` | Two clients through a real relay | Go, loopback |
+| `make test-server` | Go vet, then 51 tests with the race detector | Go |
+| `make test-online` | Up to five clients through a real relay, including 15% packet loss | Go, loopback |
+| `make test-online-visual` | `tests/flow_online.lua`: the real game hosting and joining, against bots | Go, a display |
 
 | Suite | `it` blocks | Covers |
 | --- | --- | --- |
@@ -1425,11 +1600,11 @@ there. There are no tags and no CI.
 | `test_dynamics` | 39 | Handling targets, many run per car, CYBER against Model S Plaid figures |
 | `test_slipstream` | 14 | Wake shape, build, fade, full grids |
 | `test_feel` | 12 | Slide nitro, the clean-lap slide check, vibration |
-| `test_race` | 20 | AI, keyboard and thumb bots lapping, rules, anti-cutting |
+| `test_race` | 28 | AI, keyboard and thumb bots lapping, rules, anti-cutting, online results |
 | `test_support` | 64 | Settings, input, catalogue, midnight, audio, cache, radio |
 | `test_touch` | 20 | Stick, buttons, phone layout |
 | `test_editor` | 12 | Document model |
-| `test_network` | 9 | Packets, remote car, live relay when `SPPPD_RELAY` is set |
+| `test_network` | 29 | Packets, track sharing, hostile input, remote cars, rooms, start sync, rematch, live relay when `SPPPD_RELAY` is set |
 
 Things to know about the harness:
 

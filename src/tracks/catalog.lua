@@ -1,5 +1,7 @@
 -- Finds tracks: the built-ins in src/tracks plus anything saved from the
 -- editor into the save directory.
+local wire = require("src/tracks/wire")
+
 local catalog = {}
 
 local BUILTIN = { "lusail", "highlands", "harbour", "boat", "speedway", "temple", "riviera", "ardennes", "touge", "oasis" }
@@ -62,6 +64,28 @@ end
 function catalog.find(name)
   for _, entry in ipairs(catalog.all()) do
     if entry.name == name then return entry end
+  end
+  return nil
+end
+
+-- A track's shape as text, and a hash of that text. Two players are on the same
+-- road when their hashes match, whatever the tracks are called.
+local fingerprints = setmetatable({}, { __mode = "k" })
+function catalog.fingerprint(def)
+  local known = fingerprints[def]
+  if not known then
+    local text = wire.encode(def)
+    local digest = love.data.encode("string", "hex", love.data.hash("md5", text))
+    known = { text = text, hash = digest:sub(1, 16) }
+    fingerprints[def] = known
+  end
+  return known.text, known.hash
+end
+
+function catalog.findByHash(hash)
+  for _, entry in ipairs(catalog.all()) do
+    local _, found = catalog.fingerprint(entry.def)
+    if found == hash then return entry end
   end
   return nil
 end

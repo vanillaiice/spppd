@@ -1,4 +1,4 @@
-.PHONY: run test test-visual test-server test-online listen sound-report server zip apk apk-perf win64 win32 all clean
+.PHONY: run test test-visual test-server test-online test-online-visual listen sound-report server relay-linux deploy-relay zip apk apk-perf win64 win32 all clean
 
 # src/config.lua holds the version.
 ver := $(shell sed -n 's/.*VERSION = "\(.*\)".*/\1/p' src/config.lua)
@@ -38,9 +38,24 @@ test-online:
 	./dist/relay -addr 127.0.0.1:18080 & pid=$$!; sleep 0.5; \
 	SPPPD_RELAY=127.0.0.1:18080 love . --test network; code=$$?; kill $$pid; exit $$code
 
+# The real game online, through its real input handlers, against three bots and a
+# real relay. Needs a display.
+test-online-visual:
+	cd server && go build -o ../dist/relay .
+	./dist/relay -addr 127.0.0.1:18080 & pid=$$!; sleep 0.5; \
+	SPPPD_RELAY=127.0.0.1:18080 love . --visual online; code=$$?; kill $$pid; exit $$code
+
 server:
 	mkdir -p dist
 	cd server && go build -o ../dist/relay .
+
+# The static binary the server runs. See config/deploy.yml.
+relay-linux:
+	mkdir -p dist
+	cd server && CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -trimpath -ldflags="-s -w" -o ../dist/relay-linux .
+
+deploy-relay: test-server
+	./bin/relay-deploy
 
 clean:
 	rm -rf dist/

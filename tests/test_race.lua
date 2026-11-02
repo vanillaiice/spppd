@@ -8,6 +8,7 @@ local config = require("src/config")
 local touch = require("src/touch")
 local input = require("src/input")
 local settings = require("src/settings")
+local hud = require("src/hud")
 
 local DT = config.PHYSICS_DT
 local M = config.METER
@@ -225,7 +226,7 @@ h.describe("race", function()
     local peerState = { x = 0, y = 0, vx = 0, vy = 0, a = 0, steer = 0, rpm = 1000, throttle = 0, brake = 0, gear = 1 }
     local track = Track.new(entry.def)
     local race = Race.new({ mode = "race", track = track, laps = 1, spec = garage[3], seed = 7, startDelay = 0.1,
-      online = { slot = 1, peerSpec = garage[2], peerColor = { 1, 0, 0 }, state = function() return peerState, 0 end } })
+      online = { slot = 1, peers = { { slot = 2, spec = garage[2], color = { 1, 0, 0 }, state = function() return peerState, 0 end } } } })
     peerState.x, peerState.y, peerState.a = race.cars[2].curX, race.cars[2].curY, race.cars[2].curA
     while race.phase == "countdown" do race:step(DT) end
     return race, track
@@ -235,7 +236,7 @@ h.describe("race", function()
     local race, track = onlineRace()
     local peer = race.cars[2]
     peer.finished, peer.finishTime = true, 60
-    h.assertEq(race:peerLeft(), false)
+    h.assertEq(race:peerLeft(peer), false)
     h.assertTrue(not peer.remote, "their car is ours to drive now")
     local x, y = peer.curX, peer.curY
     for _ = 1, 3 / DT do race:step(DT) end
@@ -251,20 +252,160 @@ h.describe("race", function()
 
   h.it("a rival who quits mid-race isn't waited for", function()
     local race, track = onlineRace()
-    h.assertEq(race:peerLeft(), true)
+    local peer = race.cars[2]
+    h.assertEq(race:peerLeft(peer), true)
+    h.assertEq(#race.cars, 1, "their car has left the road")
+    h.assertEq(race.order[2], peer, "but they're still in the standings")
     race.player.lapsDone = race.laps - 1
     race.player.distance = track.length * race.laps + 1
     race:step(DT)
     h.assertTrue(race.player.finished, "over the line")
     h.assertEq(race.phase, "finished", "no grace period for someone who's gone")
-    h.assertTrue(not race.cars[2].finished, "and they did not finish")
+    h.assertTrue(not peer.finished, "and they did not finish")
+    h.assertEq(peer.place, 2)
+    race:destroy()
+  end)
+
+  h.it("a driver who quit ranks behind everyone still in the race", function()
+    local race = onlineRace()
+    local peer = race.cars[2]
+    peer.distance = race.player.distance + 5000
+    race:peerLeft(peer)
+    race:step(DT)
+    h.assertEq(race.player.place, 1)
+    race:destroy()
+  end)
+
+  -- A race whose rival's state the test sets directly, as packets would.
+  local function sharedRace(peerCount)
+    local entry = catalog.builtin()[1]
+    local states, peers = {}, {}
+    for i = 1, peerCount do
+      local slot = i + 1
+      local state = { x = 0, y = 0, vx = 0, vy = 0, a = 0, steer = 0, rpm = 1000, throttle = 0, brake = 0, gear = 1 }
+      states[slot] = state
+      peers[i] = { slot = slot, spec = garage[slot], color = { 1, 0, 0 }, state = function() return state, 0 end }
+    end
+    local clock = { left = 0 }
+    local race = Race.new({ mode = "race", track = Track.new(entry.def), laps = 1, spec = garage[3], seed = 7,
+      online = { slot = 1, peers = peers, startIn = function() return clock.left end } })
+    for i, car in ipairs(race.cars) do
+      if i > 1 then
+        local state = states[car.slot]
+        state.x, state.y, state.a = car.curX, car.curY, car.curA
+      end
+    end
+    return race, states, clock
+  end
+
+  h.it("the rival's own game decides its laps and finish", function()
+    local race, states, clock = sharedRace(1)
+    clock.left = -1
+    race:step(DT)
+    local peer = race.cars[2]
+    states[2].distance = race.track.length * 0.5
+    race:step(DT)
+    h.assertEq(peer.distance, race.track.length * 0.5, "progress comes from the packet")
+    h.assertTrue(not peer.finished, "not finished by being near the line")
+    states[2].distance = race.track.length + 1
+    states[2].finish = 61.5
+    race:step(DT)
+    h.assertTrue(peer.finished, "the packet says it finished")
+    h.assertEq(peer.finishTime, 61.5, "at the time it says")
+    race:destroy()
+  end)
+
+  h.it("both players get the same result, whoever crosses first on screen", function()
+    local race, states, clock = sharedRace(1)
+    clock.left = -1
+    race:step(DT)
+    race.time = 60
+    race.player.lapsDone = 0
+    race.player.distance = race.track.length + 1
+    race:step(DT)
+    h.assertEq(race.player.place, 1, "ahead until the rival's time arrives")
+    states[2].finish = 59.9
+    race:step(DT)
+    h.assertEq(race.player.place, 2, "their earlier time takes the win")
+    h.assertEq(race.phase, "finished", "nobody left racing")
+    race:destroy()
+  end)
+
+  h.it("the race ends for everyone a fixed time after the first finish", function()
+    local race, states, clock = sharedRace(2)
+    clock.left = -1
+    race:step(DT)
+    race.time = 60
+    states[2].finish = 60
+    race:step(DT)
+    h.assertEq(race.flagFell, 60, "the flag is out")
+    h.assertEq(race.phase, "racing", "and the rest have time")
+    race.time = 60 + race.FINISH_GRACE - 0.5
+    race:step(DT)
+    h.assertEq(race.phase, "racing", "still time left")
+    race.time = 60 + race.FINISH_GRACE
+    race:step(DT)
+    h.assertEq(race.phase, "finished", "time is up")
+    h.assertTrue(race.player.timedOut, "the player didn't finish")
+    h.assertTrue(not race.player.finished, "and has no time")
+    race:destroy()
+  end)
+
+  h.it("cars wait on the grid until the start is called, then follow the clock", function()
+    local race, _, clock = sharedRace(1)
+    clock.left = nil
+    for _ = 1, 240 do race:step(DT) end
+    h.assertEq(race.phase, "countdown", "held")
+    h.assertTrue(race.holding, "and saying so")
+    h.assertEq(hud.lightsOn(race), 0, "with the lights dark")
+    clock.left = race.startDelay + 1
+    race:step(DT)
+    h.assertEq(hud.lightsOn(race), 0, "still dark before the lights begin")
+    clock.left = race.startDelay / 2
+    race:step(DT)
+    h.assertEq(hud.lightsOn(race), 3, "a late game joins part way through the lights")
+    clock.left = 0
+    race:step(DT)
+    h.assertEq(race.phase, "racing", "lights out on the shared clock")
+    race:destroy()
+  end)
+
+  h.it("a slow frame doesn't flatter a phone's race time", function()
+    local race, _, clock = sharedRace(1)
+    clock.left = -1
+    race:step(DT)
+    clock.left = -10
+    race:step(DT)
+    h.assertNear(race.time, DT, 0.001, "a step only adds a step")
+    race:syncClock()
+    h.assertEq(race.time, 10, "and the real clock catches it up")
+    clock.left = -5
+    race:syncClock()
+    h.assertEq(race.time, 10, "it never runs back")
+    race:destroy()
+  end)
+
+  h.it("seats with gaps still make a tight grid", function()
+    local track = Track.new(catalog.builtin()[1].def)
+    local race = Race.new({ mode = "race", track = track, laps = 1, spec = garage[3], seed = 7,
+      online = { slot = 2, peers = {
+        { slot = 1, spec = garage[1], state = function() end },
+        { slot = 4, spec = garage[2], state = function() end },
+      } } })
+    h.assertEq(#race.cars, 3)
+    local function gridOf(n) local x, y = track:gridSlot(n) return x, y end
+    local x2 = gridOf(2)
+    local x3 = gridOf(3)
+    h.assertNear(race.player.curX, x2, 0.01, "seat 2 is second on the grid")
+    h.assertNear(race.cars[3].curX, x3, 0.01, "seat 4 is third, not fourth")
+    h.assertEq(race.cars[3].name, "P4")
     race:destroy()
   end)
 
   h.it("online races ignore the local handling tier", function()
     local track = Track.new(catalog.builtin()[1].def)
     local race = Race.new({ mode = "race", track = track, laps = 1, seed = 3, assist = "sim",
-      online = { slot = 1, peerSpec = garage[2], state = {} } })
+      online = { slot = 1, peers = { { slot = 2, spec = garage[2], state = function() end } } } })
     h.assertEq(race.handling, "arcade")
     h.assertEq(race.player.model.assist.grip, require("src/sim/dynamics").ASSISTS.arcade.grip)
     race:destroy()

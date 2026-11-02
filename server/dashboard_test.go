@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/base64"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -12,12 +13,15 @@ import (
 func request(handler http.Handler, method, target string, form url.Values, headers map[string]string) *httptest.ResponseRecorder {
 	req := httptest.NewRequest(method, target, strings.NewReader(form.Encode()))
 	req.Host = "localhost:9090"
+	req.RemoteAddr = "127.0.0.1:50000"
 	if method == http.MethodPost {
 		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	}
 	for name, value := range headers {
 		if name == "Host" {
 			req.Host = value
+		} else if name == "Remote" {
+			req.RemoteAddr = value
 		} else {
 			req.Header.Set(name, value)
 		}
@@ -30,8 +34,8 @@ func request(handler http.Handler, method, target string, form url.Values, heade
 func TestPageShowsWhatIsHappening(t *testing.T) {
 	relay, _, _ := setup()
 	pair(relay)
-	relay.Handle([]byte("event|host|WXYZ"), addr(3))
-	page := newDashboard(relay)
+	host(relay, "WXYZ", 3)
+	page := newDashboard(relay, "")
 
 	out := request(page, http.MethodGet, "/", nil, nil)
 	if out.Code != http.StatusOK {
@@ -48,18 +52,18 @@ func TestPageShowsWhatIsHappening(t *testing.T) {
 	}
 }
 
-func TestPageEscapesRoomCodes(t *testing.T) {
+func TestPageEscapesWhatItShows(t *testing.T) {
 	relay, _, _ := setup()
-	relay.Handle([]byte("event|host|<script>x"), addr(1))
-	body := request(newDashboard(relay), http.MethodGet, "/live", nil, nil).Body.String()
+	relay.record("<script>x")
+	body := request(newDashboard(relay, ""), http.MethodGet, "/live", nil, nil).Body.String()
 	if strings.Contains(body, "<script>x") {
-		t.Fatalf("room code reached the page raw: %s", body)
+		t.Fatalf("an event reached the page raw: %s", body)
 	}
 }
 
 func TestPageServesHtmx(t *testing.T) {
 	relay, _, _ := setup()
-	out := request(newDashboard(relay), http.MethodGet, "/htmx.js", nil, nil)
+	out := request(newDashboard(relay, ""), http.MethodGet, "/htmx.js", nil, nil)
 	if out.Code != http.StatusOK || !strings.Contains(out.Body.String(), "htmx") {
 		t.Fatalf("status %d", out.Code)
 	}
@@ -67,14 +71,14 @@ func TestPageServesHtmx(t *testing.T) {
 
 func TestUnknownPagesAreMissing(t *testing.T) {
 	relay, _, _ := setup()
-	if got := request(newDashboard(relay), http.MethodGet, "/nope", nil, nil).Code; got != http.StatusNotFound {
+	if got := request(newDashboard(relay, ""), http.MethodGet, "/nope", nil, nil).Code; got != http.StatusNotFound {
 		t.Fatalf("status %d", got)
 	}
 }
 
 func TestForeignHostIsRefused(t *testing.T) {
 	relay, _, _ := setup()
-	page := newDashboard(relay)
+	page := newDashboard(relay, "")
 	for _, host := range []string{"evil.example", "evil.example:9090", "spppd.hblabs.xyz"} {
 		out := request(page, http.MethodGet, "/", nil, map[string]string{"Host": host})
 		if out.Code != http.StatusForbidden {
@@ -89,11 +93,48 @@ func TestForeignHostIsRefused(t *testing.T) {
 	}
 }
 
+func TestForgedHostFromAnotherMachineIsRefused(t *testing.T) {
+	relay, _, _ := setup()
+	host(relay, "ABCD", 1)
+	form := url.Values{"addr": {addr(1).String()}}
+	out := request(newDashboard(relay, ""), http.MethodPost, "/close", form,
+		map[string]string{"Host": "localhost", "Remote": "192.168.1.50:40000"})
+	if out.Code != http.StatusForbidden || len(relay.rooms) != 1 {
+		t.Fatalf("status %d rooms %v", out.Code, relay.rooms)
+	}
+}
+
+func TestTokenLetsItsHolderInFromAnywhere(t *testing.T) {
+	relay, _, _ := setup()
+	page := newDashboard(relay, "letmein")
+	remote := map[string]string{"Host": "172.17.0.2:9090", "Remote": "172.17.0.1:40000"}
+
+	out := request(page, http.MethodGet, "/", nil, remote)
+	if out.Code != http.StatusUnauthorized || out.Header().Get("WWW-Authenticate") == "" {
+		t.Fatalf("status %d", out.Code)
+	}
+	remote["Authorization"] = "Basic " + base64.StdEncoding.EncodeToString([]byte("admin:wrong"))
+	if got := request(page, http.MethodGet, "/", nil, remote).Code; got != http.StatusUnauthorized {
+		t.Fatalf("status %d", got)
+	}
+	remote["Authorization"] = "Basic " + base64.StdEncoding.EncodeToString([]byte("admin:letmein"))
+	if got := request(page, http.MethodGet, "/", nil, remote).Code; got != http.StatusOK {
+		t.Fatalf("status %d", got)
+	}
+}
+
+func TestTokenIsNeededOnLoopbackToo(t *testing.T) {
+	relay, _, _ := setup()
+	if got := request(newDashboard(relay, "letmein"), http.MethodGet, "/", nil, nil).Code; got != http.StatusUnauthorized {
+		t.Fatalf("status %d", got)
+	}
+}
+
 func TestForeignOriginCannotAct(t *testing.T) {
 	relay, _, _ := setup()
-	relay.Handle([]byte("event|host|ABCD"), addr(1))
+	host(relay, "ABCD", 1)
 	form := url.Values{"addr": {addr(1).String()}}
-	out := request(newDashboard(relay), http.MethodPost, "/close", form, map[string]string{"Origin": "https://evil.example"})
+	out := request(newDashboard(relay, ""), http.MethodPost, "/close", form, map[string]string{"Origin": "https://evil.example"})
 	if out.Code != http.StatusForbidden || len(relay.rooms) != 1 {
 		t.Fatalf("status %d rooms %v", out.Code, relay.rooms)
 	}
@@ -101,9 +142,9 @@ func TestForeignOriginCannotAct(t *testing.T) {
 
 func TestSameOriginCanAct(t *testing.T) {
 	relay, _, _ := setup()
-	relay.Handle([]byte("event|host|ABCD"), addr(1))
+	host(relay, "ABCD", 1)
 	form := url.Values{"addr": {addr(1).String()}}
-	out := request(newDashboard(relay), http.MethodPost, "/close", form, map[string]string{"Origin": "http://localhost:9090"})
+	out := request(newDashboard(relay, ""), http.MethodPost, "/close", form, map[string]string{"Origin": "http://localhost:9090"})
 	if out.Code != http.StatusOK || len(relay.rooms) != 0 {
 		t.Fatalf("status %d rooms %v", out.Code, relay.rooms)
 	}
@@ -111,8 +152,8 @@ func TestSameOriginCanAct(t *testing.T) {
 
 func TestActionsAreNotReachableByGet(t *testing.T) {
 	relay, _, _ := setup()
-	relay.Handle([]byte("event|host|ABCD"), addr(1))
-	out := request(newDashboard(relay), http.MethodGet, "/close?addr="+addr(1).String(), nil, nil)
+	host(relay, "ABCD", 1)
+	out := request(newDashboard(relay, ""), http.MethodGet, "/close?addr="+addr(1).String(), nil, nil)
 	if out.Code != http.StatusMethodNotAllowed || len(relay.rooms) != 1 {
 		t.Fatalf("status %d rooms %v", out.Code, relay.rooms)
 	}
@@ -120,7 +161,7 @@ func TestActionsAreNotReachableByGet(t *testing.T) {
 
 func TestBanAndUnbanThroughThePage(t *testing.T) {
 	relay, _, _ := setup()
-	page := newDashboard(relay)
+	page := newDashboard(relay, "")
 
 	if got := request(page, http.MethodPost, "/ban", url.Values{"ip": {"nonsense"}}, nil).Code; got != http.StatusBadRequest {
 		t.Fatalf("status %d", got)
