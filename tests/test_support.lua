@@ -636,6 +636,73 @@ h.describe("audio", function()
     h.assertTrue(audio.nitroLevel(0) > audio.nitroLevel(1) * 0.5, "still heard on the last of it")
   end)
 
+  h.it("nitro drives what each car already has", function()
+    local audio = require("src/audio")
+    local garage = require("src/entities/garage")
+    local kinds = {}
+    for _, spec in ipairs(garage) do kinds[spec.id] = audio.boostKind(spec) end
+    h.assertEq(kinds.hot_hatch, "turbo")
+    h.assertEq(kinds.quad_turbo, "turbo")
+    h.assertEq(kinds.muscle_monster, "blower")
+    h.assertEq(kinds.baja_beast, "blower")
+    h.assertEq(kinds.cyber, "motor")
+    for _, id in ipairs({ "wedge", "tofu_runner", "samurai" }) do
+      h.assertEq(kinds[id], "gas", id .. " has nothing else to drive")
+    end
+    for _, spec in ipairs(garage) do
+      if kinds[spec.id] == "gas" then h.assertEq(audio.boostPitch(spec, 1), 1, spec.id .. " has nothing to climb") end
+    end
+  end)
+
+  h.it("nitro lifts a car's own sound, and more turbos lift it further", function()
+    local audio = require("src/audio")
+    local function spec(id) return require("src/entities/garage").byId(id) end
+    local function lift(id, part)
+      local before = audio.engineMix(spec(id), 0.9, 1, 1)[part]
+      local during = audio.engineMix(spec(id), 0.9, 1, 1, 1)[part]
+      h.assertTrue(during > before * 1.3, id .. " should be plainly louder")
+      h.assertTrue(during <= 1, id .. " can't go past full volume")
+      return during
+    end
+    local one, two, four = lift("hot_hatch", "turbo"), lift("rocket", "turbo"), lift("quad_turbo", "turbo")
+    h.assertTrue(one < two and two < four, "more turbos are louder")
+    lift("muscle_monster", "blower")
+    lift("cyber", "motor")
+    h.assertEq(audio.engineMix(spec("wedge"), 0.9, 1, 1, 1).turbo, 0, "no turbo to drive")
+    h.assertEq(audio.engineMix(spec("rocket"), 0.9, 1, 0.2, 0).turbo, audio.engineMix(spec("rocket"), 0.9, 1, 0.2).turbo,
+      "nothing changes without nitro")
+  end)
+
+  h.it("a turbo car gets a layer above the exhaust on nitro, bigger with more turbos", function()
+    local audio = require("src/audio")
+    local garage = require("src/entities/garage")
+    local function layer(id, boost) return audio.engineMix(garage.byId(id), 0.9, 1, 1, boost).turboBoost end
+    h.assertEq(layer("rocket", 0), 0, "silent without nitro")
+    h.assertTrue(layer("hot_hatch", 1) < layer("rocket", 1) and layer("rocket", 1) < layer("quad_turbo", 1), "more turbos are bigger")
+    for _, id in ipairs({ "wedge", "muscle_monster", "cyber" }) do
+      h.assertEq(layer(id, 1), 0, id .. " has no turbo")
+    end
+    for _, turbos in ipairs({ 1, 2, 4 }) do
+      local data = audio.turboBoostData(turbos)
+      local rms, peak, count = 0, 0, data:getSampleCount()
+      for i = 0, count - 1 do
+        local v = data:getSample(i)
+        rms, peak = rms + v * v, math.max(peak, math.abs(v))
+      end
+      h.assertNear(math.sqrt(rms / count), 0.2, 0.01, "the same level for each")
+      h.assertTrue(peak < 1, "and no clipping")
+    end
+  end)
+
+  h.it("nitro eases in and out, and sags with the tank", function()
+    local audio = require("src/audio")
+    h.assertNear(audio.boostStep(0, true, 1, 0.05), 0.5, 0.001, "a swell, not a step")
+    h.assertNear(audio.boostStep(1, false, 1, 0.1), 0.7, 0.001, "and a sigh")
+    local boost = 0
+    for _ = 1, 60 do boost = audio.boostStep(boost, true, 0, 1 / 60) end
+    h.assertNear(boost, 0.7, 0.001, "less left in the bottle")
+  end)
+
   h.it("a gear change sputters on, it isn't one clank", function()
     local data = audio.shotData("shift")
     h.assertBetween(data:getDuration(), 0.1, 0.25, "about as long as the shift")

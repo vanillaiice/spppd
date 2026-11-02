@@ -31,6 +31,7 @@ local IMPACT_GAP = 0.12    -- seconds; only a bigger hit gets through inside thi
 local NITRO_LEVEL = 0.4
 local NITRO_IN, NITRO_OUT = 4, 1.2  -- its fade per second: a swell on, a slow sigh off
 local NITRO_SAG = 0.3      -- the share of its level that goes as the bottle empties
+local BOOST_IN, BOOST_OUT = 10, 3  -- per second, matching the gas's swell and sigh
 local HORN_LEVEL = 0.5
 local HORN_FADE = 40       -- per second, so it starts and stops like a button
 local HORN_HZ = { 420, 500 }  -- the classic two trumpets, a little under a third apart
@@ -165,11 +166,31 @@ local SHOTS = {
 -- are bigger and lower. size scales the sound's pitch, and vent is the blow-off's
 -- volume and pitch against a pair's.
 local TURBOS = {
-  [1] = { size = 1.18, level = 0.75, spoolUp = 2.6, ventLevel = 0.8, ventPitch = 1.2 },
-  [2] = { size = 1, level = 1, spoolUp = 1.8, ventLevel = 1, ventPitch = 1 },
-  [4] = { size = 0.8, level = 1.3, spoolUp = 1.2, ventLevel = 1.25, ventPitch = 0.78 },
+  [1] = { size = 1.18, level = 0.75, spoolUp = 2.6, ventLevel = 0.8, ventPitch = 1.2, boost = 0.5, hiss = 0.28 },
+  [2] = { size = 1, level = 1, spoolUp = 1.8, ventLevel = 1, ventPitch = 1, boost = 0.61, hiss = 0.34 },
+  [4] = { size = 0.8, level = 1.3, spoolUp = 1.2, ventLevel = 1.25, ventPitch = 0.78, boost = 0.75, hiss = 0.42 },
 }
 local RACE_SPOOL = 5  -- a race engine's turbo is kept spinning for it
+
+-- Nitro drives whatever already feeds the engine harder, so each kind of car sounds
+-- like itself under it. Only a car with nothing else to drive hears the gas.
+-- TURBOS[n].boost is the loop's volume at full nitro: -20 LUFS for one turbo, which
+-- is where the gas sits, then -18.5 and -17. The whine and the motor only add to their
+-- level, because they're already forward in the mix.
+local BOOST_BLOWER, BOOST_MOTOR = 0.2, 0.14
+local BOOST_CLIMB = { turbo = 1.12, blower = 1.15, motor = 1.2 }
+-- A turbo's own air sits in the band the exhaust fills, so more of it can't be heard.
+-- What says nitro is above the exhaust, around 2 kHz, where the gas put it. Under
+-- nitro a turbo car gets a layer of its own up there: rushing air, plus a whistle of
+-- noise ringing at one pitch for each turbo. The pitch is TURBO_RING scaled by the
+-- turbo's size, so more turbos sit lower, and they're spread by TURBO_RING_SPREAD so
+-- they beat. Noise rather than a tone, because a clean one was "a robot screaming".
+local TURBO_RING = 2200
+local TURBO_RING_SPREAD = 0.07
+local TURBO_RING_WIDTH = 0.16
+local TURBO_ROAR = { lowHz = 2000, damping = 0.75, highHz = 700, gain = 0.8,
+  wander = { { 2, 0.06 }, { 5, 0.04 } }, swell = { { 3, 0.1 }, { 7, 0.07 } } }
+local TURBO_BOOST_DUCK = 0.18  -- how far the exhaust steps back, to let it through
 -- A turbo is air being forced through a housing, with a faint low whistle in it. A
 -- clean tone sliding up over the air is a theremin, which is what an earlier version
 -- sounded like, so the whistle wanders and never sits on a note. TURBO_WHISTLE is
@@ -405,6 +426,31 @@ function audio.turboData(turbos)
       total = total + math.sin(t * math.pi * 2 * cycles[k] / TURBO_SECONDS + drift[k])
     end
     return air:getSample(i) * (1 - share) + total / math.sqrt(turbos) * share * 0.3
+  end)
+  local sum, count = 0, mixed:getSampleCount()
+  for i = 0, count - 1 do sum = sum + mixed:getSample(i) ^ 2 end
+  local gain = TURBO_RMS / math.sqrt(sum / count)
+  return soundData(TURBO_SECONDS, function(_, i) return mixed:getSample(i) * gain end)
+end
+
+-- The layer over the exhaust while a turbo car is on nitro. See TURBO_RING.
+function audio.turboBoostData(turbos)
+  local size = TURBOS[turbos].size
+  local roar = {}
+  for key, value in pairs(TURBO_ROAR) do roar[key] = value end
+  roar.lowHz, roar.highHz = TURBO_ROAR.lowHz * size, TURBO_ROAR.highHz * size
+  local air = bandNoise(roar, TURBO_SECONDS, 0.25)
+  local rings = {}
+  for k = 1, turbos do
+    local spread = 1 + (k - (turbos + 1) / 2) * TURBO_RING_SPREAD
+    rings[k] = bandNoise({ lowHz = TURBO_RING * size * spread, damping = TURBO_RING_WIDTH,
+      highHz = TURBO_RING * size * spread * 0.6, gain = 0.5,
+      wander = { { 2, 0.04 }, { 5, 0.025 } }, swell = { { 3, 0.12 }, { 11, 0.06 } } }, TURBO_SECONDS, 0.25)
+  end
+  local mixed = soundData(TURBO_SECONDS, function(_, i)
+    local ringing = 0
+    for k = 1, turbos do ringing = ringing + rings[k]:getSample(i) end
+    return air:getSample(i) + ringing / math.sqrt(turbos)
   end)
   local sum, count = 0, mixed:getSampleCount()
   for i = 0, count - 1 do sum = sum + mixed:getSample(i) ^ 2 end
@@ -919,12 +965,13 @@ function audio.load()
     audio.nitro = loop("nitro", audio.nitroData)
     audio.horn = loop("horn", audio.hornData)
     audio.rivalHorn = audio.horn:clone()
-    audio.engines, audio.turbos = {}, {}
+    audio.engines, audio.turbos, audio.turboBoosts = {}, {}, {}
     for _, spec in ipairs(garage) do
       local voice = audio.voiceOf(spec)
       if voice and not audio.engines[voice.key] then audio.engines[voice.key] = engineLoops(voice) end
       if TURBOS[spec.turbos] and not audio.turbos[spec.turbos] then
         audio.turbos[spec.turbos] = loop("turbo" .. spec.turbos, audio.turboData, spec.turbos)
+        audio.turboBoosts[spec.turbos] = loop("turboboost" .. spec.turbos, audio.turboBoostData, spec.turbos)
       end
     end
     audio.blower = loop("blower", audio.blowerData)
@@ -1077,6 +1124,27 @@ function audio.nitroLevel(tank)
   return NITRO_LEVEL * (1 - NITRO_SAG * (1 - math.max(0, math.min(1, tank))))
 end
 
+-- What nitro drives in this car.
+function audio.boostKind(spec)
+  if TURBOS[spec.turbos] then return "turbo" end
+  if spec.supercharged then return "blower" end
+  if spec.cylinders == 0 then return "motor" end
+  return "gas"
+end
+
+-- How hard nitro is being felt, 0..1. It eases like the gas, and sags with the tank.
+function audio.boostStep(boost, active, tank, dt)
+  local target = active and 1 - NITRO_SAG * (1 - math.max(0, math.min(1, tank))) or 0
+  local step = (target > boost and BOOST_IN or BOOST_OUT) * dt
+  return boost + math.max(-step, math.min(step, target - boost))
+end
+
+-- What nitro does to the pitch of a car's turbo, whine or motor.
+function audio.boostPitch(spec, boost)
+  local climb = BOOST_CLIMB[audio.boostKind(spec)]
+  return climb and 1 + (climb - 1) * boost or 1
+end
+
 -- The same sample twice running sounds like a machine gun.
 function audio.variedPitch(spread)
   spread = spread or 0.07
@@ -1097,18 +1165,21 @@ function audio.voiceOf(spec)
 end
 
 -- How loud each part of a car's engine should be.
-function audio.engineMix(spec, revs, load, spool)
+function audio.engineMix(spec, revs, load, spool, boost)
+  boost = boost or 0
   local electric = spec.cylinders == 0
   local turbo = TURBOS[spec.turbos]
+  local forced = turbo and spool ^ 2 * 0.3 * turbo.level or 0
   return {
     exhaust = electric and 0 or 0.34 + revs * 0.34,
     idle = electric and 0 or IDLE_LEVEL,
     limiter = electric and 0 or 0.39 + revs * 0.39,
-    turbo = turbo and spool ^ 2 * 0.3 * turbo.level or 0,
+    turbo = turbo and forced + (turbo.boost - forced) * boost or 0,
+    turboBoost = turbo and turbo.hiss * boost or 0,
     -- A supercharger is geared to the crank, so it whines the instant the revs rise.
-    blower = spec.supercharged and (0.096 + revs * 0.384) * load or 0,
+    blower = spec.supercharged and (0.096 + revs * 0.384) * load + BOOST_BLOWER * boost or 0,
     -- An electric car has no pistons to hear: the motor stands in for them.
-    motor = electric and math.min(1, revs * 3) * (0.1 + load * 0.2) or 0,
+    motor = electric and math.min(1, revs * 3) * (0.1 + load * 0.2) + BOOST_MOTOR * boost or 0,
   }
 end
 
@@ -1188,19 +1259,35 @@ end
 
 local function updateEngineLayers(dt, model, spec, revs, load)
   updateTurbo(dt, model, spec, revs)
-  local mix = audio.engineMix(spec, revs, load, audio.spool)
+  local boosting = model.boostState == "active"
+  audio.boost = audio.boostStep(audio.boost, boosting, model.boostTank / spec.boostTime, dt)
+  -- The bottle shutting off dumps the pressure, like lifting off does.
+  local turbo = TURBOS[spec.turbos]
+  if turbo and audio.boosting and not boosting and not spec.raceExhaust and audio.spool >= BLOWOFF_SPOOL then
+    audio.play("blowoff", audio.blowoffVolume(1) * turbo.ventLevel, audio.variedPitch() * turbo.ventPitch)
+  end
+  audio.boosting = boosting
+  local mix = audio.engineMix(spec, revs, load, audio.spool, audio.boost)
   audio.duck = math.max(0, audio.duck - DUCK_RECOVERY * dt)
   mix.exhaust = mix.exhaust * (1 - audio.duck)
+  if audio.boostKind(spec) == "turbo" then mix.exhaust = mix.exhaust * (1 - TURBO_BOOST_DUCK * audio.boost) end
   local voice = audio.voiceOf(spec)
   if voice then updateExhaust(dt, audio.engines[voice.key], mix, model, load, spec) end
   local whistle = audio.turbos[spec.turbos]
+  local lift = audio.boostPitch(spec, audio.boost)
   if whistle then
-    whistle:setPitch(audio.turboPitch(audio.spool))
+    -- Nitro is full pressure, whatever the turbo has built by itself.
+    whistle:setPitch(audio.turboPitch(math.max(audio.spool, audio.boost)) * lift)
     fadeTo(whistle, mix.turbo, dt, 10)
   end
-  audio.blower:setPitch(audio.blowerPitch(revs))
+  local tank = model.boostTank / spec.boostTime
+  for turbos, source in pairs(audio.turboBoosts) do
+    source:setPitch(audio.nitroPitch(tank))
+    fadeTo(source, turbos == spec.turbos and mix.turboBoost or 0, dt, 10)
+  end
+  audio.blower:setPitch(audio.blowerPitch(revs) * lift)
   fadeTo(audio.blower, mix.blower, dt, 6)
-  audio.motor:setPitch(audio.motorPitch(revs))
+  audio.motor:setPitch(audio.motorPitch(revs) * lift)
   fadeTo(audio.motor, mix.motor, dt, 6)
 end
 
@@ -1259,7 +1346,8 @@ function audio.update(dt, car, rival, rivalDistance)
   local boosting = model.boostState == "active"
   local tank = model.boostTank / spec.boostTime
   audio.nitro:setPitch(audio.nitroPitch(tank))
-  fadeTo(audio.nitro, boosting and audio.nitroLevel(tank) or 0, dt, boosting and NITRO_IN or NITRO_OUT)
+  local gas = boosting and audio.boostKind(spec) == "gas" and audio.nitroLevel(tank) or 0
+  fadeTo(audio.nitro, gas, dt, gas > 0 and NITRO_IN or NITRO_OUT)
   audio.horn:setPitch(audio.hornPitch(spec))
   fadeTo(audio.horn, car.horn and HORN_LEVEL or 0, dt, HORN_FADE)
 
@@ -1271,6 +1359,7 @@ local function eachLoop(fn)
     fn(audio[key])
   end
   for _, source in pairs(audio.turbos) do fn(source) end
+  for _, source in pairs(audio.turboBoosts) do fn(source) end
   for _, engine in pairs(audio.engines) do
     for _, source in ipairs(engine.speeds) do fn(source) end
     fn(engine.overrun)
@@ -1286,7 +1375,7 @@ function audio.silence()
     source:stop()
     source:setVolume(0)
   end)
-  audio.spool, audio.duck = 0, 0
+  audio.spool, audio.duck, audio.boost, audio.boosting = 0, 0, 0, false
 end
 
 -- The race noise dies away behind the results rather than cutting out.

@@ -62,6 +62,14 @@ These came from the user playing the game. Measurements don't overrule them.
   and not rumble alone. Slide is a low rubber howl, not a higher squeal and not a
   scuff alone. Nitro is gas with a chest, not a deeper push and not an airier can.
 
+- Nitro sounds like what feeds the engine, not one sound for every car. An NA car keeps
+  the gas. A supercharger's whine and CYBER's motor get louder and climb. A turbo car
+  was "barely" different with its own loop turned up, because that loop sits in the
+  exhaust's band: it added 2 dB at 4 kHz where the gas added 10. What reads as nitro is
+  the lift around 2 kHz. So a turbo car gets a layer of its own there, air and a noise
+  whistle, picked by ear out of whistle, roar and both, and the exhaust steps back 18%
+  under it. Check where a change lands before turning anything up.
+
 - The turbo sounded "like a robot screaming" and too high: a near-pure tone at 1.1 to
   1.7 kHz, sliding up a 3:1 range to 2.3 kHz. It's now air with a faint wandering whistle
   under it, picked by ear on the bench out of three, and pressure lifts it by about half
@@ -106,7 +114,8 @@ then through the assumed phone corner. The VOLUME setting defaults to 0.8, -1.9 
 | Road | -29 at 40 m/s, -24 at 70 |
 | Wind | -28 at 70 m/s, -36 at 40 |
 | Off-road | -28, phone -29 |
-| Nitro | -20 full, -24 near empty |
+| Nitro, NA | -20 full, -24 near empty |
+| Nitro, added to a turbo car | +10 to +14 dB around 2 kHz against no nitro, bigger with more turbos. Under 6% above 4 kHz |
 | Shift | -23, phone -29 |
 | Lights, lap, finish | -14 to -21 |
 | Menus | -29 to -33 |
@@ -181,7 +190,8 @@ oversampling somewhere it isn't doing anything.
 | `road` | `bandNoise` | Moving | Loop, pitch and volume from speed |
 | `wind` | `bandNoise` | Over 18 m/s | Loop, from speed and slipstream |
 | `loose` | `bandNoise` | Grass, gravel, kerbs | Loop, from share of wheels and speed |
-| `nitro` | `bandNoise` | Nitro burning | Loop, pitch and level sag as the tank empties |
+| `nitro` | `bandNoise` | Nitro on an NA car | Loop, pitch and level sag as the tank empties |
+| `turboboost1`, `2`, `4` | `bandNoise` | Nitro on a turbo car | Loop, pitch and level sag as the tank empties, with a blow-off when it stops |
 | `horn` | `hornData` | H, B, Circle or the HORN button | Loop, pitch from mass. Rival has its own |
 | `impact1,2,3` | `crashData` | Crash, by strength | One-shot, 2 voices each, ±6% pitch, pitch from mass |
 | `scrape` | sfxr | A graze, strength under 0.15 | One-shot, 2 voices, ±6% pitch |

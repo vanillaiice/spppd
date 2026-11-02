@@ -159,6 +159,7 @@ local function playing()
     add("limiter", engine.limiter)
   end
   if module.turbos then add("turbo", module.turbos[spec.turbos]) end
+  if module.turboBoosts then add("turbo boost", module.turboBoosts[spec.turbos]) end
   for _, name in ipairs({ "blower", "motor", "road", "wind", "scrub", "squeal", "grind", "loose", "nitro", "horn" }) do
     add(name, module[name])
   end

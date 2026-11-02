@@ -981,7 +981,7 @@ measurements behind them.
 | Kind | Sounds | How |
 | --- | --- | --- |
 | sfxr presets | beep, go, click, select, lap, scrape | The `SHOTS` table |
-| Filtered noise | road, loose, wind, scrub, nitro, grind | `bandNoise`, `grindData` |
+| Filtered noise | road, loose, wind, scrub, nitro, turbo boost, grind | `bandNoise`, `grindData` |
 | Physical models | Engines, startup, shift, blow-off, crashes, turbo, supercharger, motor, squeal, horn, finish | Written in `audio.lua` |
 
 `bandNoise` is sfxr's filters on white noise without its eightfold oversampling. At
@@ -1044,7 +1044,7 @@ the join, so a fade by power would swell. The motor is half and half.
 | Scrub, road, loose, wind | Slip, speed, surface and slipstream. Speed mostly raises their level and how fast their texture goes, and barely their brightness |
 | Squeal | A note, not noise: detuned sawtooths, over the scrub once a tyre is well past its limit |
 | Grind | `car.scraping` and speed |
-| Nitro | Swells in, sighs out over about 0.3 s, and loses pitch and level as the tank empties |
+| Nitro | Sounds like what feeds the engine, through `audio.boost`, which swells in, sighs out over about 0.3 s, and sags as the tank empties. An NA car plays the gas. A supercharger or motor gets louder and climbs. A turbo car has its loop driven to full pressure, plus `turboboost<n>` above the exhaust, the exhaust ducked 18% and a blow-off when the bottle shuts off, except on a race engine |
 | Horn | Pitch from car mass, so heavy cars are lower |
 | Rival | One engine loop, motor or horn, within about 42 m |
 
