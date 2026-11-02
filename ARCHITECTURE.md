@@ -1,6 +1,6 @@
 # SPPPD Architecture
 
-This describes the code as it stands at version 2.2.0 (2026-11-02). It explains how
+This describes the code as it stands at version 2.3.0 (2026-11-02). It explains how
 the game works and nothing else. `REVIEW.md` holds the review and recommendations, and `ROADMAP.md` holds what's
 agreed but not built.
 
@@ -1597,7 +1597,7 @@ positions, hence "new cars go on the end".
 | `make server` | `dist/relay` |
 | `make relay-linux` | `dist/relay-linux`, static, for the server |
 | `make deploy-relay` | Tests the relay, then deploys it. See [Deploying](#deploying) |
-| `make zip` | `dist/spppd-2.2.0.love`. Tests stay out |
+| `make zip` | `dist/spppd-2.3.0.love`. Tests stay out |
 | `make win64 win32` | Windows zips. To this project, these are what a release means |
 | `make apk` | Test APK, self-signed, application id `xyz.hblabs.spppd` |
 | `make apk-perf` | APK that runs `--perf` at launch |

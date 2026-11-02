@@ -1,7 +1,7 @@
 -- Global tuning constants. Everything here is shared by the simulation,
 -- the renderer and the tests, so it must stay free of LÖVE calls.
 local config = {
-  VERSION = "2.2.0",
+  VERSION = "2.3.0",
 
   -- World units are pixels; the vehicle model works in SI units.
   METER = 12,          -- world px per metre
