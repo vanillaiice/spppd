@@ -3,6 +3,7 @@
 local config = require("src/config")
 local Race = require("src/sim/race")
 local Track = require("src/sim/track")
+local dynamics = require("src/sim/dynamics")
 local world = require("src/world")
 local input = require("src/input")
 local touch = require("src/touch")
@@ -26,6 +27,7 @@ local rm = {}
 
 local M = config.METER
 local DT = config.PHYSICS_DT
+local SCRAPE_FADE = 12  -- per second, so a car off the wall is silent in 0.08 s
 
 local session -- everything that belongs to the current race
 
@@ -250,29 +252,35 @@ end
 local function processImpacts()
   local events = world.drainEvents()
   local race = session.race
+  local player = race.player
+  -- One crash is several contacts: only the hardest of them is the sound of it.
+  local hardest = 0
   for _, e in ipairs(events) do
-    local mine = e.carA == race.player or e.carB == race.player
+    local mine = e.carA == player or e.carB == player
     local strength = e.impulse / 9000
     if strength > 0.02 then
       vfx.scrape(e.x, e.y, e.nx, e.ny, math.min(2.5, strength * 3))
       if mine and not session.demo then
         session.cam.trauma = math.min(1, session.cam.trauma + math.min(0.6, strength * 0.8))
-        audio.impact(math.min(1, 0.25 + strength), strength < 0.15)
+        hardest = math.max(hardest, strength)
         rumble.crash(strength)
         if session.drift then session.drift.combo = 0 end
       end
     end
   end
+  if hardest > 0 then audio.impact(hardest, player.spec) end
+  -- Contact flickers as a car bounces along a wall. This rides over the gaps.
+  player.scraping = player.scraped and 1 or math.max(0, (player.scraping or 0) - DT * SCRAPE_FADE)
+  player.scraped = false
 end
 
 local function updateDrift(dt)
   local drift = session.drift
   if not drift then return end
   local car = session.race.player
-  local beta = math.abs(car.model.beta)
   local speed = car:getSpeed()
-  if beta > math.rad(10) and speed > 7 and car.model.reverse == false then
-    drift.combo = drift.combo + speed * math.deg(beta) * dt * 0.12
+  if dynamics.sliding(car.model, speed) then
+    drift.combo = drift.combo + speed * math.deg(math.abs(car.model.beta)) * dt * 0.12
     drift.idle = 0
   else
     drift.idle = drift.idle + dt
@@ -486,7 +494,7 @@ function rm.update(dt)
       if gear ~= lastGear then
         session.lastGear = gear
         if gear > lastGear then
-          audio.play("shift", 0.42, audio.variedPitch())
+          audio.play("shift", audio.SHIFT_LEVEL, audio.variedPitch())
           rumble.shift()
         end
       end

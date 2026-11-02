@@ -1,6 +1,15 @@
 -- `love . --test [filter]` runs the headless test suite instead of the game.
 -- `love . --perf` measures a race instead.
-for _, a in ipairs(arg or {}) do
+-- `love . --sounds <old|new> <folder>` writes every sound out as a WAV.
+for i, a in ipairs(arg or {}) do
+  if a == "--sounds" then
+    local which, folder = arg[i + 1], arg[i + 2]
+    function love.load()
+      require("tests/sound/dump")(which, folder)
+      love.event.quit(0)
+    end
+    return
+  end
   if a == "--test" then
     function love.load(args)
       local filter
@@ -28,6 +37,7 @@ local radio = require("src/radio")
 local post = require("src/render/post")
 local textures = require("src/render/textures")
 local network = require("src/network_manager")
+local catalog = require("src/tracks/catalog")
 
 -- Slow phones take seconds over this, so it runs a step at a time between
 -- frames, with the splash on screen.
@@ -71,6 +81,10 @@ function love.load(args)
           require("tests/flow").start()
           return
         end
+        if b == "listen" then
+          require("tests/sound/listen").start()
+          return
+        end
       end
       require("tests/visual").start(args)
       return
@@ -88,8 +102,9 @@ function love.update(dt)
   elseif state.screen == "race" then
     if input.consume("pause") and not rm.isFinished() then
       rm.setPaused(not rm.isPaused())
-      -- Esc is also the menu's "back" key: this press has now been used.
-      ui.nav.back = nil
+      -- Esc is also the menu's "back" key and Start its "ok", and the pause
+      -- menu draws this same frame: this press has now been used.
+      ui.nav.back, ui.nav.ok = nil, nil
     end
     rm.update(dt)
     network.update(dt)
@@ -116,7 +131,7 @@ function love.draw()
   end
 
   if ui.played then
-    audio.play(ui.played, 0.3)
+    audio.play(ui.played, 0.3, audio.variedPitch(0.03))
     ui.played = nil
   end
   ui.endFrame()
@@ -210,8 +225,11 @@ function love.filedropped(file)
 end
 
 function love.focus(focused)
-  -- Coming back from a file manager: there may be new songs in the folder.
-  if focused then radio.scan() end
+  -- Coming back from a file manager: there may be new songs or tracks.
+  if focused then
+    radio.scan()
+    catalog.refresh()
+  end
   if not focused and state.screen == "race" and not rm.isFinished() and not rm.keepRunningUnfocused then
     rm.setPaused(true)
     input.clear()

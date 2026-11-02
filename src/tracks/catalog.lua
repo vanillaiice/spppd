@@ -5,6 +5,11 @@ local catalog = {}
 local BUILTIN = { "lusail", "highlands", "harbour", "boat", "speedway", "temple", "riviera", "ardennes", "touge", "oasis" }
 local USER_DIR = "tracks"
 
+-- The menus ask for the list every frame, and reading it runs every saved file.
+-- Kept until something can have changed the folder, so the same file keeps the
+-- same `def` table until then.
+local userEntries
+
 local function loadDefinition(path)
   local loaded, chunk = pcall(love.filesystem.load, path)
   if not loaded or not chunk then return nil end
@@ -26,7 +31,9 @@ function catalog.builtin()
 end
 
 function catalog.user()
+  if userEntries then return userEntries end
   local out = {}
+  userEntries = out
   if not love.filesystem.getInfo(USER_DIR) then return out end
   for _, file in ipairs(love.filesystem.getDirectoryItems(USER_DIR)) do
     local name = file:match("^(.+)%.lua$")
@@ -40,6 +47,10 @@ function catalog.user()
   end
   table.sort(out, function(a, b) return a.name < b.name end)
   return out
+end
+
+function catalog.refresh()
+  userEntries = nil
 end
 
 function catalog.all()
@@ -73,10 +84,12 @@ function catalog.save(name, def)
   end
   lines[#lines + 1] = "}"
   lines[#lines + 1] = ""
+  catalog.refresh()
   return love.filesystem.write(USER_DIR .. "/" .. name .. ".lua", table.concat(lines, "\n"))
 end
 
 function catalog.remove(name)
+  catalog.refresh()
   return love.filesystem.remove(USER_DIR .. "/" .. name .. ".lua")
 end
 

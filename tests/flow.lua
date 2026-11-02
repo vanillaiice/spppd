@@ -19,6 +19,12 @@ local function press(key)
   love.keyreleased(key)
 end
 
+local function padPress(button)
+  local pad = { isConnected = function() return false end }
+  love.gamepadpressed(pad, button)
+  love.gamepadreleased(pad, button)
+end
+
 local function click(x, y)
   love.mousemoved(x, y, 0, 0)
   love.mousepressed(x, y, 1)
@@ -98,6 +104,7 @@ local function steps()
   step(3, function()
     expect(state.screen == "race", "START begins the race")
     expect(rm.race().phase == "countdown", "the race opens on the lights")
+    expect(rm.race().track == menu.cachedTrack(catalog.find("harbour")).track, "on the track the menu built")
     love.keypressed("w", "w", false)
     expect(#rm.race().cars == 4, "three opponents on the grid")
   end)
@@ -153,6 +160,16 @@ local function steps()
   end)
   step(6, function()
     expect(not audio.horn:isPlaying(), "and letting go stops it")
+    -- Stays on the wall for as long as the frames below run.
+    flow.mix = audio.update
+    audio.update = function(dt, car, ...)
+      car.scraped = true
+      flow.mix(dt, car, ...)
+    end
+  end)
+  step(6, function()
+    audio.update = flow.mix
+    expect(audio.grind:isPlaying(), "dragging along a wall grinds")
     press("r")
   end)
   step(3, function()
@@ -209,6 +226,14 @@ local function steps()
   end)
   step(3, function()
     expect(not rm.isPaused(), "escape resumes")
+    padPress("start")
+  end)
+  step(3, function()
+    expect(rm.isPaused(), "Start on a pad pauses")
+    padPress("start")
+  end)
+  step(3, function()
+    expect(not rm.isPaused(), "and Start resumes")
     press("p")
   end)
   step(3, function()

@@ -54,7 +54,7 @@ touch. Use Settings to force them on, which lets a mouse act as one finger.
 | Brake, then reverse | Pull the stick down |
 | Drift | Hold DRIFT and keep steering |
 | Boost on/off | Tap BOOST |
-| Reset and pause | Top right |
+| Horn, reset and pause | Top right |
 
 To try it on Android, run `make zip` and open the `.love` file in the LÖVE app, or
 run `make apk` for a test build of its own. The first `make apk` compiles LÖVE for
@@ -148,6 +148,8 @@ loopback.
     make test-visual   # plays the real game through its input handlers. Needs a display.
     make test-server   # relay server, with the race detector
     make test-online   # two clients through a real relay
+    make listen        # old and new sounds side by side, with the engine on a slider
+    make sound-report  # measures every sound and the mix. See SOUND.md.
     love . --perf      # frame timings for a race
     make apk-perf      # the same on a phone: read them with adb logcat | grep PERF
 

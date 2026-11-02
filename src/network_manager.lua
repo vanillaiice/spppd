@@ -13,7 +13,6 @@ local network = {
   peerSeen = 0,
 }
 
-local TICK = 1 / 20
 local RESEND = 0.25
 local TIMEOUT = 6
 
@@ -91,7 +90,6 @@ function network.connect(host, port, role, code, hello)
   network.peerHello = nil
   network.lastHeard = socket.gettime()
   network.resendTimer = 0
-  network.tickTimer = 0
   network.onMessage = nil
   udp:send(string.format("event|%s|%s", role, code))
 end

@@ -15,14 +15,14 @@ local STUD_INSET = 0.5   -- metres in from the road's edge, on the painted line
 local POOL_SIZE = 70     -- metres across, a lamp on an unlit circuit
 
 local ROAD_SHADER = [[
-  varying vec3 v_edge;
+  varying vec2 v_edge;
   varying float v_s;
   varying vec2 v_kerb;
   uniform highp vec3 roadColor;
   uniform highp float trackLength;
 
   #ifdef VERTEX
-  attribute vec3 Edge;
+  attribute vec2 Edge;
   attribute vec2 KerbFlags;
   vec4 position(mat4 transform_projection, vec4 vertex_position) {
     v_edge = Edge;
@@ -34,7 +34,7 @@ local ROAD_SHADER = [[
 
   #ifdef PIXEL
   vec4 effect(vec4 color, Image tex, vec2 uv, vec2 sc) {
-    const float M = 12.0;
+    const float M = ]] .. string.format("%.1f", M) .. [[;
     const vec3 PAINT = vec3(0.98, 0.98, 0.95);
     float dL = v_edge.x, dR = v_edge.y;
     float d = min(dL, dR);
@@ -131,15 +131,9 @@ local GRAVEL_SHADER = [[
 local ROAD_FORMAT = {
   { "VertexPosition", "float", 2 },
   { "VertexTexCoord", "float", 2 },
-  { "Edge", "float", 3 },
+  { "Edge", "float", 2 },
   { "KerbFlags", "float", 2 },
 }
-
-local function lineOffset(s)
-  local dx, dy = s.lineX - s.lx, s.lineY - s.ly
-  local ex, ey = (s.rx - s.lx) / s.w, (s.ry - s.ly) / s.w
-  return dx * ex + dy * ey
-end
 
 local function buildRoad(track)
   local samples, n = track.samples, track.count
@@ -147,10 +141,9 @@ local function buildRoad(track)
   local function column(s, along)
     local ex, ey = (s.rx - s.lx) / s.w, (s.ry - s.ly) / s.w
     local kl, kr = s.kerbL and 1 or 0, s.kerbR and 1 or 0
-    local line = lineOffset(s)
     local w = s.w
     local function add(x, y, dL, dR)
-      verts[#verts + 1] = { x, y, along, 0, dL, dR, dL - line, kl, kr }
+      verts[#verts + 1] = { x, y, along, 0, dL, dR, kl, kr }
     end
     add(s.lx - ex * KERB, s.ly - ey * KERB, -KERB, w + KERB)
     add(s.lx, s.ly, 0, w)
@@ -280,9 +273,8 @@ local function rectMesh(rects)
 end
 
 local function outsideRoad(track, x, y, clearance)
-  local _, _, _, off, side = track:locate(x, y)
+  local i, _, _, off, side = track:locate(x, y)
   if off <= 0 then return false end
-  local i = track:locate(x, y)
   local s = track.samples[i]
   local barrier = side == "l" and s.barrierl or s.barrierr
   return off > barrier + clearance

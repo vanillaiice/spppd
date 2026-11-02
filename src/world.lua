@@ -12,17 +12,16 @@ local world = {
   events = {},
 }
 
-local function firstCar(a, b)
-  local ca, cb = a:getUserData(), b:getUserData()
-  return ca, cb
-end
-
 -- Impacts are only recorded here; effects and sound read them after the step.
 local function postSolve(a, b, contact, normal1, tangent1, normal2, tangent2)
   local impulse = (normal1 or 0) + (normal2 or 0)
+  local carA, carB = a:getUserData(), b:getUserData()
+  -- Touching at all counts, for the sound of dragging along a wall: that's far
+  -- too gentle to be an event, and goes on for as long as the car stays on it.
+  if carA then carA.scraped = true end
+  if carB then carB.scraped = true end
   if impulse < 200 * M then return end
   if #world.events >= 16 then return end
-  local carA, carB = firstCar(a, b)
   local x, y = contact:getPositions()
   if not x then return end
   local nx, ny = contact:getNormal()

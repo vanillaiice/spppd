@@ -11,7 +11,7 @@ local M = config.METER
 
 -- Per-frame effects ------------------------------------------------------
 
-local function wheelFx(car, wheel, trail, dt, speed)
+local function wheelFx(car, wheel, trail, speed)
   local x, y = car:wheelWorldPosition(wheel)
   local a = car.body:getAngle()
   local nx, ny = -math.sin(a), math.cos(a)
@@ -41,7 +41,7 @@ function view.updateFx(car, dt)
   local fx = car.fx
   local speed = car:getSpeed()
   local model = car.model
-  for i = 1, 4 do wheelFx(car, model.wheels[i], fx.trails[i], dt, speed) end
+  for i = 1, 4 do wheelFx(car, model.wheels[i], fx.trails[i], speed) end
 
   -- The warp eases in and out, so a quick tap of nitro never flashes.
   local warpTarget = model.boostState == "active" and 1 or 0
@@ -53,7 +53,7 @@ function view.updateFx(car, dt)
   local ex = x + math.cos(back) * (car.length / 2 + 2)
   local ey = y + math.sin(back) * (car.length / 2 + 2)
 
-  -- A lifted throttle at high revs pops through the exhaust.
+  -- An upshift at high revs pops through the exhaust.
   fx.popTimer = fx.popTimer - dt
   if model.gear ~= fx.gear then
     if model.gear > fx.gear and model.rpm > car.spec.redline * 0.75 and fx.popTimer <= 0 then
@@ -66,7 +66,7 @@ end
 
 -- Drawing ----------------------------------------------------------------
 
-local function drawWheel(wheel, steer, sprite)
+local function drawWheel(wheel, steer)
   love.graphics.push()
   love.graphics.translate(wheel.x * M, wheel.y * M)
   if wheel.front then love.graphics.rotate(steer) end
@@ -138,7 +138,7 @@ function view.draw(car, x, y, angle, alpha)
 
   drawWarp(car, alpha)
   drawSlipstream(car, alpha)
-  for i = 1, 4 do drawWheel(model.wheels[i], model.steer, sprite) end
+  for i = 1, 4 do drawWheel(model.wheels[i], model.steer) end
 
   -- The body leans a pixel or two against the suspension.
   local roll = math.max(-1, math.min(1, model.ay / 12)) * 1.4

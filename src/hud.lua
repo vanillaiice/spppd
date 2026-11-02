@@ -35,7 +35,7 @@ local function speedText(car)
 end
 
 local function drawTower(race, s)
-  local order = race:standings()
+  local order = race.order
   local x, y = 8 * s, 8 * s
   local rowH, size = 11 * s, 6 * s
   local w = 118 * s

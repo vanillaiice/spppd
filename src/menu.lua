@@ -50,9 +50,11 @@ local VOLUMES = { 0, 0.2, 0.4, 0.6, 0.8, 1 }
 local VOLUME_NAMES = { [0] = "OFF", [0.2] = "20%", [0.4] = "40%", [0.6] = "60%", [0.8] = "80%", [1] = "100%" }
 local MUSIC_HINT = "Drop MP3, OGG, FLAC, WAV here, or press to open the folder."
 
-local trackCache = {}
+-- Weak, so a saved track that's been changed lets go of its old build. The
+-- race drives the same Track, which nothing changes once it's built.
+local trackCache = setmetatable({}, { __mode = "k" })
 local function cachedTrack(entry)
-  local key = entry.name .. (entry.builtin and "" or tostring(entry.def))
+  local key = entry.def
   if not trackCache[key] then
     local track = Track.new(entry.def)
     local line = {}
@@ -66,6 +68,7 @@ local function cachedTrack(entry)
   end
   return trackCache[key]
 end
+menu.cachedTrack = cachedTrack
 
 local function cycle(list, current, direction)
   local index = 1
@@ -117,9 +120,11 @@ function menu.startRace(extra)
   local spec = currentCar()
   menu.demoRunning = false
   local mode = settings.mode
+  local entry = mode ~= "freestyle" and (extra.entry or currentEntry()) or nil
   rm.start({
     mode = mode,
-    entry = mode ~= "freestyle" and (extra.entry or currentEntry()) or nil,
+    entry = entry,
+    track = entry and cachedTrack(entry).track,
     spec = spec,
     color = currentColor(spec),
     laps = mode == "race" and settings.laps or 9999,
@@ -620,7 +625,7 @@ function menu.drawResults(sw, sh)
   love.graphics.setColor(0, 0, 0, 0.5 * ease)
   love.graphics.rectangle("fill", 0, 0, sw, sh)
 
-  local order = race:standings()
+  local order = race.order
   local w = math.min(sw - 16 * s, 300 * s)
   local rowH = 13 * s
   local h = 52 * s + rowH * #order + 40 * s

@@ -4,9 +4,6 @@ Ideas that are agreed in principle but not built yet.
 
 ## Next
 
-Start these once the style update (drift-earned nitro, vibration, 10 tracks,
-12 cars) has been played and approved.
-
 - **Share tracks online:** the host's track is sent to the guest automatically, so
   both players no longer need it installed. This also makes editor tracks more
   worth building.

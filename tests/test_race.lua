@@ -76,6 +76,20 @@ local function botLaps(entry, spec, laps, opts)
 end
 
 h.describe("race", function()
+  h.it("a car touching a barrier is marked for the sound of grinding, one on the road isn't", function()
+    local track = Track.new(catalog.find("lusail").def)
+    local race = Race.new({ mode = "race", track = track, laps = 1, opponents = 0, spec = garage[3],
+      seed = 7, startDelay = 0 })
+    local car = race.player
+    run(race, 0.2)
+    h.assertTrue(not car.scraped, "nothing to touch on the grid")
+    local post = track.barrierL[40]
+    car:teleport(post.x, post.y, 0)
+    run(race, 0.1)
+    h.assertTrue(car.scraped, "too gentle to be an impact, but it's touching")
+    race:destroy()
+  end)
+
   for _, entry in ipairs(catalog.builtin()) do
     for _, assist in ipairs({ "arcade", "full" }) do
       h.it("the AI laps " .. entry.name .. " in every car on " .. assist, function()
@@ -368,6 +382,9 @@ h.describe("race", function()
     local order = race:standings()
     h.assertEq(order[1].place, 1)
     h.assertTrue(order[1].distance >= order[2].distance, "ordering")
+    race:step(DT)
+    h.assertTrue(race:standings() == order and race.order == order, "no new table each step")
+    h.assertEq(#order, #race.cars, "everyone listed")
     race:destroy()
   end)
 

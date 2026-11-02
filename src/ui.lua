@@ -132,7 +132,6 @@ end
 local function inside(x, y, w, h)
   return ui.mx >= x and ui.mx < x + w and ui.my >= y and ui.my < y + h
 end
-ui.inside = inside
 
 -- Drawing helpers ----------------------------------------------------------
 

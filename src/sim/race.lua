@@ -55,7 +55,7 @@ function Race.new(opts)
   self.handling = handling
   local slot = 1
   if self.mode == "race" and self.track then slot = online and online.slot or (opts.opponents or 0) + 1 end
-  local x, y, angle, index = 0, 0, opts.spawnAngle or -math.pi / 2, nil
+  local x, y, angle, index = 0, 0, -math.pi / 2, nil
   if self.track then x, y, angle, index = self.track:gridSlot(slot) end
 
   self.player = Car.new(spec, x, y, angle, {
@@ -81,6 +81,10 @@ function Race.new(opts)
   end
 
   for _, car in ipairs(self.cars) do self:initProgress(car) end
+  -- Latest standings. Every step sorts this, so reading it costs nothing.
+  self.order = {}
+  for i, car in ipairs(self.cars) do self.order[i] = car end
+  self:standings()
   return self
 end
 
@@ -129,6 +133,7 @@ end
 function Race:destroy()
   for _, car in ipairs(self.cars) do car:destroy() end
   self.cars = {}
+  self.order = {}
   world.destroy()
 end
 
@@ -144,11 +149,10 @@ local function rank(a, b)
 end
 
 function Race:standings()
-  local list = {}
-  for i, car in ipairs(self.cars) do list[i] = car end
-  table.sort(list, rank)
-  for i, car in ipairs(list) do car.place = i end
-  return list
+  local order = self.order
+  table.sort(order, rank)
+  for i, car in ipairs(order) do car.place = i end
+  return order
 end
 
 function Race:respawn(car)

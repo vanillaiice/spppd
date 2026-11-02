@@ -7,7 +7,7 @@ local cache = {}
 local ROOT = "soundcache"
 local COMPLETE = "complete"  -- written last, so an interrupted first launch doesn't count
 
-local function wav(data)
+function cache.wav(data)
   local rate, bits, channels = data:getSampleRate(), data:getBitDepth(), data:getChannelCount()
   local size = data:getSize()
   local align = channels * bits / 8
@@ -54,7 +54,7 @@ function cache.get(name, render, ...)
     if ok then return data end
   end
   local data = render(...)
-  local ok, written = pcall(love.filesystem.write, path, wav(data))
+  local ok, written = pcall(love.filesystem.write, path, cache.wav(data))
   if not (ok and written) then cache.failed = true end
   return data
 end

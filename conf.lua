@@ -27,7 +27,7 @@ function love.conf(t)
   end
 
   -- `love . --test` runs the simulation tests without opening a window.
-  if hasArg("--test") then
+  if hasArg("--test") or hasArg("--sounds") then
     t.identity = "spppd-test"
     t.window = nil
     t.modules.window = false

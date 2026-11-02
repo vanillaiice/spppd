@@ -9,7 +9,7 @@
 set -euo pipefail
 
 repo=$(cd "$(dirname "$0")/.." && pwd)
-ver=$(sed -n 's/^ver := //p' "$repo/Makefile")
+ver=$(sed -n 's/.*VERSION = "\(.*\)".*/\1/p' "$repo/src/config.lua")
 love_android="$repo/dist/love-android"
 work="$repo/dist/apk-work"
 output=$(realpath -m "${OUTPUT:-$repo/dist/spppd-$ver-android.apk}")

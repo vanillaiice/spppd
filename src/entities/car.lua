@@ -79,10 +79,6 @@ function Car:getSpeed()
   return math.sqrt(vx * vx + vy * vy) / M
 end
 
-function Car:getForwardSpeed()
-  return (self:getVelocity())
-end
-
 function Car:wheelWorldPosition(wheel)
   local x, y = self.body:getPosition()
   local a = self.body:getAngle()

@@ -4,23 +4,33 @@
 -- A piston engine is the startup's engine model rendered at a few speeds for each
 -- cylinder count, so it keeps its exhaust note at any rpm. Turbos, a supercharger
 -- or an electric motor are layers worked out from the car's spec.
--- Most of the rest is built with sfxr, an
--- arcade effects synth, from the settings below. The sounds that have to feel
--- mechanical (startup, gear change, blow-off) are modelled here instead.
+-- The tones and small effects are built with sfxr, an arcade effects synth, from the
+-- settings below. The sounds that have to feel mechanical (startup, gear change,
+-- blow-off, crashes) are modelled here instead, out of the same parts: stepped noise,
+-- simple filters, slides and short envelopes.
+-- SOUND.md is the style guide: the levels and conventions a new sound has to meet.
 local sfxr = require("src/lib/sfxr")
 local cache = require("src/sound_cache")
 local garage = require("src/entities/garage")
 
-local audio = { ready = false, spool = 0 }
+local audio = { ready = false, spool = 0, duck = 0 }
 local voices = {}  -- audio.voiceOf's results, by key
 
 local RATE = 44100
-local SCRUB_MAX = 0.14
+local SCRUB_MAX = 0.2
+local SCRUB_RISE = 0.42    -- volume per unit of slide past the grip limit
+-- A real drift sits at slide 1 for as long as it lasts, so this is what a slide
+-- sounds like for seconds at a time.
+local SQUEAL_MAX = 0.2
+local SQUEAL_FROM, SQUEAL_RISE = 0.55, 0.5
+local GRIND_MAX = 0.32     -- bodywork dragging along a wall at speed
+local GRIND_IN, GRIND_OUT = 14, 6  -- its fade per second
 local LOOSE_MAX = 0.2      -- off-road layer at full speed with all four wheels off
 local LOOSE_IN, LOOSE_OUT = 1.2, 0.8  -- its fade per second: about 0.2 s, 0.25 s
-local IMPACT_GAP = 0.12    -- seconds; a car grinding along a wall is one noise
+local IMPACT_GAP = 0.12    -- seconds; only a bigger hit gets through inside this
 local NITRO_LEVEL = 0.4
-local NITRO_IN, NITRO_OUT = 12, 5  -- its fade per second: a burst on, a short sigh off
+local NITRO_IN, NITRO_OUT = 4, 1.2  -- its fade per second: a swell on, a slow sigh off
+local NITRO_SAG = 0.3      -- the share of its level that goes as the bottle empties
 local HORN_LEVEL = 0.5
 local HORN_FADE = 40       -- per second, so it starts and stops like a button
 local HORN_HZ = { 420, 500 }  -- the classic two trumpets, a little under a third apart
@@ -28,7 +38,8 @@ local HORN_MASS = 1400     -- a car this heavy plays the horn at its written pit
 local SPOOL_DOWN = 7        -- how fast a turbo dumps (per s)
 local BLOWOFF_SPOOL = 0.55 -- turbo pressure needed to be heard venting
 local BLOWOFF_LENGTH = 0.55
-local SHIFT_LENGTH = 0.17
+local SHIFT_LENGTH = 0.14
+audio.SHIFT_LEVEL = 0.55
 local STARTUP_PRESS = 0.08 -- the start button going down
 local STARTUP_CATCH = 0.35 -- seconds before the engine fires
 audio.STARTUP_PEAK = 1.1   -- the rev flare tops out and the turbo vents
@@ -42,7 +53,19 @@ local V8_LEVEL = { 1, 0.72, 0.9, 0.62, 0.95, 0.7, 0.84, 0.66 }
 local LUMP = 0.85                         -- how far a rough engine's firing dips
 local ENGINE_RPMS = { 1300, 3000, 5400 }  -- the speeds a voice's loops are rendered at
 local RACE_RPMS = { 4000, 8000, 12000 }   -- a race engine lives far higher up
-local ENGINE_LOOP, ENGINE_FADE = 0.7, 0.14  -- seconds, before rounding to whole engine cycles
+local ENGINE_LOOP, ENGINE_FADE = 0.7, 0.1  -- seconds, before rounding to whole engine cycles
+local IDLE_RPM, RACE_IDLE_RPM = 900, 2400   -- what each voice's idle is rendered at
+local IDLE_LOOP = 0.45     -- seconds: seven more loops, so they stay short
+local IDLE_LEVEL = 0.3
+-- Two loops at one engine speed share every harmonic, so where they overlap they
+-- can cancel, by up to 10 dB depending on how they happen to line up. Keeping the
+-- overlap narrow means a pull passes through it instead of living in it.
+local BLEND_WIDTH = 1.12   -- either side of the middle of two speeds, as a ratio
+-- How strong each kind of engine loop comes out, as its level above 300 Hz: the part
+-- every speaker can play, so every car is as present on a phone. Bass goes on top of
+-- that, which is why the big engines sound bigger on anything with a woofer.
+local LOOP_LEVEL = { speed = 0.52, overrun = 0.14, idle = 0.3, limiter = 0.46 }
+local LOOP_PEAK = 0.9      -- whatever that asks for, nothing goes past this
 
 -- The cut pulses of a gear change, as { seconds, level }: uneven, or it's a buzz.
 local SHIFT_PULSES = {
@@ -53,7 +76,73 @@ local ENGINE_PIPES = { 1, 0.8, 0.5, 0.28 }
 local SHIFT_PIPES = { 0.1, 0.9, 0.8, 0.4 }
 local RACE_PIPES = { 0.15, 0.7, 0.9, 0.6 }  -- no bass in a short, wide-open pipe
 
+-- Crashes come in as impulse / 9000: a bumper tap is about 0.2, a 70 m/s head-on
+-- into a wall 27. That range is why these work on its logarithm. quiet and loud
+-- are the volume at from and at to. A crash also pulls the engine down for a
+-- moment, duck being the share taken off it.
+local IMPACT_TIERS = {
+  { from = 0.15, to = 0.6, quiet = 0.5, loud = 0.9, duck = 0 },
+  { from = 0.6, to = 3, quiet = 0.7, loud = 1, duck = 0.3 },
+  { from = 3, to = 20, quiet = 0.75, loud = 1, duck = 0.6 },
+}
+audio.IMPACT_TIERS = IMPACT_TIERS
+local GRAZE_LEVEL = 0.35   -- a touch too small for any of those
+local DUCK_RECOVERY = 3.5  -- per second, so the engine is back within 0.3 s
+local IMPACT_MASS = 1400   -- a car this heavy plays a crash at its written pitch
+
+-- One hit at three sizes. The metal is dead, not ringing: long clean partials are the
+-- sound of saucepans. On a phone the thump is gone, so the crunch has to carry it.
+-- thump is a sine that sags at thumpFall. crunch is stepped noise held for holdFrom
+-- samples, and holdBy more per second, so it coarsens as it dies. snap is the share of
+-- it that dies fast. debris is how many bits fall off afterwards.
+local CRASHES = {
+  { seconds = 0.2, seed = 61, peak = 0.84, drive = 1.6,
+    thump = 0.5, thumpHz = 165, thumpFall = 240, thumpDecay = 34, crack = 0.3, crackDecay = 500,
+    crunch = 1.3, crunchDecay = 26, snap = 0.2, tone = 0.3, holdFrom = 2, holdBy = 20,
+    metal = 0, ring = 0.97, debris = 0 },
+  { seconds = 0.4, seed = 71, peak = 0.88, drive = 2.2,
+    thump = 0.8, thumpHz = 118, thumpFall = 90, thumpDecay = 15, crack = 0.3, crackDecay = 420,
+    crunch = 1.3, crunchDecay = 9, snap = 0.25, tone = 0.42, holdFrom = 1, holdBy = 22,
+    metal = 0.5, ring = 0.982, debris = 3 },
+  { seconds = 0.85, seed = 83, peak = 0.94, drive = 2.8,
+    thump = 0.9, thumpHz = 88, thumpFall = 34, thumpDecay = 8, crack = 0.3, crackDecay = 300,
+    crunch = 1.5, crunchDecay = 4.6, snap = 0.25, tone = 0.5, holdFrom = 1, holdBy = 24,
+    metal = 0.8, ring = 0.986, debris = 8 },
+}
+-- Far from any simple ratio, so no pitch comes out of them.
+local METAL_HZ = { 587, 1033, 1741, 2953 }
+local METAL_LEVEL = { 1, 0.8, 0.6, 0.4 }
+
 local NOISE, SQUARE = sfxr.WAVEFORM.NOISE, sfxr.WAVEFORM.SQUARE
+
+-- White noise through sfxr's low-pass and high-pass, as Hz, its damping (1 / Q) and
+-- a gain. bandNoise says why these aren't sfxr presets any more. Nothing steady lives
+-- much above 2 kHz: white noise held there for seconds is static, whatever it's
+-- meant to be. What tells them apart is what moves. wander swings the low-pass and
+-- swell the level, as { cycles of the loop, share }, and a sound that doesn't move at
+-- all reads as a fault on the line. body lifts everything under bodyHz by that much.
+-- The road's texture is the tread going by, so it speeds up with the car.
+local ROAD = { lowHz = 300, damping = 1.1, highHz = 45, gain = 3.2,
+  swell = { { 21, 0.2 }, { 34, 0.14 } } }
+-- Air in gusts, low, with nothing like a hiss in it.
+local WIND = { lowHz = 620, damping = 0.75, highHz = 170, gain = 1.3,
+  wander = { { 2, 0.24 }, { 5, 0.14 }, { 11, 0.07 } }, swell = { { 3, 0.2 }, { 7, 0.12 } } }
+local LOOSE = { lowHz = 560, damping = 1.2, highHz = 60, gain = 2.2,
+  swell = { { 17, 0.2 }, { 29, 0.16 } } }
+-- Rubber dragging: the tyre's own chatter on top of a dull rub.
+local SCRUB = { lowHz = 950, damping = 1.2, highHz = 130, gain = 1.3,
+  swell = { { 37, 0.22 }, { 61, 0.14 } } }
+-- Nitro is a can of gas let go slowly, with pressure behind it. A smooth roll off
+-- the top, so it's never sharp, and a chest under it, so it pushes.
+local NITRO = { lowHz = 2400, damping = 1.1, highHz = 100, gain = 0.8, body = 1.1, bodyHz = 320,
+  wander = { { 2, 0.03 }, { 5, 0.02 } } }
+-- Past its limit a tyre grabs and lets go hundreds of times a second, so a squeal is
+-- a note, not noise: a sawtooth for each tyre that's gone, a little off the others,
+-- each stroke its own size by up to grit. Low for a tyre: more a rubber howl than a
+-- shriek, so that it can be held through a whole drift.
+local SQUEAL = { hz = { 482, 491, 502 }, lowHz = 1500, damping = 0.9, highHz = 240, grit = 0.4 }
+local SQUEAL_DRIFT = { { 3, 0.012 }, { 7, 0.008 } }
+local SQUEAL_CHATTER = { { 41, 0.12 }, { 67, 0.08 } }
 
 -- A frequency f plays at 3528 * f^2 Hz and an envelope stage e lasts 2.27 * e^2
 -- seconds. Keep a lowpass cutoff under 0.3 or noise stays a bright hiss.
@@ -66,27 +155,10 @@ local SHOTS = {
     waveform = SQUARE, frequency = { start = 0.545 }, envelope = { sustain = 0.15, decay = 0.4 },
     change = { speed = 0.6, amount = 0.45 },
   },
-  impact = {
-    waveform = NOISE, frequency = { start = 0.3, slide = -0.3 },
-    envelope = { sustain = 0.05, punch = 0.4, decay = 0.28 },
-    lowpass = { cutoff = 0.15 }, volume = { master = 0.55 },
-  },
   scrape = {
     waveform = NOISE, frequency = { start = 0.5 }, envelope = { sustain = 0.04, decay = 0.16 },
     lowpass = { cutoff = 0.25 }, highpass = { cutoff = 0.1 },
   },
-}
-
-local SCRUB = {
-  waveform = NOISE, frequency = { start = 0.55 }, envelope = { sustain = 0.94, decay = 0 },
-  lowpass = { cutoff = 0.22 }, highpass = { cutoff = 0.12 },
-}
-
--- Nitro is gas under pressure: a hiss, up above the engine where it can be heard
--- without being loud. Anything lower just disappears under the pistons.
-local NITRO = {
-  waveform = NOISE, frequency = { start = 0.9 }, envelope = { sustain = 0.94, decay = 0 },
-  lowpass = { cutoff = 0.55 }, highpass = { cutoff = 0.3 }, volume = { master = 0.5 },
 }
 
 -- By number of turbos. One small turbo is a thin high whistle that spools fast.
@@ -179,31 +251,77 @@ function audio.hornData()
   end)
 end
 
--- Cross-fade the tail over the head so the loop has no click.
-local function crossfade(base, seconds, fadeTime)
+-- Cross-fade the tail over the head so the loop has no click. Two stretches of
+-- noise are unrelated, so they add by power: a straight fade dips by 3 dB halfway
+-- and the loop breathes. An engine's cycles line up across the join, so they add
+-- as they stand and a fade by power would swell. noise is how much of the sound is
+-- unrelated, 0..1, and picks the fade between those two. gain scales the result.
+local function crossfade(base, seconds, fadeTime, noise, gain)
+  gain = gain or 1
+  local curve = 1 - (noise or 0) * 0.5
   local n = math.floor(seconds * RATE)
-  local fade = math.floor(fadeTime * RATE)
+  local fade = math.min(math.floor(fadeTime * RATE), base:getSampleCount() - n)
   return soundData(seconds, function(_, i)
     local v = base:getSample(i)
     if i < fade then
       local t = i / fade
-      v = v * t + base:getSample(n + i) * (1 - t)
+      v = v * t ^ curve + base:getSample(n + i) * (1 - t) ^ curve
     end
-    return v
+    return v * gain
   end)
 end
 
-local function noiseLoop(seconds, colour, gain)
-  local rng = love.math.newRandomGenerator(5)
-  local last, slow = 0, 0
-  local fadeTime = 0.1
-  local base = soundData(seconds + fadeTime, function()
-    local white = rng:random() * 2 - 1
-    last = last + (white - last) * colour
-    slow = slow + (last - slow) * colour * 0.25
-    return (last - slow * 0.6) * gain
-  end)
-  return crossfade(base, seconds, fadeTime)
+local function highpass(hz)
+  local leak = math.exp(-math.pi * 2 * hz / RATE)
+  local lastIn, lastOut = 0, 0
+  return function(x)
+    lastOut = (lastOut + x - lastIn) * leak
+    lastIn = x
+    return lastOut
+  end
+end
+
+-- Anything below 30 Hz is no use to any speaker, and a wave sitting off centre wastes
+-- headroom and thumps when it starts or stops.
+local function dcBlock()
+  return highpass(30)
+end
+
+-- A two-pole low-pass, the kind sfxr's is. The second function moves its cutoff.
+local function lowpass(damping)
+  local b0, b1, a1, a2, x1, x2, y1, y2 = 0, 0, 0, 0, 0, 0, 0, 0
+  local function run(x)
+    local y = b0 * (x + x2) + b1 * x1 - a1 * y1 - a2 * y2
+    x2, x1, y2, y1 = x1, x, y1, y
+    return y
+  end
+  local function tune(hz)
+    local w = math.pi * 2 * hz / RATE
+    local alpha = math.sin(w) * damping / 2
+    local norm = 1 + alpha
+    b1, a1, a2 = (1 - math.cos(w)) / norm, -2 * math.cos(w) / norm, (1 - alpha) / norm
+    b0 = b1 / 2
+  end
+  return run, tune
+end
+
+-- A slow movement over a loop, from { cycles of the loop, share } pairs. Whole cycles,
+-- so it comes back to where it started. phase sets different ones apart.
+local function wobble(parts, t, seconds, phase)
+  local total = 0
+  for _, part in ipairs(parts) do
+    total = total + part[2] * math.sin(t * math.pi * 2 * part[1] / seconds + (phase or 0))
+  end
+  return total
+end
+
+-- Scales a rendered sound so its loudest sample reaches peak.
+local function normalised(data, peak)
+  local n, top = data:getSampleCount(), 0
+  for i = 0, n - 1 do top = math.max(top, math.abs(data:getSample(i))) end
+  local gain = peak / math.max(top, 1e-6)
+  for i = 0, n - 1 do data:setSample(i, data:getSample(i) * gain) end
+  return data
 end
 
 -- A two-pole resonance: something ringing at hz.
@@ -218,6 +336,17 @@ local function resonator(hz, r)
   end
 end
 
+-- sfxr's noise: a random value held for some samples. The longer the hold, the
+-- coarser and more digital it sounds.
+local function steppedNoise(rng)
+  local value, left = 0, 0
+  return function(hold)
+    left = left - 1
+    if left <= 0 then value, left = rng:random() * 2 - 1, hold end
+    return value
+  end
+end
+
 -- A rough whine: the motor's harmonics, half clean and half noise ringing at the
 -- same pitches, so there's no pure tone in it. It repeats whole cycles to loop.
 function audio.motorData()
@@ -227,6 +356,7 @@ function audio.motorData()
   local rng = love.math.newRandomGenerator(23)
   local rings = {}
   for i, partial in ipairs(MOTOR_PARTIALS) do rings[i] = resonator(MOTOR_HZ * partial[1], 0.997) end
+  local block = dcBlock()
   local base = soundData(seconds + fadeTime, function(_, i)
     local white = rng:random() * 2 - 1
     local total = 0
@@ -234,22 +364,98 @@ function audio.motorData()
       local hz = RATE / period * partial[1]
       total = total + (math.sin(i / RATE * math.pi * 2 * hz) * 0.5 + rings[k](white) * 7) * partial[2]
     end
-    return math.atan(total * 1.6) * 0.5
+    return block(math.atan(total * 1.6) * 0.5)
   end)
-  return crossfade(base, seconds, fadeTime)
+  return crossfade(base, seconds, fadeTime, 0.5)
+end
+
+-- Nitro and the scrub were sfxr presets, and are still its filters on its noise. But
+-- at their settings its noise is plain white, so its eightfold oversampling was five
+-- times the render for nothing the ear could get at, and a phone pays that on first
+-- launch.
+local function bandNoise(settings, seconds, fadeTime)
+  local rng = love.math.newRandomGenerator(settings.lowHz)
+  local filter, tune = lowpass(settings.damping)
+  local cut = highpass(settings.highHz)
+  local wander, swell = settings.wander or {}, settings.swell or {}
+  local body, chest = settings.body or 0, 1 - math.exp(-math.pi * 2 * (settings.bodyHz or 300) / RATE)
+  local gain, low = settings.gain, 0
+  local level = 1
+  local base = soundData(seconds + fadeTime, function(t, i)
+    if i % 32 == 0 then  -- far slower than audio, so it needn't be worked out each sample
+      tune(settings.lowHz * (1 + wobble(wander, t, seconds)))
+      level = 1 + wobble(swell, t, seconds)
+    end
+    local y = cut(filter(rng:random() * 2 - 1))
+    low = low + (y - low) * chest
+    return (y + low * body) * gain * level
+  end)
+  return crossfade(base, seconds, fadeTime, 1)
+end
+
+function audio.roadData()
+  return bandNoise(ROAD, 1.5, 0.25)
+end
+
+function audio.windData()
+  return bandNoise(WIND, 3, 0.25)
+end
+
+-- A soft rumble of dirt under the tyres.
+function audio.looseData()
+  return bandNoise(LOOSE, 1.2, 0.2)
 end
 
 function audio.scrubData()
-  return crossfade(chip(SCRUB), 1.7, 0.25)
+  return bandNoise(SCRUB, 1.7, 0.25)
 end
 
 function audio.nitroData()
-  return crossfade(chip(NITRO), 1.7, 0.25)
+  return bandNoise(NITRO, 1.7, 0.25)
 end
 
--- Dark enough to read as a soft rumble of dirt under the tyres, not a hiss.
-function audio.looseData()
-  return noiseLoop(1.2, 0.11, 1.7)
+-- The tyres don't agree, and their pitch won't hold still. Every note lands on a whole
+-- number of cycles of the loop, so it joins up with itself.
+function audio.squealData()
+  local seconds, fadeTime = 1.5, 0.15
+  local rng = love.math.newRandomGenerator(67)
+  local filter, tune = lowpass(SQUEAL.damping)
+  local cut = highpass(SQUEAL.highHz)
+  tune(SQUEAL.lowHz)
+  local notes = {}
+  for k, hz in ipairs(SQUEAL.hz) do
+    notes[k] = { hz = math.floor(hz * seconds + 0.5) / seconds, at = k / #SQUEAL.hz, step = 0, size = 1 }
+  end
+  local base = soundData(seconds + fadeTime, function(t, i)
+    local total = 0
+    for k, note in ipairs(notes) do
+      if i % 32 == 0 then
+        note.step = note.hz * (1 + wobble(SQUEAL_DRIFT, t, seconds, k * 2.1)) / RATE
+      end
+      note.at = note.at + note.step
+      if note.at >= 1 then note.at, note.size = note.at - 1, 1 - rng:random() * SQUEAL.grit end
+      total = total + (note.at * 2 - 1) * note.size
+    end
+    return cut(filter(total)) * (1 + wobble(SQUEAL_CHATTER, t, seconds)) * 0.3
+  end)
+  return normalised(crossfade(base, seconds, fadeTime, 0), 0.7)
+end
+
+-- Bodywork dragging along a wall: coarse noise through a few broad bands, chattering
+-- as the panels catch and let go.
+function audio.grindData()
+  local seconds, fadeTime = 1.2, 0.15
+  local rng = love.math.newRandomGenerator(73)
+  local noise = steppedNoise(rng)
+  local a, b, c = resonator(640, 0.97), resonator(1480, 0.96), resonator(3100, 0.93)
+  local block = dcBlock()
+  local base = soundData(seconds + fadeTime, function(t)
+    local grit = noise(3)
+    local chatter = 0.55 + 0.3 * math.abs(math.sin(t * math.pi * 2 * 22 / seconds))
+      + 0.15 * math.sin(t * math.pi * 2 * 61 / seconds)
+    return block((a(grit) + b(grit) * 0.9 + c(grit) * 0.5) * chatter * 0.5)
+  end)
+  return normalised(crossfade(base, seconds, fadeTime, 1), 0.7)
 end
 
 -- Engine speed through the startup: a stumble as it catches, then a hard snap
@@ -288,6 +494,7 @@ function audio.voice(cylinders, race)
     key = cylinders .. (race and "race" or ""),
     cylinders = cylinders,
     rpms = race and RACE_RPMS or ENGINE_RPMS,
+    idleAt = race and RACE_IDLE_RPM or IDLE_RPM,
     firing = firing,
     levels = levels,
     pipes = race and RACE_PIPES or { 0.35 + rough * 0.65, 0.9, 0.7, 0.35 },
@@ -297,7 +504,10 @@ function audio.voice(cylinders, race)
     burst = race and 0.001 or 0.0028 * math.min(1, 8 / cylinders),
     charge = math.min(1, 8 / cylinders) ^ 0.75,  -- many cylinders are small ones
     drive = race and 0.6 or 0.6 + math.sqrt(rough) * 0.65,
-    gain = race and 2.4 or 1,  -- with no bass in it, a race engine rings far less
+    gain = race and 1.85 or 1,  -- with no bass in it, a race engine rings far less
+    rasp = race and 0.25 or 0.3 + rough * 0.5,
+    presence = race and 0.25 or 1,
+    level = race and 0.66 or 1,  -- all of a race engine reaches a phone, so it needs less
   }
 end
 
@@ -320,21 +530,27 @@ end
 
 -- Firing pulses leaving through the exhaust. Each call takes the strongest pulse
 -- fired this sample. Hot gas leaving a valve is a rough burst, not a clean click.
-local function newExhaust(pipeLevels, voice)
+local function newExhaust(pipeLevels, voice, rasp)
   local scale, noise, charge = voice.pipeScale, voice.noise, voice.charge
+  rasp = rasp or 0
   local pipes = {
     resonator(92 * scale, 0.994), resonator(265 * scale, 0.99), resonator(710 * scale, 0.98), resonator(1900 * scale, 0.96),
   }
   local pressureDecay = math.exp(-1 / (voice.burst * RATE))
   local pressure, body = 0, 0
-  return function(fired, white)
+  local edge, edgeBody = 0, 0
+  return function(fired, white, grain)
     pressure = math.max(pressure, fired * charge) * pressureDecay
     local gas = pressure * (0.65 + white * noise)
     body = body + (gas - body) * 0.015
     local pulse = gas - body  -- only the swing: steady pressure would pin the saturation
     local exhaust = pulse * 0.5
     for i, pipe in ipairs(pipes) do exhaust = exhaust + pipe(pulse) * pipeLevels[i] * 2.2 end
-    return exhaust
+    -- The rasp: each burst's noise without its body, about 400 Hz to 2.5 kHz. It's
+    -- the edge on the note, and most of what a phone's speaker gets to play.
+    edge = edge + (pressure * (grain or white) - edge) * 0.3
+    edgeBody = edgeBody + (edge - edgeBody) * 0.06
+    return exhaust + (edge - edgeBody) * rasp
   end
 end
 
@@ -419,33 +635,63 @@ end
 
 -- One steady speed of an engine, as a loop. Whole engine cycles, so the firing
 -- lines up across the join. mode "overrun" is the throttle shut: weak, uneven
--- pulses, the burble as the revs fall. Mode "limiter" is the sparks cutting at the
--- top of the revs, and the only one driven hard: of every two engine cycles, the
--- first one fires. Any more and the exhaust ringing on fills the gaps. The rest
--- are driven far less than the startup: that much saturation is thrilling for a
--- second, and square and fuzzy for a whole race.
+-- pulses, the burble as the revs fall. Mode "idle" is ticking over: small pulses
+-- that vary from one firing to the next, unstrained and low. Mode "limiter" is the
+-- sparks cutting at the top of the revs, and the only one driven hard: of every two
+-- engine cycles, the first one fires. Any more and the exhaust ringing on fills the
+-- gaps. The rest are driven far less than the startup: that much saturation is
+-- thrilling for a second, and square and fuzzy for a whole race.
 function audio.engineData(voice, rpm, mode)
-  local overrun, limiter = mode == "overrun", mode == "limiter"
+  local overrun, limiter, idle = mode == "overrun", mode == "limiter", mode == "idle"
   local cycle = 120 / rpm
-  local seconds = math.ceil(ENGINE_LOOP / cycle) * cycle
+  local seconds = math.ceil((idle and IDLE_LOOP or ENGINE_LOOP) / cycle) * cycle
   local fadeTime = math.ceil(ENGINE_FADE / cycle) * cycle
-  local rng = love.math.newRandomGenerator(rpm + (overrun and 1 or limiter and 2 or 0))
-  local firing, exhaust = newFiring(voice), newExhaust(voice.pipes, voice)
-  local drive = overrun and 0.35 or limiter and 1 or (0.3 + rpm / 20000) * voice.drive
-  local gain = (overrun and 0.5 or 0.72) * voice.gain
+  local rng = love.math.newRandomGenerator(rpm + (overrun and 1 or limiter and 2 or idle and 3 or 0))
+  -- Up the revs the note moves into the short pipes. The bass stays: the splash's
+  -- flare is the balance to aim for, and it keeps its chest.
+  local height = idle and 0.3 or rpm / voice.rpms[#voice.rpms]
+  local pipes = voice.pipes
+  local tilted = { pipes[1], pipes[2], pipes[3] * (1 + 0.8 * height), pipes[4] * (1 + height) }
+  local firing, exhaust = newFiring(voice), newExhaust(tilted, voice, voice.rasp * (0.4 + height))
+  local drive = (overrun and 0.35) or (limiter and 1) or (idle and 0.3) or (0.3 + rpm / 20000) * voice.drive
+  local gain = (overrun and 0.5 or idle and 0.62 or 0.72) * voice.gain
   local shot, cylinders = 0, voice.cylinders
   local function strength(level)
     shot = shot + 1
     if limiter then return (shot - 1) % (cylinders * 2) < cylinders and level or 0 end
+    if idle then return level * (0.5 + rng:random() * 0.35) end
     if not overrun then return level end
     return rng:random() < 0.3 and 0 or level * 0.28
   end
-  local base = soundData(seconds + fadeTime, function()
+  -- A shelf from about 300 Hz, after the saturation so it brightens without adding
+  -- any fuzz. A phone's speaker starts about there, and without this a phone plays
+  -- the bass of a V8 as nothing at all.
+  local presence = voice.presence * (idle and 2.4 or 0.6 + height)
+  -- The same grain of noise every cycle, so the rasp has the note's pitch. High up the
+  -- bursts run together, and fresh noise there is a steady hiss on top of the engine.
+  -- Low down a little of it is what makes the firing rough, so that stays.
+  local fresh = 1 - 0.75 * height
+  local grainRng, grains = love.math.newRandomGenerator(rpm + 7), {}
+  local grainCount = math.floor(cycle * RATE)
+  for i = 1, grainCount do grains[i] = grainRng:random() * 2 - 1 end
+  local block = dcBlock()
+  local bass, top, peak = 0, 0, 0
+  local base = soundData(seconds + fadeTime, function(t)
     local fired = firing(rpm, strength)
-    local engine = math.atan(exhaust(fired, rng:random() * 2 - 1) * drive) * gain
-    return engine / (1 + math.abs(engine) * 0.5) * 0.85
+    local grain = grains[math.floor((t / cycle) % 1 * grainCount) + 1]
+    local white = rng:random() * 2 - 1
+    local engine = math.atan(exhaust(fired, grain + (white - grain) * fresh, grain) * drive) * gain
+    bass = bass + (engine - bass) * 0.042
+    local upper = engine - bass
+    top = top + upper * upper
+    engine = engine + upper * presence
+    local v = block(engine / (1 + math.abs(engine) * 0.5) * 0.85)
+    if v > peak then peak = v elseif -v > peak then peak = -v end
+    return v
   end)
-  return crossfade(base, seconds, fadeTime)
+  local upper = math.sqrt(top / ((seconds + fadeTime) * RATE)) * (1 + presence)
+  local wanted = LOOP_LEVEL[mode or "speed"] * voice.level / upper
+  return crossfade(base, seconds, fadeTime, 0, math.min(wanted, LOOP_PEAK / peak))
 end
 
 -- An upshift is the power cutting out: the gear goes in with a knock while the
@@ -454,6 +700,7 @@ end
 function MODELLED.shift()
   local rng = love.math.newRandomGenerator(43)
   local exhaust, knock = newExhaust(SHIFT_PIPES, audio.voice(8)), newKnock()
+  local block = dcBlock()
   local nextPulse, slow, slower = 1, 0, 0
   return soundData(SHIFT_LENGTH, function(t)
     local white = rng:random() * 2 - 1
@@ -467,7 +714,7 @@ function MODELLED.shift()
     slow = slow + (sound - slow) * 0.03
     slower = slower + (sound - slow - slower) * 0.03
     local mixed = knock(t, white) * 0.8 + math.atan((sound - slow - slower) * 2.4) * 0.75
-    return mixed * math.min(1, (SHIFT_LENGTH - t) / 0.03) * 0.6
+    return block(mixed) * math.min(1, (SHIFT_LENGTH - t) / 0.03) * 0.6
   end)
 end
 
@@ -499,6 +746,48 @@ function MODELLED.blowoff()
     soft = soft + (vent(t, rng:random() * 2 - 1) - soft) * 0.35  -- a breath, not a hiss
     return soft * 1.5 * math.min(1, (BLOWOFF_LENGTH - t) / 0.1)
   end)
+end
+
+-- A crash, at one of the sizes in CRASHES. A crack of bare noise at the instant of
+-- contact, a thump that sags, and sfxr-style stepped noise that coarsens as it dies,
+-- exciting a little dead metal. The big ones shed a few bits after the hit.
+function audio.crashData(size)
+  local crash = CRASHES[size]
+  local rng = love.math.newRandomGenerator(crash.seed)
+  local noise = steppedNoise(rng)
+  local rings = {}
+  for i, hz in ipairs(METAL_HZ) do rings[i] = resonator(hz, crash.ring) end
+  local bits = {}
+  for i = 1, crash.debris do
+    bits[i] = { at = 0.07 + rng:random() * rng:random() * crash.seconds * 0.7, level = 0.2 + rng:random() * 0.3 }
+  end
+  local low, lower = 0, 0
+  local bit = resonator(2300, 0.96)
+  local block = dcBlock()
+  local data = soundData(crash.seconds, function(t)
+    local white = rng:random() * 2 - 1
+    low = low + (noise(crash.holdFrom + math.floor(crash.holdBy * t)) - low) * crash.tone
+    lower = lower + (low - lower) * 0.04
+    local snap = crash.snap
+    local crunch = (low - lower) * (math.exp(-t * 55) * snap + math.exp(-t * crash.crunchDecay) * (1 - snap))
+    local metal = 0
+    for i, ring in ipairs(rings) do metal = metal + ring(crunch) * METAL_LEVEL[i] end
+    local rattle = 0
+    for _, piece in ipairs(bits) do
+      local since = t - piece.at
+      if since > 0 and since < 0.03 then rattle = rattle + white * piece.level * math.exp(-since * 260) end
+    end
+    local thump = math.sin((crash.thumpHz * t - crash.thumpFall * t * t) * math.pi * 2) * math.exp(-t * crash.thumpDecay)
+    local mixed = thump * crash.thump + white * math.exp(-t * crash.crackDecay) * crash.crack
+      + crunch * crash.crunch + metal * crash.metal * 0.45 + bit(rattle) * 3
+    -- atan tops out at 1.57, and soundData clamps at 1.
+    return block(math.atan(mixed * crash.drive)) * 0.62 * math.min(1, t / 0.0006) * math.min(1, (crash.seconds - t) / 0.03)
+  end)
+  return normalised(data, crash.peak)
+end
+
+for size = 1, #CRASHES do
+  MODELLED["impact" .. size] = function() return audio.crashData(size) end
 end
 
 -- Gives the screen a turn when the game is loading on the side, but only when
@@ -539,6 +828,7 @@ local function engineLoops(voice)
   local engine = { voice = voice, speeds = {} }
   for i, rpm in ipairs(voice.rpms) do engine.speeds[i] = loop(name .. "_" .. i, audio.engineData, voice, rpm) end
   engine.overrun = loop(name .. "_overrun", audio.engineData, voice, voice.rpms[2], "overrun")
+  engine.idle = loop(name .. "_idle", audio.engineData, voice, voice.idleAt, "idle")
   engine.limiter = loop(name .. "_limiter", audio.engineData, voice, voice.rpms[#voice.rpms], "limiter")
   engine.rival = engine.speeds[2]:clone()
   return engine
@@ -549,9 +839,11 @@ function audio.load()
   local ok, err = pcall(function()
     cache.open({ "src/audio.lua", "src/lib/sfxr.lua" })
     audio.scrub = loop("scrub", audio.scrubData)
-    audio.road = loop("road", noiseLoop, 1.5, 0.08, 1.8)
+    audio.squeal = loop("squeal", audio.squealData)
+    audio.grind = loop("grind", audio.grindData)
+    audio.road = loop("road", audio.roadData)
     audio.loose = loop("loose", audio.looseData)
-    audio.wind = loop("wind", noiseLoop, 1.8, 0.2, 0.8)
+    audio.wind = loop("wind", audio.windData)
     audio.nitro = loop("nitro", audio.nitroData)
     audio.horn = loop("horn", audio.hornData)
     audio.rivalHorn = audio.horn:clone()
@@ -572,13 +864,16 @@ function audio.load()
       audio.shots[name] = shot(name, audio.shotData, name)
     end
     audio.shots.startup = shot("startup", audio.startupData)
-    local impact, scrape = cache.get("impact", audio.shotData, "impact"), cache.get("scrape", audio.shotData, "scrape")
-    cache.finish()
+    -- impacts[0] is the graze, then the sizes of crash. Each size can overlap itself.
     audio.impacts = {}
-    for i = 1, 4 do audio.impacts[i] = love.audio.newSource(impact, "static") end
-    audio.scrapes = {}
-    for i = 1, 2 do audio.scrapes[i] = love.audio.newSource(scrape, "static") end
-    audio.lastImpact = 0
+    for size = 0, #IMPACT_TIERS do
+      local name = size == 0 and "scrape" or "impact" .. size
+      local data = cache.get(name, audio.shotData, name)
+      audio.impacts[size] = {}
+      for i = 1, 2 do audio.impacts[size][i] = love.audio.newSource(data, "static") end
+    end
+    cache.finish()
+    audio.lastImpact, audio.lastSize = 0, 0
     audio.ready = true
   end)
   if not ok then print("audio disabled: " .. tostring(err)) end
@@ -598,26 +893,59 @@ function audio.play(name, volume, pitch)
   s:play()
 end
 
-function audio.impact(strength, scrape)
-  if not audio.ready then return end
-  local now = love.timer.getTime()
-  if now - audio.lastImpact < IMPACT_GAP then return end
-  audio.lastImpact = now
-  local pool = scrape and audio.scrapes or audio.impacts
-  for _, s in ipairs(pool) do
-    if not s:isPlaying() then
-      s:setVolume(math.min(1, strength))
-      s:setPitch(0.8 + love.math.random() * 0.4)
-      s:play()
-      return
+-- Which size of crash a strength is, 0 being a graze, and how loud to play it.
+function audio.impactLevel(strength)
+  for size = #IMPACT_TIERS, 1, -1 do
+    local tier = IMPACT_TIERS[size]
+    if strength >= tier.from then
+      local place = math.log(strength / tier.from) / math.log(tier.to / tier.from)
+      return size, tier.quiet + (tier.loud - tier.quiet) * math.min(1, place)
     end
   end
+  return 0, GRAZE_LEVEL
+end
+
+-- A heavy car's crash sits lower than a light one's.
+function audio.impactPitch(spec)
+  return math.max(0.85, math.min(1.15, (IMPACT_MASS / spec.mass) ^ 0.3))
+end
+
+-- strength is the crash's impulse / 9000. spec is the car it happened to.
+function audio.impact(strength, spec)
+  if not audio.ready then return end
+  local size, volume = audio.impactLevel(strength)
+  -- Pressed along a wall, the grind already is the sound of it.
+  if size == 0 and audio.grind:getVolume() > 0.02 then return end
+  local now = love.timer.getTime()
+  if now - audio.lastImpact < IMPACT_GAP and size <= audio.lastSize then return end
+  audio.lastImpact, audio.lastSize = now, size
+  local pool = audio.impacts[size]
+  local free = pool[1]
+  for _, s in ipairs(pool) do
+    if not s:isPlaying() then free = s end
+  end
+  free:stop()
+  free:setVolume(volume * (0.92 + love.math.random() * 0.08))
+  free:setPitch(audio.variedPitch(0.06) * (spec and audio.impactPitch(spec) or 1))
+  free:play()
+  if size > 0 then audio.duck = math.max(audio.duck, IMPACT_TIERS[size].duck) end
 end
 
 -- Sliding is worth hearing. Braking shouldn't nag every time it's used.
 function audio.scrubLevel(slide, braking)
   if braking then return 0 end
-  return math.max(0, math.min(SCRUB_MAX, (slide - 0.25) * 0.3))
+  return math.max(0, math.min(SCRUB_MAX, (slide - 0.25) * SCRUB_RISE))
+end
+
+-- The squeal comes in on top once a tyre is well past its limit.
+function audio.squealLevel(slide, braking)
+  if braking then return 0 end
+  return math.max(0, math.min(SQUEAL_MAX, (slide - SQUEAL_FROM) * SQUEAL_RISE))
+end
+
+-- scraping is how much of the car is on a wall, 0..1. Stopped against one is silent.
+function audio.grindLevel(scraping, speed)
+  return scraping * GRIND_MAX * math.min(1, speed / 22)
 end
 
 -- offRoad is the share of the car on loose ground, 0..1.
@@ -657,14 +985,19 @@ function audio.blowoffVolume(spool)
   return 0.3 + spool * 0.4
 end
 
--- The hiss sags as the bottle empties. tank is the share left, 0..1.
+-- The gas sags as the bottle empties. tank is the share left, 0..1.
 function audio.nitroPitch(tank)
   return 0.9 + math.max(0, math.min(1, tank)) * 0.2
 end
 
+function audio.nitroLevel(tank)
+  return NITRO_LEVEL * (1 - NITRO_SAG * (1 - math.max(0, math.min(1, tank))))
+end
+
 -- The same sample twice running sounds like a machine gun.
-function audio.variedPitch()
-  return 0.93 + love.math.random() * 0.14
+function audio.variedPitch(spread)
+  spread = spread or 0.07
+  return 1 - spread + love.math.random() * spread * 2
 end
 
 -- The engine note drops out while a gear changes, because the power does.
@@ -686,27 +1019,39 @@ function audio.engineMix(spec, revs, load, spool)
   local turbo = TURBOS[spec.turbos]
   return {
     exhaust = electric and 0 or 0.34 + revs * 0.34,
+    idle = electric and 0 or IDLE_LEVEL,
     limiter = electric and 0 or 0.39 + revs * 0.39,
     turbo = turbo and spool ^ 2 * 0.3 * turbo.level or 0,
     -- A supercharger is geared to the crank, so it whines the instant the revs rise.
-    blower = spec.supercharged and (0.08 + revs * 0.32) * load or 0,
+    blower = spec.supercharged and (0.06 + revs * 0.24) * load or 0,
     -- An electric car has no pistons to hear: the motor stands in for them.
     motor = electric and math.min(1, revs * 3) * (0.1 + load * 0.2) or 0,
   }
 end
 
--- How much of each rendered speed to play at this rpm, blending between the two
--- nearest so the exhaust note moves with the revs instead of being pitched up.
+-- How much of each rendered speed to play at this rpm, handing over between the
+-- two nearest so the exhaust note moves with the revs instead of being pitched up.
+-- Their shares add by power, because the loops don't line up: a straight fade dips
+-- by 3 dB at every handover.
 function audio.engineBlend(rpm, rpms)
   local blend = {}
-  for i, at in ipairs(rpms) do
-    local below, above = rpms[i - 1], rpms[i + 1]
-    local share = 1
-    if rpm < at and below then share = math.max(0, (rpm - below) / (at - below)) end
-    if rpm > at and above then share = math.max(0, (above - rpm) / (above - at)) end
-    blend[i] = share
+  for i = 1, #rpms do blend[i] = 0 end
+  local last = #rpms
+  for i = 1, last - 1 do
+    local middle = math.sqrt(rpms[i] * rpms[i + 1])
+    local from, to = middle / BLEND_WIDTH, middle * BLEND_WIDTH
+    if rpm < to or i == last - 1 then
+      local place = math.max(0, math.min(1, (rpm - from) / (to - from)))
+      blend[i], blend[i + 1] = math.cos(place * math.pi / 2), math.sin(place * math.pi / 2)
+      return blend
+    end
   end
   return blend
+end
+
+-- How much of the engine is simply ticking over, 0..1, gone by twice idle.
+function audio.idleShare(rpm, idleRpm)
+  return 1 - math.max(0, math.min(1, (rpm - idleRpm * 1.15) / (idleRpm * 0.85)))
 end
 
 -- A narrower sweep than the speed alone would give: the full range is a swoop.
@@ -718,17 +1063,22 @@ local function enginePitch(rpm, at)
   return math.min(3.2, math.max(0.35, rpm / at))
 end
 
-local function updateExhaust(dt, engine, mix, model, load)
+local function updateExhaust(dt, engine, mix, model, load, spec)
   local rpm, limiting = model.rpm, model.limiting
-  local rpms = engine.voice.rpms
+  local voice = engine.voice
+  local rpms = voice.rpms
   local power = (load - audio.engineLoad(0, true)) / (audio.engineLoad(1, false) - audio.engineLoad(0, true))
   local blend = audio.engineBlend(rpm, rpms)
+  local resting = audio.idleShare(rpm, spec.idleRpm) * (1 - power)
+  local pulling = 1 - resting
   for i, source in ipairs(engine.speeds) do
     source:setPitch(enginePitch(rpm, rpms[i]))
-    fadeTo(source, limiting and 0 or mix.exhaust * blend[i] * (0.3 + power * 0.7), dt, limiting and 30 or 8)
+    fadeTo(source, limiting and 0 or mix.exhaust * blend[i] * (0.3 + power * 0.7) * pulling, dt, limiting and 30 or 8)
   end
+  engine.idle:setPitch(enginePitch(rpm, voice.idleAt))
+  fadeTo(engine.idle, mix.idle * resting, dt, 8)
   engine.overrun:setPitch(enginePitch(rpm, rpms[2]))
-  fadeTo(engine.overrun, mix.exhaust * (1 - power) * 1.1, dt, 8)
+  fadeTo(engine.overrun, mix.exhaust * (1 - power) * 1.1 * pulling, dt, 8)
   engine.limiter:setPitch(math.max(0.35, rpm / rpms[#rpms]))
   fadeTo(engine.limiter, limiting and mix.limiter or 0, dt, 30)
 end
@@ -756,8 +1106,10 @@ end
 local function updateEngineLayers(dt, model, spec, revs, load)
   updateTurbo(dt, model, spec, revs)
   local mix = audio.engineMix(spec, revs, load, audio.spool)
+  audio.duck = math.max(0, audio.duck - DUCK_RECOVERY * dt)
+  mix.exhaust = mix.exhaust * (1 - audio.duck)
   local voice = audio.voiceOf(spec)
-  if voice then updateExhaust(dt, audio.engines[voice.key], mix, model, load) end
+  if voice then updateExhaust(dt, audio.engines[voice.key], mix, model, load, spec) end
   local whistle = audio.turbos[spec.turbos]
   if whistle then
     whistle:setPitch(0.45 + audio.spool * 0.9)
@@ -806,18 +1158,25 @@ function audio.update(dt, car, rival, rivalDistance)
     if w.surface == "kerb" then offRoad = offRoad + 0.1 end
   end
 
-  audio.scrub:setPitch(0.86 + math.min(0.34, speed / 110))
-  fadeTo(audio.scrub, audio.scrubLevel(slide, model.brake > 0.05), dt, 3)
-  audio.road:setPitch(0.6 + math.min(1.2, speed / 40))
-  fadeTo(audio.road, math.min(0.26, speed / 120), dt, 3)
+  local braking = model.brake > 0.05
+  audio.scrub:setPitch(0.9 + math.min(0.2, speed / 200))
+  fadeTo(audio.scrub, audio.scrubLevel(slide, braking), dt, 4)
+  audio.squeal:setPitch(0.96 + math.min(0.1, speed / 500) + slide * 0.04)
+  fadeTo(audio.squeal, audio.squealLevel(slide, braking), dt, 4)
+  audio.grind:setPitch(0.75 + math.min(0.55, speed / 90))
+  local grinding = audio.grindLevel(car.scraping or 0, speed)
+  fadeTo(audio.grind, grinding, dt, grinding > audio.grind:getVolume() and GRIND_IN or GRIND_OUT)
+  audio.road:setPitch(0.7 + math.min(0.7, speed / 100))
+  fadeTo(audio.road, math.min(0.3, speed / 230), dt, 3)
   audio.loose:setPitch(0.75 + math.min(0.35, speed / 70))
   local looseLevel = audio.looseLevel(offRoad, speed)
   fadeTo(audio.loose, looseLevel, dt, looseLevel > audio.loose:getVolume() and LOOSE_IN or LOOSE_OUT)
-  audio.wind:setPitch(0.7 + math.min(1, speed / 70) + model.slipstream * 0.25)
-  fadeTo(audio.wind, math.max(0, (speed - 18) / 110) * 0.45 + model.slipstream * 0.2, dt, 2)
+  audio.wind:setPitch(0.85 + math.min(0.35, speed / 200) + model.slipstream * 0.1)
+  fadeTo(audio.wind, math.max(0, (speed - 18) / 110) * 0.55 + model.slipstream * 0.25, dt, 2)
   local boosting = model.boostState == "active"
-  audio.nitro:setPitch(audio.nitroPitch(model.boostTank / spec.boostTime))
-  fadeTo(audio.nitro, boosting and NITRO_LEVEL or 0, dt, boosting and NITRO_IN or NITRO_OUT)
+  local tank = model.boostTank / spec.boostTime
+  audio.nitro:setPitch(audio.nitroPitch(tank))
+  fadeTo(audio.nitro, boosting and audio.nitroLevel(tank) or 0, dt, boosting and NITRO_IN or NITRO_OUT)
   audio.horn:setPitch(audio.hornPitch(spec))
   fadeTo(audio.horn, car.horn and HORN_LEVEL or 0, dt, HORN_FADE)
 
@@ -825,13 +1184,14 @@ function audio.update(dt, car, rival, rivalDistance)
 end
 
 local function eachLoop(fn)
-  for _, key in ipairs({ "rivalMotor", "scrub", "road", "loose", "wind", "nitro", "blower", "motor", "horn", "rivalHorn" }) do
+  for _, key in ipairs({ "rivalMotor", "scrub", "squeal", "grind", "road", "loose", "wind", "nitro", "blower", "motor", "horn", "rivalHorn" }) do
     fn(audio[key])
   end
   for _, source in pairs(audio.turbos) do fn(source) end
   for _, engine in pairs(audio.engines) do
     for _, source in ipairs(engine.speeds) do fn(source) end
     fn(engine.overrun)
+    fn(engine.idle)
     fn(engine.limiter)
     fn(engine.rival)
   end
@@ -843,7 +1203,7 @@ function audio.silence()
     source:stop()
     source:setVolume(0)
   end)
-  audio.spool = 0
+  audio.spool, audio.duck = 0, 0
 end
 
 -- The race noise dies away behind the results rather than cutting out.

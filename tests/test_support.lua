@@ -173,6 +173,59 @@ h.describe("catalog", function()
     catalog.remove("test_loop")
     h.assertEq(catalog.find("test_loop"), nil, "removed")
   end)
+
+  local function circle(radius)
+    local nodes = {}
+    for i = 0, 11 do
+      local a = i / 12 * math.pi * 2
+      nodes[#nodes + 1] = { x = math.cos(a) * radius, y = math.sin(a) * radius, wl = 30, wr = 30 }
+    end
+    return { nodes = nodes, title = "CACHED", startPoint = { x = radius, y = 0, angle = 1.57 } }
+  end
+
+  h.it("runs a saved track's file once, until the folder can have changed", function()
+    catalog.save("test_cached", circle(500))
+    local load, reads = love.filesystem.load, 0
+    love.filesystem.load = function(...)
+      reads = reads + 1
+      return load(...)
+    end
+    local first = catalog.find("test_cached").def
+    for _ = 1, 10 do h.assertTrue(catalog.find("test_cached").def == first, "same definition") end
+    love.filesystem.load = load
+    h.assertEq(reads, 1, "file reads")
+    catalog.remove("test_cached")
+  end)
+
+  h.it("sees a file added behind its back after a refresh", function()
+    catalog.save("test_seen", circle(500))
+    catalog.user()
+    love.filesystem.write("tracks/test_dropped.lua", love.filesystem.read("tracks/test_seen.lua"))
+    h.assertEq(catalog.find("test_dropped"), nil, "not looked yet")
+    catalog.refresh()
+    h.assertTrue(catalog.find("test_dropped") ~= nil, "found")
+    catalog.remove("test_dropped")
+    catalog.remove("test_seen")
+  end)
+
+  h.it("builds a saved track's preview once, and again when it's changed", function()
+    local menu = require("src/menu")
+    local new, builds = Track.new, 0
+    Track.new = function(def)
+      builds = builds + 1
+      return new(def)
+    end
+    catalog.save("test_preview", circle(500))
+    local data
+    for _ = 1, 10 do data = menu.cachedTrack(catalog.find("test_preview")) end
+    h.assertEq(builds, 1, "builds")
+    catalog.save("test_preview", circle(700))
+    local changed = menu.cachedTrack(catalog.find("test_preview"))
+    Track.new = new
+    catalog.remove("test_preview")
+    h.assertEq(builds, 2, "builds after saving")
+    h.assertTrue(changed.track.length > data.track.length, "shows the new shape")
+  end)
 end)
 
 h.describe("midnight", function()
@@ -243,7 +296,7 @@ h.describe("audio", function()
     h.assertBetween(peakOf(data), 0.1, 0.95, "peak level, clipping sounds harsh")
   end)
 
-  h.it("synthesises a nitro hiss that loops", function()
+  h.it("synthesises a nitro release that loops", function()
     local data = audio.nitroData()
     local n = data:getSampleCount()
     h.assertTrue(math.abs(data:getSample(0) - data:getSample(n - 1)) < 0.2, "loop point")
@@ -366,7 +419,7 @@ h.describe("audio", function()
   end)
 
   h.it("a hard crash isn't quieter than the engine", function()
-    h.assertTrue(peakOf(audio.shotData("impact")) > peakOf(audio.engineData(audio.voice(8), 5400)), "a crash is an event")
+    h.assertTrue(peakOf(audio.shotData("impact3")) > peakOf(audio.engineData(audio.voice(8), 5400)), "a crash is an event")
   end)
 
   h.it("no effect starts on a hard edge", function()
@@ -418,7 +471,8 @@ h.describe("audio", function()
     local rpms = { 1300, 3000, 5400 }
     for rpm = 500, 8000, 250 do
       local blend = audio.engineBlend(rpm, rpms)
-      local total = blend[1] + blend[2] + blend[3]
+      -- By power: the loops don't line up, so a straight fade dips at every handover.
+      local total = blend[1] ^ 2 + blend[2] ^ 2 + blend[3] ^ 2
       h.assertTrue(math.abs(total - 1) < 1e-9, rpm .. " totals " .. total)
     end
     h.assertEq(audio.engineBlend(900, rpms)[1], 1, "idle")
@@ -488,7 +542,7 @@ h.describe("audio", function()
     h.assertTrue(audio.motorPitch(1) / audio.motorPitch(0) < 3.5, "less of a swoop")
   end)
 
-  for _, name in ipairs({ "beep", "go", "click", "select", "lap", "shift", "blowoff", "finish", "impact", "scrape" }) do
+  for _, name in ipairs({ "beep", "go", "click", "select", "lap", "shift", "blowoff", "finish", "impact1", "impact2", "impact3", "scrape" }) do
     h.it("the " .. name .. " sound is short and doesn't clip", function()
       local data = audio.shotData(name)
       h.assertBetween(data:getDuration(), 0.01, 1, "length")
@@ -509,11 +563,28 @@ h.describe("audio", function()
     return math.sqrt(sum / (b - a)), crossings / (to - from) / 2
   end
 
-  h.it("nitro hisses above the engine, and sags as it runs out", function()
-    local level, pitch = windowOf(audio.nitroData(), 0.3, 1)
-    h.assertTrue(pitch > 3000, "a hiss, not a rumble: " .. pitch)
-    h.assertTrue(level > 0.08, "loud enough to hear: " .. level)
+  -- The share of a sound's energy over hz, through a gentle two-pole high-pass.
+  local function shareAbove(data, hz)
+    local k = 1 - math.exp(-math.pi * 2 * hz / 44100)
+    local low, lower, all, above = 0, 0, 0, 0
+    for i = 0, data:getSampleCount() - 1 do
+      local v = data:getSample(i)
+      low = low + (v - low) * k
+      local high = v - low
+      lower = lower + (high - lower) * k
+      all, above = all + v * v, above + (high - lower) ^ 2
+    end
+    return above / all
+  end
+
+  h.it("nitro is smooth gas with a chest, and loses pressure as it runs out", function()
+    local data = audio.nitroData()
+    h.assertTrue(windowOf(data, 0.3, 1) > 0.08, "loud enough to hear")
+    h.assertTrue(shareAbove(data, 4000) < 0.08, "strident: " .. shareAbove(data, 4000))
+    h.assertTrue(shareAbove(data, 400) < 0.6, "no chest: " .. shareAbove(data, 400))
     h.assertTrue(audio.nitroPitch(0) < audio.nitroPitch(1))
+    h.assertTrue(audio.nitroLevel(0) < audio.nitroLevel(1))
+    h.assertTrue(audio.nitroLevel(0) > audio.nitroLevel(1) * 0.5, "still heard on the last of it")
   end)
 
   h.it("a gear change sputters on, it isn't one clank", function()
@@ -578,6 +649,215 @@ h.describe("audio", function()
     h.assertEq(audio.scrubLevel(0.2, false), 0)
     h.assertTrue(audio.scrubLevel(0.8, false) > 0, "a slide is heard")
     h.assertEq(audio.scrubLevel(0.8, true), 0)
+  end)
+
+  h.it("tyres squeal only well past the limit, and more the further past", function()
+    h.assertEq(audio.squealLevel(0.5, false), 0, "hard cornering is only a scrub")
+    h.assertTrue(audio.scrubLevel(0.5, false) > 0, "which is still heard")
+    h.assertTrue(audio.squealLevel(0.9, false) > audio.squealLevel(0.65, false))
+    h.assertEq(audio.squealLevel(0.9, true), 0, "not on the brakes")
+  end)
+
+  -- The level of a stretch of samples, for comparing parts of one sound.
+  local function levelOf(data, from, to)
+    local sum = 0
+    for i = from, to - 1 do sum = sum + data:getSample(i) ^ 2 end
+    return math.sqrt(sum / (to - from))
+  end
+
+  -- Clipped and scaled back down still reads as under full scale, so go by the
+  -- peak against the level: 1.0 is a square wave, and noise is around 3 to 4.
+  local function crestOf(data)
+    local n = data:getSampleCount()
+    return peakOf(data) / levelOf(data, 0, n)
+  end
+
+  h.it("a squeal is a rough note, not noise and not a whistle", function()
+    local data = audio.squealData()
+    local n = data:getSampleCount()
+    h.assertTrue(math.abs(data:getSample(0) - data:getSample(n - 1)) < 0.2, "loop point")
+    h.assertBetween(peakOf(data), 0.3, 0.95, "peak")
+    local function alike(lag)
+      local same, total = 0, 0
+      for i = 0, 20000 do
+        local a, b = data:getSample(i), data:getSample(i + lag)
+        same, total = same + a * b, total + a * a
+      end
+      return same / total
+    end
+    h.assertTrue(alike(90) > 0.5, "one cycle on it should repeat: " .. alike(90))
+    h.assertTrue(alike(2400) < 0.7, "stays too steady: " .. alike(2400))
+    local _, pitch = windowOf(data, 0.2, 1.2)
+    h.assertBetween(pitch, 400, 1000, "a howl, under the ear's sharpest band")
+  end)
+
+  h.it("a drift can be held without wearing", function()
+    h.assertEq(audio.squealLevel(1, false), audio.squealLevel(0.99, false), "the most it gets to")
+    h.assertTrue(audio.squealLevel(1, false) <= 0.25, "a real slide sits here for seconds")
+  end)
+
+  h.it("grinding along a wall loops and hasn't been clipped", function()
+    local data = audio.grindData()
+    local n = data:getSampleCount()
+    h.assertTrue(math.abs(data:getSample(0) - data:getSample(n - 1)) < 0.2, "loop point")
+    h.assertBetween(peakOf(data), 0.3, 0.95, "peak")
+    h.assertTrue(crestOf(data) > 2, "square, so it clipped on the way: " .. crestOf(data))
+  end)
+
+  h.it("grinding needs a wall and some speed", function()
+    h.assertEq(audio.grindLevel(0, 40), 0, "not touching")
+    h.assertEq(audio.grindLevel(1, 0), 0, "pressed against it and stopped")
+    h.assertTrue(audio.grindLevel(1, 10) < audio.grindLevel(1, 22), "speed brings it up")
+    h.assertEq(audio.grindLevel(1, 22), audio.grindLevel(1, 60), "and it tops out")
+  end)
+
+  h.it("crash sizes follow how hard the hit was, and don't run out of range", function()
+    local cases = {
+      { 0.1, 0 },      -- a brush along the wall
+      { 0.2, 1 },      -- 5 degrees at 20 m/s
+      { 0.5, 1 },      -- 15 degrees at 20 m/s
+      { 0.95, 2 },     -- 15 degrees at 40 m/s
+      { 2.5, 2 },      -- 30 degrees at 40 m/s
+      { 3.7, 3 },      -- head on at 20 m/s
+      { 27, 3 },       -- head on at 70 m/s in the heaviest car
+    }
+    for _, case in ipairs(cases) do
+      local size = audio.impactLevel(case[1])
+      h.assertEq(size, case[2], "strength " .. case[1])
+    end
+    local last = 0
+    for _, strength in ipairs({ 3, 5, 8, 12, 20 }) do
+      local _, volume = audio.impactLevel(strength)
+      h.assertTrue(volume > last, "louder at " .. strength)
+      last = volume
+    end
+    local _, top = audio.impactLevel(1000)
+    h.assertBetween(top, 0.5, 1, "stays in range")
+  end)
+
+  h.it("every crash starts with the hit and dies away", function()
+    for size = 1, 3 do
+      local data = audio.crashData(size)
+      local n = data:getSampleCount()
+      h.assertTrue(math.abs(data:getSample(0)) < 0.1, size .. " starts on a hard edge")
+      -- Where it's loudest, by 2 ms windows.
+      local at, loudest = 0, 0
+      for i = 0, n - 89, 88 do
+        local level = levelOf(data, i, i + 88)
+        if level > loudest then at, loudest = i, level end
+      end
+      h.assertTrue(at / 44100 < 0.03, size .. " is at its loudest " .. at / 44100 .. " s in")
+      h.assertTrue(levelOf(data, n - 880, n) < loudest * 0.1, size .. " is still going at the end")
+      h.assertTrue(crestOf(data) > 3, size .. " is a block of noise with no hit in it: " .. crestOf(data))
+    end
+  end)
+
+  h.it("bigger crashes last longer and go lower", function()
+    local small, big = audio.crashData(1), audio.crashData(3)
+    h.assertTrue(big:getDuration() > small:getDuration() * 2, "longer")
+    h.assertTrue(levelOf(big, 8820, 13230) > levelOf(small, 4410, 8820) * 0.5, "the big one holds up")
+  end)
+
+  h.it("a crash is dead metal, with no clean pitch ringing on", function()
+    local data = audio.crashData(3)
+    local n = data:getSampleCount()
+    -- A ringing pan repeats itself. Noise doesn't, at any lag worth hearing.
+    local from, to = math.floor(n * 0.4), math.floor(n * 0.7)
+    local best = 0
+    for lag = 40, 400 do
+      local same, total = 0, 0
+      for i = from, to, 3 do
+        local a, b = data:getSample(i), data:getSample(i + lag)
+        same, total = same + a * b, total + a * a
+      end
+      best = math.max(best, same / total)
+    end
+    h.assertTrue(best < 0.8, "the tail rings: " .. best)
+  end)
+
+  h.it("a heavy car's crash is lower than a light one's", function()
+    local low = audio.impactPitch(garage.byId("baja_beast"))
+    local high = audio.impactPitch(garage.byId("open_wheeler"))
+    h.assertTrue(low < 1 and high > 1)
+    h.assertBetween(low, 0.85, 1.15)
+    h.assertBetween(high, 0.85, 1.15)
+  end)
+
+  h.it("repeated sounds vary, by as much as they're asked to", function()
+    for _ = 1, 200 do
+      h.assertBetween(audio.variedPitch(0.03), 0.97, 1.03)
+      h.assertBetween(audio.variedPitch(), 0.93, 1.07)
+    end
+  end)
+
+  h.it("idle is its own sound, and hands over to the revs", function()
+    h.assertEq(audio.idleShare(900, 900), 1, "ticking over")
+    h.assertEq(audio.idleShare(1800, 900), 0, "gone by twice idle")
+    h.assertBetween(audio.idleShare(1400, 900), 0.01, 0.99, "in between")
+    for _, voice in ipairs(voices()) do
+      local data = audio.engineData(voice, voice.idleAt, "idle")
+      local n = data:getSampleCount()
+      h.assertTrue(math.abs(data:getSample(0) - data:getSample(n - 1)) < 0.1, voice.key .. " loop point")
+      h.assertBetween(peakOf(data), 0.05, 0.95, voice.key .. " peak")
+    end
+  end)
+
+  h.it("engine loops are centred, and every car reaches a phone", function()
+    for _, voice in ipairs(voices()) do
+      for _, mode in ipairs({ "speed", "overrun", "limiter" }) do
+        local rpm = voice.rpms[mode == "overrun" and 2 or 3]
+        local data = audio.engineData(voice, rpm, mode ~= "speed" and mode or nil)
+        local n = data:getSampleCount()
+        local mean, above, last = 0, 0, 0
+        for i = 0, n - 1 do
+          local v = data:getSample(i)
+          mean = mean + v
+          last = last + (v - last) * 0.042  -- the same 300 Hz as the loops are set by
+          above = above + (v - last) ^ 2
+        end
+        h.assertTrue(math.abs(mean / n) < 0.01, voice.key .. " " .. mode .. " sits off centre by " .. mean / n)
+        if mode == "speed" then
+          h.assertBetween(math.sqrt(above / n), 0.1, 0.8, voice.key .. " has too little above a phone's bottom end")
+        end
+      end
+    end
+  end)
+
+  h.it("noise loops don't dip at the join", function()
+    local loops = { scrub = audio.scrubData(), nitro = audio.nitroData(), loose = audio.looseData(), road = audio.roadData() }
+    for name, data in pairs(loops) do
+      local n = data:getSampleCount()
+      local joined = levelOf(data, 2000, 8000)  -- the middle of the crossfade
+      local body = levelOf(data, 20000, n)
+      h.assertTrue(joined > body * 0.85, name .. " breathes: " .. joined / body)
+    end
+  end)
+
+  h.it("nothing that plays for seconds is static", function()
+    local loops = {
+      road = audio.roadData(), wind = audio.windData(), loose = audio.looseData(),
+      scrub = audio.scrubData(), squeal = audio.squealData(), nitro = audio.nitroData(),
+    }
+    for name, data in pairs(loops) do
+      h.assertTrue(shareAbove(data, 4000) < 0.08, name .. " is a hiss: " .. shareAbove(data, 4000))
+    end
+    h.assertTrue(shareAbove(loops.road, 1000) < 0.08, "the road is a rumble: " .. shareAbove(loops.road, 1000))
+  end)
+
+  h.it("high up the revs an engine's noise stays part of its note", function()
+    local data = audio.engineData(audio.voice(8), 5400)
+    local k = 1 - math.exp(-math.pi * 2 * 1000 / 44100)
+    local low, high = 0, {}
+    for i = 0, 30000 do
+      local v = data:getSample(i)
+      low = low + (v - low) * k
+      high[i] = v - low
+    end
+    local cycle, same, total = 980, 0, 0  -- two turns at 5400 rpm
+    for i = 4000, 24000 do
+      same, total = same + high[i] * high[i + cycle], total + high[i] ^ 2
+    end
+    h.assertTrue(same / total > 0.88, "fresh noise every cycle is a hiss: " .. same / total)
   end)
 end)
 
