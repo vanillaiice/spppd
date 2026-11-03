@@ -13,7 +13,7 @@ return base.define({
   track = 1.68,
   length = 4.9,
   width = 1.98,
-  grip = 1.02,
+  grip = 1.18,
   looseGrip = 1.6,
   looseDrag = 0.6,
   drive = "AWD",

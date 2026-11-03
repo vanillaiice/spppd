@@ -14,7 +14,7 @@ return base.define({
   length = 5.1,
   width = 2.02,
   rollBalance = 0.58,
-  grip = 1.02,
+  grip = 1.21,
   looseGrip = 1.2,
   looseDrag = 0.75,
   cylinders = 8,
@@ -26,6 +26,6 @@ return base.define({
   gears = { 3.6, 2.3, 1.7, 1.3, 1.03, 0.82 },
   finalDrive = 3.4,
   dragArea = 0.95,
-  brakeG = 1.25,
+  brakeG = 1.35,
   handbrakeForce = 14000,
 })

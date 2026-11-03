@@ -14,7 +14,7 @@ return base.define({
   length = 4.45,
   width = 1.88,
   rollBalance = 0.47,
-  grip = 1.17,
+  grip = 1.23,
   looseDrag = 1.0,
   peakSlip = 0.135,
   cylinders = 6,

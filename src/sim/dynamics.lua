@@ -31,7 +31,8 @@ local SLIPSTREAM_DRAG_CUT = 0.3  -- share of aero drag a full slipstream removes
 local ESC_LAG = 0.06            -- seconds stability control takes to lean in or let go
 local HANDBRAKE_RELEASE = 0.15  -- seconds for the rear wheels to free up again
 local DRIFT_CATCH = 0.5         -- share of the anti-spin moment left after the handbrake is let go
-local DRIFT_SETTLE = 3          -- how firmly a released drift gives up its rotation (per s)
+local DRIFT_CATCH_FADE = 3      -- the catch is at full strength until the drift is down to 1/3
+local DRIFT_SETTLE = 3         -- how firmly a released drift gives up its rotation (per s)
 -- A held drift: full steering asks for this slip angle (rad), and the tail is
 -- sprung (per s^2) and damped (per s) towards it, so it settles instead of
 -- swinging out, snapping straight and swinging out again.
@@ -514,10 +515,13 @@ function dynamics.step(c, input, vx, vy, r, dt)
       if drift == 0 then moment = moment * (1 - c.handbrakeHold * 0.85) end
       escMoment = yawErr > 0 and -moment or moment
       -- Past the drift limit, turn the nose back towards the direction of travel.
+      -- It hands back to plain stability control as the drift runs out, rather
+      -- than all at once, or the yaw jolts as a released drift ends.
       if drift > 0 and slide > 0 then
         local catch = DRIFT_CATCH + (1 - DRIFT_CATCH) * c.handbrakeHold
         moment = spec.mass * G * spec.wheelbase * min(1, slide * 3) * catch
-        escMoment = beta > 0 and moment or -moment
+        local share = min(1, drift * DRIFT_CATCH_FADE)
+        escMoment = escMoment * (1 - share) + (beta > 0 and moment or -moment) * share
       end
       pedal = pedal * (1 - min(0.8, slide * 1.4) * assist.esc)
       c.escActive = amount * assist.esc
