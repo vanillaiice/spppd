@@ -97,8 +97,7 @@ conf.lua            Window and module setup; turns graphics off for --test
 Makefile            run, test*, server, deploy-relay, site*, deploy-site, zip, apk, ...
 android/apk.sh      Builds and signs the test APK
 config/deploy.yml   The website as the Kamal app, and the relay as its accessory
-bin/relay-deploy    Builds the relay and deploys it
-bin/site-deploy     Deploys the website
+bin/                The deploy scripts for the official server (not in git)
 .env                The official server's details and dashboard password (not in git)
 site/               The website at spppd.vanillaiice.xyz (Astro)
 .dockerignore       Lets only what the website needs into its image
@@ -1638,7 +1637,8 @@ kamal relay-users                                          # list the dashboard 
 
 The server's details come from `.env` in the repository root, which isn't in git:
 `SPPPD_HOST`, `SPPPD_SSH_USER` and `SPPPD_DOMAIN`. `bin/relay-deploy` adds the first
-user's password to it as `SPPPD_DASHBOARD_TOKEN`; the user is `admin`. Deploying restarts the relay, and anyone
+user's password to it as `SPPPD_DASHBOARD_TOKEN`; the user is `admin`. `bin/` isn't in
+git either. Deploying restarts the relay, and anyone
 racing is told. Bans, users, logins and analytics survive it.
 
 ### The website
