@@ -592,7 +592,7 @@ AI, rendering and race rules all share. It has no LÖVE dependency.
   nodes = { {x, y, wl, wr}, ... },
   startPoint = {x, y, angle} }
 
--- Boundary: two hand-drawn edges (LUSAIL and BOAT)
+-- Boundary: two hand-drawn edges (BOAT)
 { left = segments, right = segments, startPoint = ... }
 ```
 
@@ -681,7 +681,7 @@ out-in-out shape comes from this and isn't drawn by hand.
 
 | Track | Theme | Definition | Length | Samples | Narrowest | Runoff |
 | --- | --- | --- | --- | --- | --- | --- |
-| LUSAIL | desert | Boundary | 1.84 km | 740 | 11.4 m | 12 m |
+| MIRAGE | desert | 266 nodes | 2.40 km | 959 | 22.8 m | 12 m |
 | HIGHLANDS | meadow | 30 nodes | 2.07 km | 830 | 16.7 m | 12 m |
 | HARBOUR | marina | 29 nodes | 1.20 km | 483 | 14.3 m | 7 m |
 | BOAT | meadow | Boundary | 0.79 km | 317 | 9.8 m | 12 m |
@@ -856,7 +856,6 @@ All of this runs in one blocking call.
 
 | Track | JIT on | JIT off |
 | --- | --- | --- |
-| LUSAIL | 63 ms | 222 ms |
 | TEMPLE | 56 ms | 274 ms |
 | ARDENNES | 75 ms | 326 ms |
 | OASIS | 70 ms | 308 ms |

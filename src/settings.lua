@@ -21,7 +21,7 @@ local settings = {
 
   -- Last race setup
   mode = "race",
-  track = "lusail",
+  track = "mirage",
   car = 1,
   hue = 1,
   laps = 3,
@@ -80,6 +80,8 @@ function settings.load()
   end
   -- FULL was replaced by ARCADE as the easiest handling tier.
   if settings.assists == "full" then settings.assists = "arcade" end
+  -- MIRAGE replaced LUSAIL. Best laps stay under the old name: it was another road.
+  if settings.track == "lusail" then settings.track = "mirage" end
   records = loadTable(RECORDS) or {}
 end
 

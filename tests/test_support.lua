@@ -295,7 +295,7 @@ h.describe("midnight", function()
 
   h.it("studs run down both edges of the road, on the road", function()
     local Track = require("src/sim/track")
-    local track = Track.new(catalog.find("lusail").def)
+    local track = Track.new(catalog.find("mirage").def)
     local spots = renderer.studSpots(track)
     h.assertTrue(#spots > 100, "a whole lap of them")
     local left, right = 0, 0

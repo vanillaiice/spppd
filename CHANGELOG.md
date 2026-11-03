@@ -11,6 +11,9 @@
 
 ### Changed
 
+- LUSAIL is replaced by MIRAGE, a new desert circuit. It is built from smooth corners,
+  so its fences no longer fold or kink at the bends, and the road keeps one width. Best
+  laps set on LUSAIL don't carry over.
 - Saves from before 2.3.0, which name the server by its old address, are no longer
   moved to `spppd.vanillaiice.xyz`. They still reach the same server; to switch, type
   `spppd.vanillaiice.xyz` as the server on the ONLINE screen.

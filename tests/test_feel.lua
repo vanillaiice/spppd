@@ -60,7 +60,7 @@ h.describe("drift nitro", function()
   h.it("driving the racing line isn't a slide", function()
     local AI = require("src/ai_controller")
     for _, spec in ipairs(garage) do
-      local track = Track.new(catalog.find("lusail").def)
+      local track = Track.new(catalog.find("mirage").def)
       local race = Race.new({ mode = "race", track = track, laps = 1, opponents = 0, spec = spec,
         assist = "arcade", seed = 7, startDelay = 0.2 })
       race.player.driver = AI.new(track, race.player, { skill = 0.98 })

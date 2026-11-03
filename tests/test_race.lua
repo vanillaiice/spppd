@@ -82,7 +82,7 @@ end
 
 h.describe("race", function()
   h.it("a car touching a barrier is marked for the sound of grinding, one on the road isn't", function()
-    local track = Track.new(catalog.find("lusail").def)
+    local track = Track.new(catalog.find("mirage").def)
     local race = Race.new({ mode = "race", track = track, laps = 1, opponents = 0, spec = garage[3],
       seed = 7, startDelay = 0 })
     local car = race.player

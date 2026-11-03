@@ -18,16 +18,16 @@ local perf = {}
 local WARMUP, SAMPLE = 4, 12  -- seconds
 
 local CASES = {
-  { name = "lusail-day-low", track = "lusail", time = "day", quality = "low" },
+  { name = "mirage-day-low", track = "mirage", time = "day", quality = "low" },
   { name = "harbour-night-low", track = "harbour", time = "night", quality = "low" },
   { name = "harbour-midnight-low", track = "harbour", time = "midnight", quality = "low" },
-  { name = "lusail-day-high", track = "lusail", time = "day", quality = "high" },
+  { name = "mirage-day-high", track = "mirage", time = "day", quality = "high" },
   { name = "highlands-dusk-high", track = "highlands", time = "dusk", quality = "high" },
   { name = "harbour-night-high", track = "harbour", time = "night", quality = "high" },
   { name = "harbour-midnight-high", track = "harbour", time = "midnight", quality = "high" },
-  { name = "lusail-midnight-boost-high", track = "lusail", time = "midnight", quality = "high", boost = true },
+  { name = "mirage-midnight-boost-high", track = "mirage", time = "midnight", quality = "high", boost = true },
   -- The worst of it: speed blur, the warp and a full minute for a phone to heat up.
-  { name = "lusail-night-boost-high", track = "lusail", time = "night", quality = "high", boost = true, sample = 60 },
+  { name = "mirage-night-boost-high", track = "mirage", time = "night", quality = "high", boost = true, sample = 60 },
 }
 
 -- Fires the nitro again whenever braking for a corner has cancelled it.

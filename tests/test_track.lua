@@ -113,6 +113,24 @@ h.describe("track", function()
     end)
   end
 
+  -- MIRAGE replaced a hand-traced track whose fences folded at nearly every corner.
+  -- Some other tracks still have a few sharp bends, so this only holds MIRAGE to it.
+  h.it("mirage fences have no sharp bends", function()
+    local t = Track.new(catalog.find("mirage").def)
+    for side, wall in pairs({ left = t.barrierL, right = t.barrierR }) do
+      local n = #wall
+      for i = 1, n do
+        local p, q, r = wall[(i - 2) % n + 1], wall[i], wall[i % n + 1]
+        local ax, ay, bx, by = q.x - p.x, q.y - p.y, r.x - q.x, r.y - q.y
+        local la, lb = math.sqrt(ax * ax + ay * ay), math.sqrt(bx * bx + by * by)
+        if la > 0.01 and lb > 0.01 then
+          local turn = math.deg(math.acos(math.max(-1, math.min(1, (ax * bx + ay * by) / (la * lb)))))
+          h.assertTrue(turn < 25, string.format("%s fence bends %.0f degrees at point %d", side, turn, i))
+        end
+      end
+    end
+  end)
+
   h.it("locate is stable around the lap", function()
     local t = Track.new(catalog.builtin()[1].def)
     local hint

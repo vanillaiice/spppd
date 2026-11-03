@@ -52,10 +52,10 @@ local SCENES = {
   end,
   -- Any one car, by id: SPPPD_CAR=cyber.
   car = function()
-    race({ track = "lusail", time = "day", spec = garage.byId(os.getenv("SPPPD_CAR") or "cyber"), opponents = 2 })
+    race({ track = "mirage", time = "day", spec = garage.byId(os.getenv("SPPPD_CAR") or "cyber"), opponents = 2 })
     autopilot()
   end,
-  day = function() race({ track = "lusail", time = "day" }) autopilot() end,
+  day = function() race({ track = "mirage", time = "day" }) autopilot() end,
   dusk = function() race({ track = "highlands", time = "dusk" }) autopilot() end,
   night = function() race({ track = "harbour", time = "night" }) autopilot() end,
   -- Any track in the dark: SPPPD_TRACK=touge.
@@ -67,7 +67,7 @@ local SCENES = {
   end,
   marina = function() race({ track = "harbour", time = "day" }) autopilot() end,
   start = function()
-    race({ track = "lusail", time = "day" })
+    race({ track = "mirage", time = "day" })
     local r = rm.race()
     r.startDelay = 100
     r.player.driver = { revs = function() return 0.68 end }
@@ -110,7 +110,7 @@ local SCENES = {
   end,
   touch = function()
     phone()
-    race({ track = "lusail", time = "day" })
+    race({ track = "mirage", time = "day" })
     autopilot()
     local touch = require("src/touch")
     local sw, sh = love.graphics.getDimensions()
@@ -125,7 +125,7 @@ local SCENES = {
   phonecontrols = function() phone() menu.enter() menu.go("controls") end,
   phoneonline = function() phone() menu.enter() settings.mode = "race" menu.go("online") end,
   phonehost = function() phone() menu.enter() settings.mode = "race" menu.go("host") end,
-  pause = function() race({ track = "lusail", time = "day" }) autopilot() end,
+  pause = function() race({ track = "mirage", time = "day" }) autopilot() end,
   results = function() race({ track = "boat", time = "day", opponents = 3 }) autopilot() end,
   -- Only the player over the line: 40 frames shows the banner, 120 the results.
   finish = function() race({ track = "boat", time = "day", opponents = 3 }) autopilot() end,

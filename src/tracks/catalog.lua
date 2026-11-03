@@ -4,7 +4,7 @@ local wire = require("src/tracks/wire")
 
 local catalog = {}
 
-local BUILTIN = { "lusail", "highlands", "harbour", "boat", "speedway", "temple", "riviera", "ardennes", "touge", "oasis" }
+local BUILTIN = { "mirage", "highlands", "harbour", "boat", "speedway", "temple", "riviera", "ardennes", "touge", "oasis" }
 local USER_DIR = "tracks"
 
 -- The menus ask for the list every frame, and reading it runs every saved file.
