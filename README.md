@@ -85,7 +85,7 @@ relay takes at once, and the dashboard shows both against their limits.
 Statistics are off unless you start the relay with `-analytics`. They count unique IPs
 as keyed hashes, plus rooms, races and traffic, and the dashboard exports them as CSV.
 If you turn them on, tell your players, as `PRIVACY.md` does for the official server.
-`make deploy-relay` deploys to the hblabs server. See `ARCHITECTURE.md`.
+`make deploy-relay` deploys the official server. See `ARCHITECTURE.md`.
 
 ## Building and testing
 

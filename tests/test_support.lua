@@ -94,13 +94,9 @@ h.describe("settings", function()
 end)
 
 h.describe("settings server", function()
-  h.it("moves a save off the old address, and leaves a chosen one alone", function()
+  h.it("defaults to the official server, and keeps a chosen one", function()
     local kept = settings.server
     h.assertEq(kept, "spppd.vanillaiice.xyz", "the name is the default, with no port to type")
-    settings.server = "62.169.20.136:8080"
-    settings.save()
-    settings.load()
-    h.assertEq(settings.server, kept)
     settings.server = "192.168.1.5:8080"
     settings.save()
     settings.load()

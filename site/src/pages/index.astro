@@ -4,6 +4,7 @@ import Base from '../layouts/Base.astro';
 import Clip from '../components/Clip.astro';
 import Downloads from '../components/Downloads.astro';
 import PostList from '../components/PostList.astro';
+import site from '../site.config';
 import { downloads, gameVersion, media, megabytes } from '../lib/repo';
 import { formatDate, publishedPosts } from '../lib/dates';
 
@@ -102,7 +103,7 @@ const notes = [
         </a>
       </div>
       <p class="version muted">
-        Version {version}. <a href="#download">Other downloads</a>
+        Version {version}. <a href="#download">Other downloads</a> · <a href={site.repo}>Source on GitHub</a>
       </p>
     </div>
   </section>

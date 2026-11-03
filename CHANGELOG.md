@@ -9,6 +9,12 @@
 - PRIVACY & TERMS on the ONLINE screen opens the [privacy policy](PRIVACY.md) on the
   website, which links to the [terms of use](TERMS.md).
 
+### Changed
+
+- Saves from before 2.3.0, which name the server by its old address, are no longer
+  moved to `spppd.vanillaiice.xyz`. They still reach the same server; to switch, type
+  `spppd.vanillaiice.xyz` as the server on the ONLINE screen.
+
 ### Relay
 
 - Bans, dashboard users and logins are kept in an SQLite file (`-db`), so a restart

@@ -82,9 +82,10 @@ const year = new Date().getFullYear();
           <a href="/blog/rss.xml">RSS</a>
           <a href="/privacy/">Privacy</a>
           <a href="/terms/">Terms</a>
+          <a href={site.repo}>GitHub</a>
         </nav>
         <p>
-          SPPPD is free software by vanillaiice. The game is under the GNU GPL version 3, and the online
+          SPPPD is <a href={site.repo}>free software</a> by vanillaiice. The game is under the GNU GPL version 3, and the online
           server under the GNU AGPL version 3. Questions: <a href={`mailto:${site.contact}`}>{site.contact}</a>
         </p>
         <p class="muted">&copy; {year} vanillaiice</p>

@@ -9,3 +9,7 @@ site/node_modules/
 site/dist/
 site/.astro/
 site/public/download/
+# The deploy scripts for the official server, kept out of the public repository.
+bin/
+# The official server's details and dashboard password, read by the deploy scripts.
+.env

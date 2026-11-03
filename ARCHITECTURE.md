@@ -97,8 +97,8 @@ conf.lua            Window and module setup; turns graphics off for --test
 Makefile            run, test*, server, deploy-relay, site*, deploy-site, zip, apk, ...
 android/apk.sh      Builds and signs the test APK
 config/deploy.yml   The website as the Kamal app, and the relay as its accessory
-bin/relay-deploy    Builds the relay and deploys it
-bin/site-deploy     Deploys the website
+bin/                The deploy scripts for the official server (not in git)
+.env                The official server's details and dashboard password (not in git)
 site/               The website at spppd.vanillaiice.xyz (Astro)
 .dockerignore       Lets only what the website needs into its image
 assets/fonts/       Press Start 2P (SIL OFL)
@@ -1620,7 +1620,7 @@ existing user, so a password changed on the dashboard survives a deploy.
 
 ### Deploying
 
-The relay runs as a Kamal accessory on the hblabs server: `alpine:3.20` with the static
+The relay runs as a Kamal accessory on the official server: `alpine:3.20` with the static
 binary uploaded beside it, so there's no image to build or registry to push to. It runs
 on a read-only root with every capability dropped, as the deploy user, so it can write
 `~/spppd-relay/data`, which Kamal mounts at `/data` for the database. `bin/relay-deploy`
@@ -1630,13 +1630,15 @@ so the firewall needs no rule. The official server runs with `-analytics`, and i
 Docker log, which holds IP addresses, is capped at 10 MB, as `PRIVACY.md` promises.
 
 ```
-make deploy-relay                                      # first run makes the password
-ssh -L 9090:127.0.0.1:9090 vanillaiice@62.169.20.136   # then http://localhost:9090
-kamal relay-users                                      # list the dashboard users
+make deploy-relay                                          # first run makes the password
+ssh -L 9090:127.0.0.1:9090 $SPPPD_SSH_USER@$SPPPD_HOST     # then http://localhost:9090
+kamal relay-users                                          # list the dashboard users
 ```
 
-`bin/relay-deploy` keeps the first user's password in `~/.config/hblabs/spppd.env`,
-outside the repository; the user is `admin`. Deploying restarts the relay, and anyone
+The server's details come from `.env` in the repository root, which isn't in git:
+`SPPPD_HOST`, `SPPPD_SSH_USER` and `SPPPD_DOMAIN`. `bin/relay-deploy` adds the first
+user's password to it as `SPPPD_DASHBOARD_TOKEN`; the user is `admin`. `bin/` isn't in
+git either. Deploying restarts the relay, and anyone
 racing is told. Bans, users, logins and analytics survive it.
 
 ### The website

@@ -1,6 +1,5 @@
 -- Everything the game remembers between sessions.
 local SERVER = "spppd.vanillaiice.xyz"
-local OLD_SERVER = "62.169.20.136:8080"
 local SERVER_PORT = 8080  -- when the address doesn't name one
 
 local settings = {
@@ -81,8 +80,6 @@ function settings.load()
   end
   -- FULL was replaced by ARCADE as the easiest handling tier.
   if settings.assists == "full" then settings.assists = "arcade" end
-  -- The server used to be known by its address, and every save wrote that down.
-  if settings.server == OLD_SERVER then settings.server = SERVER end
   records = loadTable(RECORDS) or {}
 end
 
