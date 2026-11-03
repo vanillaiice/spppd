@@ -8,7 +8,8 @@
 #   the binary and loads the dashboard's password.
 #
 # The server's details come from .env, which isn't in git: SPPPD_HOST, SPPPD_SSH_USER,
-# SPPPD_DOMAIN and SPPPD_DASHBOARD_TOKEN. Each script loads it and deploys only its own
+# SPPPD_DOMAIN and SPPPD_DASHBOARD_TOKEN, and optionally SPPPD_OLD_DOMAINS: earlier
+# names, comma-separated, that the website redirects to SPPPD_DOMAIN. Each script loads it and deploys only its own
 # part. Use them, not kamal directly; for the aliases below, load .env first:
 #   set -a; . ./.env; set +a
 service: spppd
@@ -25,12 +26,18 @@ registry:
   server: localhost:5555
 
 # kamal-proxy already owns 80/443 on the server and routes by host, like the other apps.
+# It takes the old names too, with a certificate each, and Caddy redirects them.
 proxy:
-  host: <%= ENV.fetch('SPPPD_DOMAIN') %>
+  hosts: <%= ([ENV.fetch('SPPPD_DOMAIN')] + ENV.fetch('SPPPD_OLD_DOMAINS', '').split(',').map(&:strip).reject(&:empty?)).to_json %>
   ssl: true
   app_port: 80
   healthcheck:
     path: /up
+
+# Caddy redirects any other name to this one.
+env:
+  clear:
+    SPPPD_DOMAIN: <%= ENV.fetch('SPPPD_DOMAIN') %>
 
 # Built from the working tree, not a git checkout, because the downloads in
 # site/public/download aren't in git. The root .dockerignore lets in only what it needs.

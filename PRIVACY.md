@@ -2,7 +2,7 @@
 
 Last updated 2026-11-03. The rules for using the server are in [TERMS.md](TERMS.md).
 
-This covers the official SPPPD online server at `spppd.vanillaiice.xyz`, and the
+This covers the official SPPPD online server at `spppd.xyz`, and the
 website at the same address, both run by vanillaiice. If you play through a server
 someone else runs, they decide what it keeps, and this policy doesn't apply to it.
 

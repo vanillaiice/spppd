@@ -13,6 +13,6 @@ export default {
   umami: {
     src: 'https://stats.hblabs.xyz/script.js',
     websiteId: '34e2efc4-618d-4d9d-a896-30e72f8b6d84',
-    domains: 'spppd.vanillaiice.xyz',
+    domains: 'spppd.xyz',
   },
 };

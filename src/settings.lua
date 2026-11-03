@@ -1,5 +1,5 @@
 -- Everything the game remembers between sessions.
-local SERVER = "spppd.vanillaiice.xyz"
+local SERVER = "spppd.xyz"
 local SERVER_PORT = 8080  -- when the address doesn't name one
 
 local settings = {

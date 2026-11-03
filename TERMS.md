@@ -2,7 +2,7 @@
 
 Last updated 2026-11-03. What the server keeps is in [PRIVACY.md](PRIVACY.md).
 
-These terms cover the official SPPPD online server at `spppd.vanillaiice.xyz`, run by
+These terms cover the official SPPPD online server at `spppd.xyz`, run by
 vanillaiice. The game itself is free software under the GNU General Public License,
 version 3, and the server software under the GNU Affero General Public License,
 version 3. These terms don't limit what those licenses let you do with the code. They

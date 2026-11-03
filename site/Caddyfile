@@ -1,10 +1,18 @@
-# The website at https://spppd.vanillaiice.xyz. kamal-proxy sits in front, does TLS and
-# health checks /up. Caddy logs no requests (no `log` directive).
+# The website at https://$SPPPD_DOMAIN (spppd.xyz). kamal-proxy sits in front, does TLS
+# and health checks /up. Caddy logs no requests (no `log` directive).
 {
 	admin off
 }
 
 :80 {
+	# Old names (SPPPD_OLD_DOMAINS in .env) go to the real one, path and all. Not /up:
+	# kamal-proxy's health check comes in under no particular name.
+	@elsewhere {
+		not host {$SPPPD_DOMAIN:spppd.xyz}
+		not path /up
+	}
+	redir @elsewhere https://{$SPPPD_DOMAIN:spppd.xyz}{uri} permanent
+
 	handle /up {
 		respond "ok" 200
 	}

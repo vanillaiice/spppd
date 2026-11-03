@@ -1,7 +1,7 @@
 import { defineConfig } from 'astro/config';
 
 export default defineConfig({
-  site: 'https://spppd.vanillaiice.xyz',
+  site: 'https://spppd.xyz',
   trailingSlash: 'ignore',
   build: {
     format: 'directory',

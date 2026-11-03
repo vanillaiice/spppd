@@ -1,5 +1,13 @@
 # Changelog
 
+## Unreleased
+
+### Changed
+
+- SPPPD moved to <https://spppd.xyz>, the website and the online server both. The
+  default server is now `spppd.xyz`. A save that names `spppd.vanillaiice.xyz` still
+  reaches the same server, and the old website address redirects to the new one.
+
 ## 2.7.0 (2026-11-03)
 
 ### Added

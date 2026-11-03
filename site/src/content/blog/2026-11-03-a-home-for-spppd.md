@@ -4,7 +4,7 @@ date: 2026-11-03
 description: The game has a website, with downloads, the changelog and this blog.
 ---
 
-SPPPD now has a home at spppd.vanillaiice.xyz. Every new version will be downloadable
+SPPPD now has a home at spppd.xyz. Every new version will be downloadable
 from here, for Windows, Android, and anywhere else LÖVE runs.
 
 The same address is the official online server, so the game already knows the way.

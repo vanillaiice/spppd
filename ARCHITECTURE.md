@@ -100,7 +100,7 @@ config/deploy.yml   The website as the Kamal app, and the relay as its accessory
 bin/relay-deploy    Builds the relay and deploys it
 bin/site-deploy     Deploys the website
 .env                The official server's details and dashboard password (not in git)
-site/               The website at spppd.vanillaiice.xyz (Astro)
+site/               The website at spppd.xyz (Astro)
 .dockerignore       Lets only what the website needs into its image
 assets/fonts/       Press Start 2P (SIL OFL)
 
@@ -1645,13 +1645,15 @@ kamal relay-users                                          # list the dashboard 
 ```
 
 The server's details come from `.env` in the repository root, which isn't in git:
-`SPPPD_HOST`, `SPPPD_SSH_USER` and `SPPPD_DOMAIN`. `bin/relay-deploy` adds the first
+`SPPPD_HOST`, `SPPPD_SSH_USER` and `SPPPD_DOMAIN`, and optionally `SPPPD_OLD_DOMAINS`:
+earlier names, comma-separated, which kamal-proxy also serves and Caddy redirects to
+`SPPPD_DOMAIN`, path and all. `bin/relay-deploy` adds the first
 user's password to it as `SPPPD_DASHBOARD_TOKEN`; the user is `admin`. Deploying restarts the relay, and anyone
 racing is told. Bans, users, logins and analytics survive it.
 
 ### The website
 
-`site/` is an Astro site, served at `https://spppd.vanillaiice.xyz` from the same name
+`site/` is an Astro site, served at `https://spppd.xyz` from the same name
 as the relay: the relay takes UDP 8080, and kamal-proxy, which already serves the
 server's other sites, takes HTTPS. It's the Kamal app in `config/deploy.yml`: a Caddy
 image (`site/Dockerfile`, built from the repository root) behind kamal-proxy, which

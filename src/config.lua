@@ -4,7 +4,7 @@ local config = {
   VERSION = "2.7.0",
   -- What the official server keeps, and its rules: PRIVACY.md on the website, which
   -- links to TERMS.md.
-  PRIVACY_URL = "https://spppd.vanillaiice.xyz/privacy/",
+  PRIVACY_URL = "https://spppd.xyz/privacy/",
 
   -- World units are pixels; the vehicle model works in SI units.
   METER = 12,          -- world px per metre
