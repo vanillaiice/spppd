@@ -1,5 +1,34 @@
 # Changelog
 
+## 2.6.0 (2026-11-03)
+
+### Changed
+
+- The cars are rebalanced. Power now decides who is quickest, and cornering follows the
+  car: light, nimble cars corner hardest, and heavy ones make their time back on the
+  straights. The gap from the fastest car to the slowest over a lap of every track
+  is down from 16% to 9%.
+- MUSCLE MONSTER sat on traction control the whole way off the line and lapped like
+  TOFU RUNNER. It now has 601 kW instead of 470, sits further back on its rear wheels
+  and has the grip to use them: 0-100 km/h takes 3.4 s instead of 4.5, and 0-200 takes
+  8.6 s instead of 11.3. It still spins its tyres more than any other car.
+- Steady cornering grip on ARCADE, before and after (CYBER, WEDGE, QUAD TURBO and OPEN
+  WHEELER are unchanged at 1.52, 1.50, 1.50 and 1.69 g):
+
+  | Car | Before | After | Also |
+  | --- | --- | --- | --- |
+  | 4WD MONSTER | 1.48 g | 1.62 g | 311 kW, up from 281 |
+  | TOFU RUNNER | 1.34 g | 1.62 g | |
+  | HOT HATCH | 1.39 g | 1.56 g | |
+  | ROCKET | 1.48 g | 1.55 g | |
+  | BIG BULL | 1.28 g | 1.50 g | stronger brakes |
+  | MUSCLE MONSTER | 1.25 g | 1.48 g | 601 kW, up from 470 |
+  | SAMURAI | 1.28 g | 1.46 g | |
+  | BAJA BEAST | 1.24 g | 1.45 g | stronger brakes |
+
+- Letting go of a long handbrake drift is smoother in every car: the tail no longer
+  snaps as the drift ends, and it swings less past straight.
+
 ## 2.5.0 (2026-11-03)
 
 ### Added

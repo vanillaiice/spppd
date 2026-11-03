@@ -1,7 +1,7 @@
 -- Global tuning constants. Everything here is shared by the simulation,
 -- the renderer and the tests, so it must stay free of LÖVE calls.
 local config = {
-  VERSION = "2.5.0",
+  VERSION = "2.6.0",
   -- What the official server keeps, and its rules: PRIVACY.md on the website, which
   -- links to TERMS.md.
   PRIVACY_URL = "https://spppd.vanillaiice.xyz/privacy/",
