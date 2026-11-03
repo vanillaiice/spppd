@@ -36,6 +36,17 @@ local HORN_LEVEL = 0.5
 local HORN_FADE = 40       -- per second, so it starts and stops like a button
 local HORN_HZ = { 420, 500 }  -- the classic two trumpets, a little under a third apart
 local HORN_MASS = 1400     -- a car this heavy plays the horn at its written pitch
+-- The tune horn cheat: the opening of La Cucaracha, in semitones from the horn's own
+-- pitch and seconds. A false note is a rest. It loops for as long as it's held.
+local HORN_TUNE = {
+  { -5, 0.13 }, { -5, 0.13 }, { -5, 0.13 }, { 0, 0.39 }, { 4, 0.26 }, { false, 0.26 },
+  { -5, 0.13 }, { -5, 0.13 }, { -5, 0.13 }, { 0, 0.39 }, { 4, 0.26 }, { false, 0.26 },
+  { 0, 0.13 }, { 0, 0.13 }, { -1, 0.13 }, { -1, 0.13 }, { -3, 0.13 }, { -3, 0.13 }, { -5, 0.52 }, { false, 0.39 },
+}
+local HORN_GAP = 0.2       -- the share at the end of each note that's silent, so repeats part
+local FLAME_LEVEL = 0.45   -- the flame cheat's roar
+local FLAME_IN, FLAME_OUT = 10, 3
+local FLAME_FADE = 0.4     -- seconds the roar takes to die with the fire
 local SPOOL_DOWN = 7        -- how fast a turbo dumps (per s)
 local BLOWOFF_SPOOL = 0.55 -- turbo pressure needed to be heard venting
 local BLOWOFF_LENGTH = 0.55
@@ -133,6 +144,9 @@ local LOOSE = { lowHz = 560, damping = 1.2, highHz = 60, gain = 2.2,
 -- Rubber dragging: the tyre's own chatter on top of a dull rub.
 local SCRUB = { lowHz = 950, damping = 1.2, highHz = 130, gain = 1.3,
   swell = { { 37, 0.22 }, { 61, 0.14 } } }
+-- The flame cheat's fire: a low ragged roar that flutters as the gas catches.
+local FLAME = { lowHz = 520, damping = 1.0, highHz = 40, gain = 2.6, body = 1.4, bodyHz = 110,
+  wander = { { 3, 0.15 } }, swell = { { 23, 0.35 }, { 41, 0.25 }, { 67, 0.15 } } }
 -- Nitro is a can of gas let go slowly, with pressure behind it. A smooth roll off
 -- the top, so it's never sharp, and a chest under it, so it pushes.
 local NITRO = { lowHz = 2400, damping = 1.1, highHz = 100, gain = 0.8, body = 1.1, bodyHz = 320,
@@ -406,6 +420,30 @@ end
 
 function audio.roadData()
   return bandNoise(ROAD, 1.5, 0.25)
+end
+
+function audio.flameData()
+  return bandNoise(FLAME, 1.5, 0.25)
+end
+
+-- Where the tune horn is, t seconds into holding it: the pitch as a ratio of the
+-- horn's own, and whether a note is sounding.
+function audio.hornTuneLength()
+  local length = 0
+  for _, note in ipairs(HORN_TUNE) do length = length + note[2] end
+  return length
+end
+
+function audio.hornTuneNote(t)
+  t = t % audio.hornTuneLength()
+  for _, note in ipairs(HORN_TUNE) do
+    if t < note[2] then
+      if not note[1] then return 1, false end
+      return 2 ^ (note[1] / 12), t < note[2] * (1 - HORN_GAP)
+    end
+    t = t - note[2]
+  end
+  return 1, false
 end
 
 -- Air, then a whistle for each turbo. Each has a whole number of cycles in the loop
@@ -965,6 +1003,7 @@ function audio.load()
     audio.nitro = loop("nitro", audio.nitroData)
     audio.horn = loop("horn", audio.hornData)
     audio.rivalHorn = audio.horn:clone()
+    audio.flame = loop("flame", audio.flameData)
     audio.engines, audio.turbos, audio.turboBoosts = {}, {}, {}
     for _, spec in ipairs(garage) do
       local voice = audio.voiceOf(spec)
@@ -1348,14 +1387,27 @@ function audio.update(dt, car, rival, rivalDistance)
   audio.nitro:setPitch(audio.nitroPitch(tank))
   local gas = boosting and audio.boostKind(spec) == "gas" and audio.nitroLevel(tank) or 0
   fadeTo(audio.nitro, gas, dt, gas > 0 and NITRO_IN or NITRO_OUT)
-  audio.horn:setPitch(audio.hornPitch(spec))
-  fadeTo(audio.horn, car.horn and HORN_LEVEL or 0, dt, HORN_FADE)
+  local hornPitch, hornOn = audio.hornPitch(spec), car.horn
+  if audio.hornTune and car.horn then
+    local held = audio.tuneTime or 0
+    local ratio, sounding = audio.hornTuneNote(held)
+    hornPitch, hornOn = hornPitch * ratio, sounding
+    audio.tuneTime = held + dt
+  else
+    audio.tuneTime = 0  -- each press starts the tune again
+  end
+  audio.horn:setPitch(hornPitch)
+  fadeTo(audio.horn, hornOn and HORN_LEVEL or 0, dt, HORN_FADE)
+  local fire = car.fx and car.fx.flameTime or 0
+  local flame = FLAME_LEVEL * math.min(1, fire / FLAME_FADE)
+  audio.flame:setPitch(0.9 + 0.2 * math.min(1, fire / FLAME_FADE))
+  fadeTo(audio.flame, flame, dt, flame > audio.flame:getVolume() and FLAME_IN or FLAME_OUT)
 
   updateRival(dt, rival, rivalDistance)
 end
 
 local function eachLoop(fn)
-  for _, key in ipairs({ "rivalMotor", "scrub", "squeal", "grind", "road", "loose", "wind", "nitro", "blower", "motor", "horn", "rivalHorn" }) do
+  for _, key in ipairs({ "rivalMotor", "scrub", "squeal", "grind", "road", "loose", "wind", "nitro", "blower", "motor", "horn", "rivalHorn", "flame" }) do
     fn(audio[key])
   end
   for _, source in pairs(audio.turbos) do fn(source) end

@@ -22,6 +22,7 @@ local radio = require("src/radio")
 local colors = require("src/colors")
 local network = require("src/network_manager")
 local rumble = require("src/rumble")
+local cheats = require("src/cheats")
 
 local rm = {}
 
@@ -203,6 +204,17 @@ end
 
 function rm.setToast(text, color, seconds, size)
   session.toast = { text = text, color = color, time = seconds or 2.5, size = size }
+end
+
+-- A cheat code typed in the race. Flames go off at once; a toggle says so.
+function rm.cheat(effect, label)
+  if not session or session.demo then return end
+  if effect == "flames" then
+    cheats.takeFlames()
+    car_view.flames(session.race.player, cheats.FLAME_TIME)
+  else
+    rm.setToast(label, colors.marshal, 1.6)
+  end
 end
 
 function rm.onLap(car, time, clean)
@@ -505,6 +517,8 @@ function rm.update(dt)
       if race.justStarted then
         race.justStarted = false
         audio.play("go", 0.7)
+        -- A flame code entered in the menus goes off with the lights.
+        if cheats.takeFlames() then car_view.flames(race.player, cheats.FLAME_TIME) end
         local launch = race.player.model.launch
         if launch >= 0.85 then
           rm.setToast("PERFECT START", colors.sectorGreen, 1.6)
@@ -533,6 +547,8 @@ function rm.update(dt)
 
   if not session.demo then
     local player = race.player
+    player.neon = settings.neon
+    audio.hornTune = settings.tuneHorn
     local rival, nearest
     for _, car in ipairs(race.cars) do
       if car ~= player then

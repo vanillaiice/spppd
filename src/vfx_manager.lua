@@ -51,6 +51,28 @@ function vfx.load(dustColor)
   pop:setColors(1, 0.8, 0.4, 0.9, 1, 0.35, 0.08, 0)
   vfx.pop = pop
 
+  -- A jet of fire from the exhaust, cooling from yellow through orange to red as
+  -- it leaves. Short enough to stay a tongue rather than a cloud, and faint on its
+  -- own, because the particles pile up under additive blending.
+  local flame = newSystem(textures.smoke, 360)
+  flame:setParticleLifetime(0.08, 0.22)
+  flame:setSizes(0.18, 0.34, 0.26, 0.06)
+  flame:setSizeVariation(0.4)
+  flame:setSpin(-3, 3)
+  flame:setRotation(0, math.pi * 2)
+  flame:setLinearDamping(3, 5)
+  flame:setColors(1, 0.85, 0.55, 0.55, 1, 0.6, 0.15, 0.5, 0.95, 0.28, 0.05, 0.35, 0.6, 0.08, 0.02, 0)
+  vfx.fire = flame
+
+  -- The blue at the pipe, where it burns hottest. Added light piles up to white
+  -- there, so this one is laid over the top with plain blending to stay blue.
+  local core = newSystem(textures.smoke, 160)
+  core:setParticleLifetime(0.07, 0.14)
+  core:setSizes(0.2, 0.26, 0.08)
+  core:setSizeVariation(0.3)
+  core:setColors(0.3, 0.55, 1, 0.9, 0.15, 0.35, 1, 0.6, 0.1, 0.2, 0.9, 0)
+  vfx.fireCore = core
+
   vfx.density = 1
 end
 
@@ -86,11 +108,23 @@ function vfx.backfire(x, y, angle)
   vfx.pop:emit(4)
 end
 
+-- vx, vy is how the fire leaves: the car's own velocity plus the jet.
+function vfx.flame(x, y, vx, vy, count)
+  aim(vfx.fire, x, y, vx, vy, 0.3)
+  vfx.fire:setSpread(0.25)
+  vfx.fire:emit(count)
+  aim(vfx.fireCore, x, y, vx, vy, 0.2)
+  vfx.fireCore:setSpread(0.15)
+  vfx.fireCore:emit(math.ceil(count / 2))
+end
+
 function vfx.update(dt)
   vfx.smoke:update(dt)
   vfx.dirt:update(dt)
   vfx.sparks:update(dt)
   vfx.pop:update(dt)
+  vfx.fire:update(dt)
+  vfx.fireCore:update(dt)
 end
 
 -- Ground-hugging smoke and dust.
@@ -104,9 +138,11 @@ end
 function vfx.drawEmissive()
   love.graphics.setColor(1, 1, 1, 1)
   love.graphics.setBlendMode("add")
+  love.graphics.draw(vfx.fire)
   love.graphics.draw(vfx.pop)
   love.graphics.draw(vfx.sparks)
   love.graphics.setBlendMode("alpha")
+  love.graphics.draw(vfx.fireCore)
 end
 
 return vfx

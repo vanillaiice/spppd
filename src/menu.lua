@@ -16,6 +16,7 @@ local audio = require("src/audio")
 local radio = require("src/radio")
 local network = require("src/network_manager")
 local dynamics = require("src/sim/dynamics")
+local cheats = require("src/cheats")
 
 local menu = { screen = "main" }
 
@@ -276,6 +277,26 @@ local function setupRows()
   return rows
 end
 
+-- Where a phone enters cheat codes. The answer shows in the row for a moment.
+local CODE_ANSWER_TIME = 2
+local codeAnswer
+
+local function codeRow()
+  return { label = "CODE", value = function()
+      if ui.editing and ui.editing.field == "code" then return ui.editing.value .. "_" end
+      if codeAnswer and love.timer.getTime() < codeAnswer.untilTime then return codeAnswer.text end
+      return "ENTER"
+    end, activate = function()
+      ui.startEditing("", function(word)
+        local effect = cheats.enter(word)
+        local text = effect and cheats.apply(effect) or "NO SUCH CODE"
+        codeAnswer = { text = text, untilTime = love.timer.getTime() + CODE_ANSWER_TIME }
+        if effect then audio.play("select", 0.5) end
+      end, "^%a$", 8)
+      ui.editing.field = "code"
+    end }
+end
+
 local function settingsRows()
   local rows = {
     stepper("VOLUME", function() return settings.volume end, function(v)
@@ -312,6 +333,7 @@ local function settingsRows()
     rows[#rows + 1] = { label = "FULLSCREEN", value = function() return settings.fullscreen and "ON" or "OFF" end,
       left = flip, right = flip, activate = flip }
   end
+  rows[#rows + 1] = codeRow()
   rows[#rows + 1] = { label = "BACK", activate = function() menu.go("main") end }
   return rows
 end

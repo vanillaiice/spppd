@@ -38,6 +38,7 @@ local post = require("src/render/post")
 local textures = require("src/render/textures")
 local catalog = require("src/tracks/catalog")
 local network = require("src/network_manager")
+local cheats = require("src/cheats")
 
 -- Slow phones take seconds over this, so it runs a step at a time between
 -- frames, with the splash on screen.
@@ -164,8 +165,19 @@ end
 function love.textinput(t)
   if state.screen == "editor" then
     editor.textinput(t)
-  else
+  elseif ui.editing then
     ui.textinput(t)
+  else
+    -- Cheat codes typed blind. In the menus a flame code waits for the next race.
+    local effect = cheats.type(t)
+    if effect then
+      local label = cheats.apply(effect)
+      if state.screen == "race" then
+        rm.cheat(effect, label)
+      else
+        audio.play("select", 0.5)
+      end
+    end
   end
 end
 

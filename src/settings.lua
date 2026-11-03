@@ -18,6 +18,8 @@ local settings = {
   touch = "auto",
   autoGas = true,
   vibration = true,
+  tuneHorn = false,  -- cheat codes, see src/cheats.lua
+  neon = false,
 
   -- Last race setup
   mode = "race",
