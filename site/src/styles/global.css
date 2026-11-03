@@ -1,0 +1,287 @@
+/* The page is a stretch of the game's track seen from above: sand either side, kerbs,
+   and the content on the asphalt. Day by default, MIDNIGHT in dark mode. Colours are
+   taken from the game (src/colors.lua and the desert scenery). */
+
+@font-face {
+  font-family: 'Press Start 2P';
+  src: url('/fonts/PressStart2P.woff2') format('woff2');
+  font-display: swap;
+}
+
+:root {
+  color-scheme: light;
+  --sand: #f6b24b;
+  --sand-dune: #ec9f3a;
+  --road: #47465f;
+  --road-line: #5a5975;
+  --panel: rgb(29 28 42 / 0.9);
+  --panel-solid: #1d1c2a;
+  --paint: #f2efe6;
+  --paint-dim: #c9c6d6;
+  --marshal: #f5c518;
+  --kerb: #d8262c;
+  --kerb-light: #f2efe6;
+  --green: #2bd46a;
+  --purple: #b14cff;
+
+  --pixel: 'Press Start 2P', ui-monospace, monospace;
+  --text: 'Barlow Semi Condensed', 'Arial Narrow', system-ui, sans-serif;
+  --road-width: 54rem;
+  --kerb-width: 0.75rem;
+  --gutter: clamp(1rem, 4vw, 2.5rem);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    color-scheme: dark;
+    --sand: #0c120e;
+    --sand-dune: #111a14;
+    --road: #24242f;
+    --road-line: #31313f;
+    --panel: rgb(10 10 16 / 0.92);
+    --panel-solid: #0c0c12;
+    --paint-dim: #aeacbb;
+    --kerb: #8f1c21;
+    --kerb-light: #a29f97;
+  }
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html {
+  -webkit-text-size-adjust: 100%;
+}
+
+body {
+  margin: 0;
+  background: var(--sand);
+  color: var(--paint);
+  font-family: var(--text);
+  font-size: 1.1875rem;
+  line-height: 1.55;
+  overflow-x: hidden;
+  /* The footer stays at the bottom of short pages, with road above it. */
+  min-height: 100svh;
+  display: flex;
+  flex-direction: column;
+}
+
+main {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+}
+
+img,
+video {
+  display: block;
+  max-width: 100%;
+  height: auto;
+}
+
+a {
+  color: var(--marshal);
+  text-underline-offset: 0.18em;
+  text-decoration-thickness: 1px;
+}
+
+a:hover {
+  text-decoration-thickness: 2px;
+}
+
+:focus-visible {
+  outline: 3px solid var(--marshal);
+  outline-offset: 3px;
+}
+
+h1,
+h2,
+h3 {
+  font-family: var(--pixel);
+  font-weight: normal;
+  line-height: 1.5;
+  color: var(--marshal);
+  margin: 0 0 1rem;
+}
+
+h2 {
+  font-size: clamp(1rem, 0.85rem + 0.8vw, 1.375rem);
+}
+
+h3 {
+  font-size: 0.875rem;
+  color: var(--paint);
+}
+
+p {
+  margin: 0 0 1em;
+}
+
+.skip {
+  position: absolute;
+  left: 1rem;
+  top: -4rem;
+  z-index: 10;
+  background: var(--marshal);
+  color: #1d1c2a;
+  padding: 0.5rem 1rem;
+}
+
+.skip:focus {
+  top: 1rem;
+}
+
+/* The road: the content column, with kerbs down both edges. */
+.road {
+  position: relative;
+  max-width: calc(var(--road-width) + 2 * var(--kerb-width));
+  width: 100%;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  margin: 0 auto;
+  padding: 0 var(--kerb-width);
+  background:
+    repeating-linear-gradient(to bottom, var(--kerb) 0 1.5rem, var(--kerb-light) 1.5rem 3rem) left / var(--kerb-width) 100% no-repeat,
+    repeating-linear-gradient(to bottom, var(--kerb) 0 1.5rem, var(--kerb-light) 1.5rem 3rem) right / var(--kerb-width) 100% no-repeat,
+    var(--road);
+}
+
+.road-inner {
+  flex: 1;
+  /* The white edge line, just inside the kerbs. */
+  border-inline: 3px solid var(--paint);
+  padding: clamp(2rem, 5vw, 4rem) var(--gutter);
+}
+
+@media (prefers-color-scheme: dark) {
+  .road-inner {
+    border-color: var(--paint-dim);
+  }
+}
+
+/* A HUD panel, as the game draws its standings and speedo. */
+.panel {
+  background: var(--panel);
+  padding: 1rem 1.25rem;
+}
+
+.button {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 0.6em;
+  font-family: var(--pixel);
+  font-size: 0.8125rem;
+  line-height: 1.4;
+  text-decoration: none;
+  padding: 0.9rem 1.1rem;
+  background: var(--marshal);
+  color: #1d1c2a;
+  border: 0;
+  box-shadow: 0 4px 0 #a9850a;
+}
+
+.button:hover {
+  background: #ffd83a;
+}
+
+.button:active {
+  transform: translateY(2px);
+  box-shadow: 0 2px 0 #a9850a;
+}
+
+.button.secondary {
+  background: transparent;
+  color: var(--paint);
+  box-shadow: inset 0 0 0 2px var(--paint);
+}
+
+.button.secondary:hover {
+  background: rgb(242 239 230 / 0.1);
+}
+
+.button small {
+  font-family: var(--text);
+  font-size: 0.9375rem;
+  opacity: 0.8;
+}
+
+.prose {
+  max-width: 40rem;
+}
+
+.prose h2 {
+  margin-top: 2.5rem;
+}
+
+.prose h4 {
+  font-family: var(--pixel);
+  font-weight: normal;
+  font-size: 0.75rem;
+  color: var(--paint-dim);
+  margin: 1.75rem 0 0.75rem;
+}
+
+.prose ul {
+  padding-left: 1.2em;
+}
+
+.prose li {
+  margin-bottom: 0.5em;
+}
+
+.prose li::marker {
+  color: var(--marshal);
+}
+
+.prose strong {
+  font-weight: 600;
+}
+
+.prose code {
+  font-size: 0.9em;
+  background: rgb(0 0 0 / 0.25);
+  padding: 0.1em 0.3em;
+}
+
+.prose table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 1rem;
+  line-height: 1.4;
+  margin: 1.5rem 0;
+}
+
+.prose th,
+.prose td {
+  text-align: left;
+  vertical-align: top;
+  padding: 0.6rem 0.75rem 0.6rem 0;
+  border-bottom: 1px solid var(--road-line);
+}
+
+.prose th {
+  font-weight: 600;
+  color: var(--paint-dim);
+}
+
+.table-scroll {
+  overflow-x: auto;
+}
+
+.muted {
+  color: var(--paint-dim);
+}
+
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}

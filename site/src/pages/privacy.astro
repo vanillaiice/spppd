@@ -1,0 +1,12 @@
+---
+import { getEntry, render } from 'astro:content';
+import Page from '../layouts/Page.astro';
+
+// PRIVACY.md in the repository, unchanged.
+const doc = (await getEntry('docs', 'privacy'))!;
+const { Content } = await render(doc);
+---
+
+<Page title={doc.data.title} description="What the SPPPD website and online server keep, and why.">
+  <div class="prose table-scroll"><Content /></div>
+</Page>

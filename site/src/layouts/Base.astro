@@ -1,0 +1,166 @@
+---
+import '@fontsource/barlow-semi-condensed/latin-400.css';
+import '@fontsource/barlow-semi-condensed/latin-400-italic.css';
+import '@fontsource/barlow-semi-condensed/latin-600.css';
+import '../styles/global.css';
+import site from '../site.config';
+import { media } from '../lib/repo';
+
+interface Props {
+  title?: string;
+  description?: string;
+}
+
+const { title, description = site.description } = Astro.props;
+const fullTitle = title ? `${title} | SPPPD` : 'SPPPD, a top-down racing game';
+const canonical = new URL(Astro.url.pathname, Astro.site);
+const ogImage = new URL(media('race.jpg'), Astro.site);
+const path = Astro.url.pathname.replace(/\/$/, '') || '/';
+const nav = [
+  { href: '/#download', label: 'Download' },
+  { href: '/changelog/', label: 'Changelog' },
+  { href: '/blog/', label: 'Blog' },
+];
+const year = new Date().getFullYear();
+---
+
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>{fullTitle}</title>
+    <meta name="description" content={description} />
+    <link rel="canonical" href={canonical} />
+    <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+    <link rel="alternate" type="application/rss+xml" title="SPPPD blog" href="/blog/rss.xml" />
+    <link rel="preload" href="/fonts/PressStart2P.woff2" as="font" type="font/woff2" crossorigin />
+    <meta name="theme-color" content="#47465f" media="(prefers-color-scheme: light)" />
+    <meta name="theme-color" content="#24242f" media="(prefers-color-scheme: dark)" />
+    <meta property="og:type" content="website" />
+    <meta property="og:title" content={fullTitle} />
+    <meta property="og:description" content={description} />
+    <meta property="og:url" content={canonical} />
+    <meta property="og:image" content={ogImage} />
+    <meta name="twitter:card" content="summary_large_image" />
+    {
+      site.umami.websiteId && (
+        <script
+          is:inline
+          defer
+          src={site.umami.src}
+          data-website-id={site.umami.websiteId}
+          data-domains={site.umami.domains}
+        />
+      )
+    }
+  </head>
+  <body>
+    <a class="skip" href="#main">Skip to content</a>
+    <header class="top">
+      <a class="logo" href="/" aria-label="SPPPD home">SPPPD</a>
+      <nav aria-label="Site">
+        {
+          nav.map((item) => (
+            <a href={item.href} aria-current={path === item.href.replace(/\/$/, '') ? 'page' : undefined}>
+              {item.label}
+            </a>
+          ))
+        }
+      </nav>
+    </header>
+    <main id="main">
+      <slot />
+    </main>
+    <footer class="finish">
+      <div class="finish-line" aria-hidden="true"></div>
+      <div class="finish-inner">
+        <nav aria-label="Footer">
+          <a href="/#download">Download</a>
+          <a href="/changelog/">Changelog</a>
+          <a href="/blog/">Blog</a>
+          <a href="/blog/rss.xml">RSS</a>
+          <a href="/privacy/">Privacy</a>
+          <a href="/terms/">Terms</a>
+        </nav>
+        <p>
+          SPPPD is free software by vanillaiice. The game is under the GNU GPL version 3, and the online
+          server under the GNU AGPL version 3. Questions: <a href={`mailto:${site.contact}`}>{site.contact}</a>
+        </p>
+        <p class="muted">&copy; {year} vanillaiice</p>
+      </div>
+    </footer>
+  </body>
+</html>
+
+<style>
+  .top {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.5rem 1.5rem;
+    padding: 0.85rem var(--gutter);
+    background: var(--panel-solid);
+    position: relative;
+    z-index: 2;
+  }
+
+  .logo {
+    font-family: var(--pixel);
+    font-size: 1rem;
+    color: var(--marshal);
+    text-decoration: none;
+  }
+
+  .top nav {
+    display: flex;
+    gap: 1.25rem;
+  }
+
+  .top nav a {
+    color: var(--paint);
+    text-decoration: none;
+    font-weight: 600;
+  }
+
+  .top nav a:hover,
+  .top nav a[aria-current='page'] {
+    color: var(--marshal);
+  }
+
+  /* The chequered line at the end of the page. */
+  .finish-line {
+    height: 1.5rem;
+    background:
+      repeating-conic-gradient(var(--paint) 0 25%, #1d1c2a 0 50%) 0 0 / 1.5rem 1.5rem;
+  }
+
+  .finish {
+    background: var(--panel-solid);
+    color: var(--paint-dim);
+    font-size: 1rem;
+  }
+
+  .finish-inner {
+    max-width: calc(var(--road-width) + 2 * var(--kerb-width));
+    margin: 0 auto;
+    padding: 2rem var(--gutter) 2.5rem;
+  }
+
+  .finish nav {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem 1.25rem;
+    margin-bottom: 1.25rem;
+  }
+
+  .finish nav a {
+    color: var(--paint);
+    font-weight: 600;
+  }
+
+  .finish p {
+    max-width: 40rem;
+  }
+</style>

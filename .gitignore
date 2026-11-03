@@ -4,3 +4,8 @@ dist/
 *.db
 *.db-wal
 *.db-shm
+# The website's build, and the release files it serves (make site-downloads).
+site/node_modules/
+site/dist/
+site/.astro/
+site/public/download/

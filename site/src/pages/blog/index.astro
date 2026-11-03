@@ -1,0 +1,12 @@
+---
+import Page from '../../layouts/Page.astro';
+import PostList from '../../components/PostList.astro';
+import { publishedPosts } from '../../lib/dates';
+
+const posts = await publishedPosts();
+---
+
+<Page title="Blog" description="News about SPPPD.">
+  <p slot="lede" class="muted">News from the garage. Follow along with the <a href="/blog/rss.xml">RSS feed</a>.</p>
+  {posts.length ? <PostList posts={posts} /> : <p>No posts yet.</p>}
+</Page>

@@ -4,8 +4,10 @@
 
 ### Added
 
-- PRIVACY & TERMS on the ONLINE screen opens the official server's
-  [privacy policy](PRIVACY.md), which links to its [terms of use](TERMS.md).
+- A website at <https://spppd.vanillaiice.xyz>, with the downloads, this changelog and a
+  blog.
+- PRIVACY & TERMS on the ONLINE screen opens the [privacy policy](PRIVACY.md) on the
+  website, which links to the [terms of use](TERMS.md).
 
 ### Relay
 

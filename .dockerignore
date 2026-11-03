@@ -1,0 +1,11 @@
+# Only the website is ever built into an image (site/Dockerfile). It needs these.
+*
+!CHANGELOG.md
+!PRIVACY.md
+!TERMS.md
+!src/config.lua
+!site
+site/node_modules
+site/dist
+site/.astro
+site/scripts

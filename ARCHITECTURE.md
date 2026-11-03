@@ -94,10 +94,13 @@ each thing at a time:
 ```
 main.lua            LÖVE callbacks; chooses the game, --test, --perf or --visual
 conf.lua            Window and module setup; turns graphics off for --test
-Makefile            run, test*, server, deploy-relay, zip, apk, apk-perf, win64, win32
+Makefile            run, test*, server, deploy-relay, site*, deploy-site, zip, apk, ...
 android/apk.sh      Builds and signs the test APK
-config/deploy.yml   The relay as a Kamal accessory
+config/deploy.yml   The website as the Kamal app, and the relay as its accessory
 bin/relay-deploy    Builds the relay and deploys it
+bin/site-deploy     Deploys the website
+site/               The website at spppd.vanillaiice.xyz (Astro)
+.dockerignore       Lets only what the website needs into its image
 assets/fonts/       Press Start 2P (SIL OFL)
 
 src/
@@ -1636,6 +1639,35 @@ kamal relay-users                                      # list the dashboard user
 outside the repository; the user is `admin`. Deploying restarts the relay, and anyone
 racing is told. Bans, users, logins and analytics survive it.
 
+### The website
+
+`site/` is an Astro site, served at `https://spppd.vanillaiice.xyz` from the same name
+as the relay: the relay takes UDP 8080, and kamal-proxy, which already serves the
+server's other sites, takes HTTPS. It's the Kamal app in `config/deploy.yml`: a Caddy
+image (`site/Dockerfile`, built from the repository root) behind kamal-proxy, which
+does the TLS. Caddy logs no requests.
+
+It has no copy of anything the repository already says. The changelog page is
+`CHANGELOG.md` split at each `## version (date)` heading, leaving out `Unreleased`, and
+the privacy and terms pages are `PRIVACY.md` and `TERMS.md`. Their links to each other
+become links to the pages (`siteLinks` in `site/src/lib/repo.ts`). The version comes
+from `src/config.lua`. The downloads are this version's builds from `dist/`, which
+`make site-downloads` copies into `site/public/download/`, and the build stops if one is
+missing. Blog posts are Markdown in `site/src/content/blog/`.
+
+The clips and stills in `site/public/media/` come from the real game:
+`site/scripts/record-clips.sh` runs `--visual` scenes in a copy of the game, stepped
+1/60 s per frame, and saves every frame for ffmpeg. Visits are counted with the
+self-hosted Umami at `stats.hblabs.xyz` (`site/src/site.config.ts`), only on the real
+domain, and the page loads nothing else from elsewhere. Caddy's Content-Security-Policy
+holds it to that, so the build keeps scripts and styles in files, not inline.
+
+```
+make site-dev       # http://localhost:4321
+make site           # site/dist
+make deploy-site    # builds, then bin/site-deploy
+```
+
 ---
 
 ## 17. Saved data, builds, tests and performance
@@ -1666,6 +1698,8 @@ positions, hence "new cars go on the end".
 | `make server` | `dist/relay` |
 | `make relay-linux` | `dist/relay-linux`, static, for the server |
 | `make deploy-relay` | Tests the relay, then deploys it. See [Deploying](#deploying) |
+| `make site` | The website in `site/dist`, with this version's builds to download. See [The website](#the-website) |
+| `make deploy-site` | Builds the website, then deploys it |
 | `make zip` | `dist/spppd-2.3.0.love`. Tests stay out |
 | `make win64 win32` | Windows zips. To this project, these are what a release means |
 | `make apk` | Test APK, self-signed, application id `xyz.hblabs.spppd` |

@@ -1,10 +1,15 @@
-# The relay runs as a Kamal accessory on the hblabs server: a stock image, with the
-# static binary uploaded next to it, so there's nothing to build or push. No Kamal
-# app is ever deployed here, and kamal-proxy and the other sites aren't touched.
-# Deploy with `make deploy-relay`, not kamal directly: bin/relay-deploy builds the
-# binary and loads the dashboard's password.
+# Two things share spppd.vanillaiice.xyz on the hblabs server:
+#
+# - The website is the Kamal app: a Caddy image built from site/Dockerfile, behind the
+#   kamal-proxy that already serves the server's other sites over HTTPS. Deploy it with
+#   `make deploy-site` (bin/site-deploy), which builds it with this version's downloads.
+# - The relay is an accessory: a stock image, with the static binary uploaded next to
+#   it, on UDP 8080. Deploy it with `make deploy-relay` (bin/relay-deploy), which builds
+#   the binary and loads the dashboard's password.
+#
+# Each script deploys only its own part. Use them, not kamal directly.
 service: spppd
-image: spppd-unused
+image: spppd-site
 
 servers:
   - 62.169.20.136
@@ -12,12 +17,24 @@ servers:
 ssh:
   user: vanillaiice
 
+# localhost: Kamal runs a registry on this machine and the server pulls through the SSH connection.
 registry:
   server: localhost:5555
 
-# Kamal insists on these. Nothing is ever built.
+# kamal-proxy already owns 80/443 on the server and routes by host, like the other apps.
+proxy:
+  host: spppd.vanillaiice.xyz
+  ssl: true
+  app_port: 80
+  healthcheck:
+    path: /up
+
+# Built from the working tree, not a git checkout, because the downloads in
+# site/public/download aren't in git. The root .dockerignore lets in only what it needs.
 builder:
   arch: amd64
+  context: .
+  dockerfile: site/Dockerfile
 
 accessories:
   relay:
@@ -55,6 +72,7 @@ accessories:
         - SPPPD_DASHBOARD_TOKEN
 
 aliases:
+  site-logs: app logs -f
   relay-logs: accessory logs relay -f
   relay-users: accessory exec relay --reuse "/srv/relay -db /data/relay.db user list"
 # To add a user or reset a password from here:

@@ -2,8 +2,9 @@
 -- the renderer and the tests, so it must stay free of LÖVE calls.
 local config = {
   VERSION = "2.3.0",
-  -- What the official server keeps, and its rules. PRIVACY.md links to TERMS.md.
-  PRIVACY_URL = "https://github.com/vanillaiice/spppd/blob/master/PRIVACY.md",
+  -- What the official server keeps, and its rules: PRIVACY.md on the website, which
+  -- links to TERMS.md.
+  PRIVACY_URL = "https://spppd.vanillaiice.xyz/privacy/",
 
   -- World units are pixels; the vehicle model works in SI units.
   METER = 12,          -- world px per metre

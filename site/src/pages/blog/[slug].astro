@@ -1,0 +1,26 @@
+---
+import { render } from 'astro:content';
+import Page from '../../layouts/Page.astro';
+import { formatDate, isoDate, publishedPosts } from '../../lib/dates';
+
+export async function getStaticPaths() {
+  return (await publishedPosts()).map((post) => ({ params: { slug: post.id }, props: { post } }));
+}
+
+const { post } = Astro.props;
+const { Content } = await render(post);
+---
+
+<Page title={post.data.title} description={post.data.description}>
+  <p slot="lede" class="muted">
+    <time datetime={isoDate(post.data.date)}>{formatDate(post.data.date)}</time>
+  </p>
+  <article class="prose"><Content /></article>
+  <p class="back"><a href="/blog/">All posts</a></p>
+</Page>
+
+<style>
+  .back {
+    margin-top: 3rem;
+  }
+</style>

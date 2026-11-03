@@ -1,0 +1,387 @@
+---
+import { getCollection, render } from 'astro:content';
+import Base from '../layouts/Base.astro';
+import Clip from '../components/Clip.astro';
+import Downloads from '../components/Downloads.astro';
+import PostList from '../components/PostList.astro';
+import { downloads, gameVersion, media, megabytes } from '../lib/repo';
+import { formatDate, publishedPosts } from '../lib/dates';
+
+const version = gameVersion();
+const files = downloads();
+const win64 = files.find((f) => f.id === 'win64')!;
+const apk = files.find((f) => f.id === 'apk')!;
+
+const releases = (await getCollection('releases')).sort((a, b) => a.data.order - b.data.order);
+const latest = releases[0];
+const { Content: LatestChanges } = await render(latest);
+const posts = (await publishedPosts()).slice(0, 3);
+
+// The standings board in the game's corner, holding the game's numbers instead.
+const board = [
+  { label: 'Cars', value: '12' },
+  { label: 'Tracks', value: '10' },
+  { label: 'Times of day', value: '4' },
+  { label: 'Online', value: '2–4' },
+];
+
+const features = [
+  {
+    clip: 'nitro',
+    title: 'Slide for nitro',
+    label: 'A blue car under nitro at 225 km/h, the trees smearing past',
+    text: [
+      'Nitro fills on its own, and three times faster while the car is sliding. Switch it on and the scenery smears past.',
+      'Sit close behind another car for its slipstream, then pull out and slingshot past.',
+    ],
+  },
+  {
+    clip: 'midnight',
+    title: 'Race until midnight',
+    label: 'A pack of cars at midnight, lit only by their headlights',
+    text: [
+      'Race in daylight, at dusk, under floodlights, or at MIDNIGHT, with no floodlights at all: just your beams and the road studs.',
+    ],
+  },
+  {
+    clip: 'pack',
+    title: 'Four of you online',
+    label: 'Six cars racing on a floodlit harbour circuit',
+    text: [
+      'One player hosts a room, picks the track, laps and time of day, and reads out the six-letter room code. Up to three friends join with it.',
+      'The host’s track goes to everyone, custom ones too. REMATCH runs the race again once everyone asks.',
+    ],
+  },
+];
+
+const notes = [
+  {
+    term: 'Fences bite',
+    text: 'A hard hit wrecks the car, which costs you over a second and all your speed. Glancing off one is fine.',
+  },
+  {
+    term: 'Three ways to handle',
+    text: 'Arcade is the default, with big grip and a held drift on the handbrake. Sport adds realistic grip with driver aids, and Sim has no aids at all.',
+  },
+  {
+    term: 'Pace notes',
+    text: 'The top of the screen shows the next corner, how tight it is, from 1 for a hairpin to 4 for a fast kink, and when to brake.',
+  },
+  {
+    term: 'Your own music',
+    text: 'In freestyle, drop MP3, OGG, FLAC or WAV files on the window and the radio plays them.',
+  },
+  {
+    term: 'Pads and keys',
+    text: 'Xbox and PlayStation pads work, with vibration, and so does the keyboard.',
+  },
+];
+---
+
+<Base>
+  <section class="hero" aria-labelledby="hero-title">
+    <Clip name="race" label="A red WEDGE chasing the pack through the bends of the Oasis desert circuit" eager class="hero-clip" />
+    <div class="hero-panel panel">
+      <h1 id="hero-title">SPPPD</h1>
+      <p class="pitch">
+        A top-down racing game. Race the AI, set time trials, slide around in freestyle, build your own tracks, or race
+        up to three friends online. Free.
+      </p>
+      <div class="actions">
+        <a
+          class="button"
+          href={win64.href}
+          download
+          data-umami-event="download"
+          data-umami-event-file="win64"
+        >
+          Windows <small>{megabytes(win64.bytes)}</small>
+        </a>
+        <a class="button" href={apk.href} download data-umami-event="download" data-umami-event-file="apk">
+          Android <small>{megabytes(apk.bytes)}</small>
+        </a>
+      </div>
+      <p class="version muted">
+        Version {version}. <a href="#download">Other downloads</a>
+      </p>
+    </div>
+  </section>
+
+  <div class="road">
+    <div class="road-inner">
+      <section class="intro" aria-label="About the game">
+        <div class="prose">
+          <p>
+            The handling is built on a tyre and vehicle model, then tuned for arcade fun. Everything you see and hear is
+            made by the game as it runs: the cars, the tracks, the engines, down to the screech of the tyres.
+          </p>
+          <p>
+            Each car sounds like its engine, from a rough V8 to a whining electric motor, and some are modelled on real
+            ones.
+          </p>
+        </div>
+        <dl class="board panel">
+          {
+            board.map((row) => (
+              <div>
+                <dt>{row.label}</dt>
+                <dd>{row.value}</dd>
+              </div>
+            ))
+          }
+        </dl>
+      </section>
+
+      {
+        features.map((f) => (
+          <section class="feature" aria-labelledby={`f-${f.clip}`}>
+            <Clip name={f.clip} label={f.label} />
+            <div class="feature-text prose">
+              <h2 id={`f-${f.clip}`}>{f.title}</h2>
+              {f.text.map((p) => (
+                <p>{p}</p>
+              ))}
+            </div>
+          </section>
+        ))
+      }
+
+      <section class="feature stills" aria-label="Track editor and phones">
+        <figure>
+          <img
+            src={media('editor.jpg')}
+            width="1280"
+            height="720"
+            loading="lazy"
+            alt="The track editor: a winding circuit drawn as a line of white nodes, with the menu on the left"
+          />
+          <figcaption class="prose">
+            <h2>Build your own tracks</h2>
+            <p>
+              On a desktop, click to lay down nodes, drag them into shape, and press T to drive what you’ve made.
+              Kerbs, barriers and the racing line are worked out for you.
+            </p>
+          </figcaption>
+        </figure>
+        <figure>
+          <img
+            src={media('touch.jpg')}
+            width="853"
+            height="384"
+            loading="lazy"
+            alt="A race on a phone, with a stick on the left, DRIFT and BOOST buttons on the right, and horn, reset and pause at the top"
+          />
+          <figcaption class="prose">
+            <h2>Play on your phone</h2>
+            <p>
+              A stick under your left thumb, DRIFT and BOOST on the right. The car accelerates by itself unless you
+              turn Auto Gas off.
+            </p>
+          </figcaption>
+        </figure>
+      </section>
+
+      <section class="notes" aria-labelledby="notes-title">
+        <h2 id="notes-title">Good to know</h2>
+        <dl>
+          {
+            notes.map((n) => (
+              <div>
+                <dt>{n.term}</dt>
+                <dd>{n.text}</dd>
+              </div>
+            ))
+          }
+        </dl>
+      </section>
+
+      <Downloads files={files} version={version} date={latest.data.date} />
+
+      <section class="news" aria-labelledby="news-title">
+        <h2 id="news-title">What’s new in {latest.data.version}</h2>
+        <p class="muted">Released {formatDate(latest.data.date)}.</p>
+        <div class="prose">
+          <LatestChanges />
+        </div>
+        <p><a href="/changelog/">Every version’s changes</a></p>
+      </section>
+
+      {
+        posts.length > 0 && (
+          <section class="news" aria-labelledby="posts-title">
+            <h2 id="posts-title">From the blog</h2>
+            <PostList posts={posts} />
+          </section>
+        )
+      }
+    </div>
+  </div>
+</Base>
+
+<style>
+  .hero {
+    position: relative;
+    background: #1d1c2a;
+  }
+
+  .hero :global(.hero-clip) {
+    max-height: min(82svh, 56.25vw);
+  }
+
+  .hero-panel {
+    max-width: 34rem;
+    background: var(--panel-solid);
+  }
+
+  h1 {
+    font-size: clamp(2.5rem, 1.6rem + 4.5vw, 4.5rem);
+    line-height: 1;
+    margin-bottom: 1.25rem;
+    letter-spacing: 0.02em;
+    text-shadow: 0.06em 0.06em 0 #a9850a;
+  }
+
+  .pitch {
+    font-size: 1.3125rem;
+    line-height: 1.45;
+  }
+
+  .actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.9rem;
+    margin: 1.5rem 0 1rem;
+  }
+
+  .version {
+    font-size: 1rem;
+    margin: 0;
+  }
+
+  /* On wide screens the panel takes the place of the clip's minimap, at the game's own
+     16 px margin (1.25% of a 1280 px frame), and covers it. */
+  @media (min-width: 60rem) {
+    .hero-panel {
+      position: absolute;
+      left: 1.25vw;
+      bottom: 1.25vw;
+      min-width: 16vw;
+      padding: 1.75rem 2rem;
+    }
+  }
+
+  @media (max-width: 59.99rem) {
+    .hero-panel {
+      max-width: none;
+      padding: 1.75rem var(--gutter) 2rem;
+    }
+  }
+
+  .intro {
+    display: grid;
+    gap: 2rem;
+    align-items: start;
+    margin-bottom: clamp(3rem, 8vw, 5rem);
+  }
+
+  @media (min-width: 48rem) {
+    .intro {
+      grid-template-columns: 1fr 15rem;
+    }
+  }
+
+  .board {
+    margin: 0;
+    padding: 0.75rem 0.9rem;
+    font-family: var(--pixel);
+    font-size: 0.75rem;
+    line-height: 1;
+  }
+
+  .board div {
+    display: flex;
+    justify-content: space-between;
+    gap: 1rem;
+    padding: 0.55rem 0 0.55rem 0.7rem;
+    border-left: 4px solid var(--row);
+  }
+
+  .board div:nth-child(1) {
+    --row: #f5c518;
+  }
+
+  .board div:nth-child(2) {
+    --row: #1f6fe0;
+  }
+
+  .board div:nth-child(3) {
+    --row: #b14cff;
+  }
+
+  .board div:nth-child(4) {
+    --row: #2bd46a;
+  }
+
+  .board div + div {
+    margin-top: 0.35rem;
+  }
+
+  .board dt {
+    color: var(--paint);
+  }
+
+  .board dd {
+    margin: 0;
+    color: var(--marshal);
+  }
+
+  .feature {
+    margin-bottom: clamp(3rem, 8vw, 5rem);
+  }
+
+  .feature-text {
+    margin-top: 1.5rem;
+  }
+
+  .stills {
+    display: grid;
+    gap: clamp(3rem, 8vw, 5rem);
+  }
+
+  .stills figure {
+    margin: 0;
+  }
+
+  .stills figcaption {
+    margin-top: 1.5rem;
+  }
+
+  .notes {
+    margin-bottom: clamp(3rem, 8vw, 5rem);
+  }
+
+  .notes dl {
+    margin: 0;
+    display: grid;
+    gap: 1.25rem 2.5rem;
+  }
+
+  @media (min-width: 48rem) {
+    .notes dl {
+      grid-template-columns: 1fr 1fr;
+    }
+  }
+
+  .notes dt {
+    font-weight: 600;
+    color: var(--marshal);
+  }
+
+  .notes dd {
+    margin: 0.2rem 0 0;
+  }
+
+  .news {
+    margin-top: clamp(3rem, 8vw, 5rem);
+  }
+</style>

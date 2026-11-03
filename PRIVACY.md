@@ -2,9 +2,9 @@
 
 Last updated 2026-11-03. The rules for using the server are in [TERMS.md](TERMS.md).
 
-This covers the official SPPPD online server at `spppd.vanillaiice.xyz`, run by
-vanillaiice. If you play through a server someone else runs, they decide what it
-keeps, and this policy doesn't apply to it.
+This covers the official SPPPD online server at `spppd.vanillaiice.xyz`, and the
+website at the same address, both run by vanillaiice. If you play through a server
+someone else runs, they decide what it keeps, and this policy doesn't apply to it.
 
 Questions, or a request to see or delete what's held about you:
 **vanillaiice1@proton.me**
@@ -19,6 +19,8 @@ Questions, or a request to see or delete what's held about you:
   trackers.
 - The server counts players for statistics, but stores a keyed hash of each IP
   address, never the address itself, and deletes the hashes after 30 days.
+- The website counts visits and downloads with Umami, on the operator's own server.
+  It sets no cookies and can't follow you to other sites.
 
 ## What the server handles
 
@@ -55,12 +57,30 @@ not sold or shared, and not combined with anything else.
 Anyone running their own server has statistics off unless they turn them on with
 `-analytics`.
 
+## The website
+
+The website sets no cookies, and loads nothing from anyone else's servers.
+
+Visits are counted with [Umami](https://umami.is), running on the operator's own
+server at `stats.hblabs.xyz`. For each page you open and each download you start, it
+records the page, the site that sent you, your browser, operating system, device type,
+screen size, language and country. It works out the country from your IP address and
+doesn't store the address. It groups one visit's pages under an ID made from a hash of
+your IP address and browser that changes every month, so it can't follow you from one
+month to the next, or to other sites. The counts are kept with no time limit, and used
+only to see how much the game is looked at and downloaded.
+
+The proxy in front of the website, which also serves the operator's other sites, logs
+each request with your IP address, the page and your browser, to run the server and
+deal with abuse. That log stays on the server.
+
 ## Why this is allowed
 
 Under the GDPR, the server relies on legitimate interests: running an online game
 needs your IP address, and keeping it safe needs logs and bans. The statistics are
 kept as small as they can be and hashed, for the same interest in keeping the service
-running.
+running. The website's visit counts rely on the same interest: knowing whether anyone
+uses the game, without cookies or tracking you elsewhere.
 
 ## Your rights
 

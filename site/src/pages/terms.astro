@@ -1,0 +1,12 @@
+---
+import { getEntry, render } from 'astro:content';
+import Page from '../layouts/Page.astro';
+
+// TERMS.md in the repository, unchanged.
+const doc = (await getEntry('docs', 'terms'))!;
+const { Content } = await render(doc);
+---
+
+<Page title={doc.data.title} description="The rules for using the official SPPPD online server.">
+  <div class="prose"><Content /></div>
+</Page>

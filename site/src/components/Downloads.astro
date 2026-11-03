@@ -1,0 +1,91 @@
+---
+import type { Download } from '../lib/repo';
+import { megabytes } from '../lib/repo';
+import { formatDate } from '../lib/dates';
+
+interface Props {
+  files: Download[];
+  version: string;
+  date: Date;
+}
+
+const { files, version, date } = Astro.props;
+
+const about: Record<Download['id'], { name: string; how: string }> = {
+  win64: { name: 'Windows, 64-bit', how: 'Unzip it anywhere, then run spppd.exe.' },
+  win32: { name: 'Windows, 32-bit', how: 'For older PCs. Unzip it anywhere, then run spppd.exe.' },
+  apk: {
+    name: 'Android',
+    how: 'Open the file on your phone. Android asks you to allow installs from your browser the first time.',
+  },
+  love: {
+    name: 'Linux, macOS and others',
+    how: 'Needs LÖVE 11.5 from love2d.org. Open the file with it.',
+  },
+};
+---
+
+<section class="downloads" id="download" aria-labelledby="download-title">
+  <h2 id="download-title">Download</h2>
+  <p class="muted">Version {version}, released {formatDate(date)}. Free, with no ads and no account.</p>
+  <ul>
+    {
+      files.map((f) => (
+        <li class="panel">
+          <div>
+            <h3>{about[f.id].name}</h3>
+            <p>{about[f.id].how}</p>
+          </div>
+          <a class="button" href={f.href} download data-umami-event="download" data-umami-event-file={f.id}>
+            Download <small>{megabytes(f.bytes)}</small>
+          </a>
+        </li>
+      ))
+    }
+  </ul>
+  <p class="muted small">
+    Online races need everyone on the same version. Racing offline sends nothing anywhere; what the online server keeps
+    is in the <a href="/privacy/">privacy policy</a>.
+  </p>
+</section>
+
+<style>
+  .downloads {
+    scroll-margin-top: 1rem;
+  }
+
+  ul {
+    list-style: none;
+    margin: 1.5rem 0;
+    padding: 0;
+    display: grid;
+    gap: 0.75rem;
+  }
+
+  li {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem 2rem;
+    padding: 1.25rem 1.5rem;
+  }
+
+  li div {
+    flex: 1 1 18rem;
+  }
+
+  h3 {
+    margin-bottom: 0.5rem;
+  }
+
+  li p {
+    margin: 0;
+    color: var(--paint-dim);
+  }
+
+  .small {
+    font-size: 1rem;
+    max-width: 40rem;
+  }
+</style>

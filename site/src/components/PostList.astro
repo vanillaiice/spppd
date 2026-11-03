@@ -1,0 +1,56 @@
+---
+import type { CollectionEntry } from 'astro:content';
+import { formatDate, isoDate } from '../lib/dates';
+
+interface Props {
+  posts: CollectionEntry<'blog'>[];
+}
+
+const { posts } = Astro.props;
+---
+
+<ul>
+  {
+    posts.map((post) => (
+      <li>
+        <a href={`/blog/${post.id}/`}>{post.data.title}</a>
+        <time datetime={isoDate(post.data.date)}>{formatDate(post.data.date)}</time>
+        <p>{post.data.description}</p>
+      </li>
+    ))
+  }
+</ul>
+
+<style>
+  ul {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    max-width: 40rem;
+  }
+
+  li {
+    padding: 1.25rem 0;
+    border-bottom: 1px solid var(--road-line);
+  }
+
+  li:first-child {
+    padding-top: 0;
+  }
+
+  a {
+    font-weight: 600;
+    font-size: 1.3125rem;
+  }
+
+  time {
+    display: block;
+    color: var(--paint-dim);
+    font-size: 1rem;
+    margin: 0.2rem 0 0.4rem;
+  }
+
+  p {
+    margin: 0;
+  }
+</style>

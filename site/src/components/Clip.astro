@@ -1,0 +1,71 @@
+---
+import { media } from '../lib/repo';
+
+// A silent gameplay loop from site/public/media (made by scripts/record-clips.sh).
+// It plays while on screen and pauses off it. With reduced motion it shows its poster
+// and a play button instead. Without JavaScript it shows the poster and controls.
+interface Props {
+  name: string;
+  label: string;
+  /** Load straight away, for the clip at the top of the page. */
+  eager?: boolean;
+  class?: string;
+}
+
+const { name, label, eager = false, class: className } = Astro.props;
+---
+
+<video
+  class:list={['clip', className]}
+  data-clip
+  muted
+  loop
+  playsinline
+  controls
+  preload={eager ? 'auto' : 'none'}
+  poster={media(`${name}.jpg`)}
+  width="1280"
+  height="720"
+  aria-label={label}
+>
+  <source src={media(`${name}.mp4`)} type="video/mp4" />
+</video>
+
+<script>
+  const still = matchMedia('(prefers-reduced-motion: reduce)');
+  const clips = document.querySelectorAll<HTMLVideoElement>('video[data-clip]');
+
+  // Controls stay only for people who asked for no motion, or without JavaScript.
+  const watch = new IntersectionObserver(
+    (entries) => {
+      for (const entry of entries) {
+        const video = entry.target as HTMLVideoElement;
+        if (still.matches) continue;
+        if (entry.isIntersecting) video.play().catch(() => {});
+        else video.pause();
+      }
+    },
+    { threshold: 0.35 },
+  );
+
+  for (const video of clips) {
+    if (!still.matches) video.controls = false;
+    watch.observe(video);
+  }
+
+  still.addEventListener('change', () => {
+    for (const video of clips) {
+      video.controls = still.matches;
+      if (still.matches) video.pause();
+    }
+  });
+</script>
+
+<style>
+  .clip {
+    width: 100%;
+    aspect-ratio: 16 / 9;
+    object-fit: cover;
+    background: #1d1c2a;
+  }
+</style>
