@@ -52,11 +52,41 @@ func TestPageShowsWhatIsHappening(t *testing.T) {
 	}
 }
 
+func TestActivityIsItsOwnFragment(t *testing.T) {
+	relay, _, _ := setup()
+	relay.record("oldest line")
+	relay.record("newest line")
+	page := newDashboard(relay, "")
+
+	body := request(page, http.MethodGet, "/activity", nil, nil).Body.String()
+	if strings.Index(body, `data-seq="2"`) > strings.Index(body, `data-seq="1"`) || !strings.Contains(body, `data-seq="1"`) {
+		t.Fatalf("newest should come first, numbered: %s", body)
+	}
+	if strings.Contains(body, "<html") {
+		t.Fatalf("activity should be a fragment: %s", body)
+	}
+	// Part of the two second redraw, it would lose its scroll and selection.
+	if live := request(page, http.MethodGet, "/live", nil, nil).Body.String(); strings.Contains(live, "newest line") {
+		t.Fatalf("the live section shouldn't hold the activity: %s", live)
+	}
+	if full := request(page, http.MethodGet, "/", nil, nil).Body.String(); !strings.Contains(full, `data-seq="2"`) {
+		t.Fatalf("the page should open with the activity: %s", full)
+	}
+}
+
+func TestActivityIsEmptyWhenNothingHasHappened(t *testing.T) {
+	relay, _, _ := setup()
+	// The page's "nothing yet" line is CSS on :empty, which any whitespace would stop.
+	if body := request(newDashboard(relay, ""), http.MethodGet, "/activity", nil, nil).Body.String(); body != "" {
+		t.Fatalf("expected nothing, got %q", body)
+	}
+}
+
 func TestPageEscapesWhatItShows(t *testing.T) {
 	relay, _, _ := setup()
 	relay.record("<script>x")
-	body := request(newDashboard(relay, ""), http.MethodGet, "/live", nil, nil).Body.String()
-	if strings.Contains(body, "<script>x") {
+	body := request(newDashboard(relay, ""), http.MethodGet, "/activity", nil, nil).Body.String()
+	if !strings.Contains(body, "script") || strings.Contains(body, "<script>x") {
 		t.Fatalf("an event reached the page raw: %s", body)
 	}
 }

@@ -138,6 +138,9 @@ func newDashboard(relay *Relay, token string) http.Handler {
 	mux.HandleFunc("/live", func(w http.ResponseWriter, r *http.Request) {
 		render(w, "live")
 	})
+	mux.HandleFunc("/activity", func(w http.ResponseWriter, r *http.Request) {
+		render(w, "activity")
+	})
 	mux.HandleFunc("/htmx.js", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "text/javascript; charset=utf-8")
 		_, _ = w.Write(htmxScript)

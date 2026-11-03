@@ -85,6 +85,7 @@ func (t Traffic) minus(other Traffic) Traffic {
 
 // Event is one line of the dashboard's recent activity.
 type Event struct {
+	Seq  uint64 // counts up, so the page can tell which lines are new
 	At   time.Time
 	Text string
 }
@@ -99,6 +100,7 @@ type Relay struct {
 	rate       float64 // packets a second per IP, 0 for no limit
 	maxPlayers int
 	events     []Event
+	eventSeq   uint64
 	total      Traffic
 	sampled    Traffic
 	perSecond  Traffic
@@ -130,7 +132,8 @@ func NewRelay(send Sender) *Relay {
 
 // record keeps a line for the dashboard. Callers hold the lock.
 func (r *Relay) record(text string) {
-	r.events = append(r.events, Event{At: r.now(), Text: text})
+	r.eventSeq++
+	r.events = append(r.events, Event{Seq: r.eventSeq, At: r.now(), Text: text})
 	if len(r.events) > maxEvents {
 		r.events = r.events[1:]
 	}

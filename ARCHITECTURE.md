@@ -1528,12 +1528,16 @@ There are no accounts.
 ### The dashboard
 
 `-dashboard addr` serves an HTML page, embedded in the binary. htmx polls `/live`
-every 2 s and swaps in fresh tables.
+every 2 s and swaps in fresh tables. Recent activity polls `/activity` on its own, and
+the page adds only lines with a higher `Seq`, so the list keeps its scroll position.
+Neither redraws while text is selected, because that would lose the selection, and the
+header says it's paused. Ctrl+A over the list selects just the list.
 
 | Route | Method | Action |
 | --- | --- | --- |
 | `/` | GET | Full page |
 | `/live` | GET | Live section |
+| `/activity` | GET | Recent activity lines |
 | `/htmx.js` | GET | Embedded script |
 | `/close` | POST | Close a room or race, telling the drivers |
 | `/ban` | POST | Ban an IP and remove its clients |
