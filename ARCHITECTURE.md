@@ -1514,6 +1514,7 @@ The relay is public, so it limits what any one address can cost:
 | Packet size | 2048 bytes | Dropped and counted |
 | Connections from one IP | 16 | Refused |
 | Players on the relay | 2000 (`-max-players`) | Refused |
+| Rooms open, waiting or racing | No limit by default (`-max-rooms`) | Hosting is refused; joining an open room still works |
 | Rate buckets | 65536, cleared after 10 s idle | Forged sources can't grow memory without limit |
 | Room codes | 1 to 16 letters and numbers | Refused |
 
@@ -1523,7 +1524,49 @@ of reach. The longest refusal is about five times the size of what prompted it, 
 forged source gets the same rate limit, which caps that at under 20 kB/s, so the relay
 isn't worth abusing as a reflector.
 
-There are no accounts.
+Players have no accounts. Only the dashboard has users.
+
+### The store
+
+`store.go` keeps what has to outlive a restart in one SQLite file (`-db`, default
+`spppd-relay.db`; empty keeps it in memory). The driver is `modernc.org/sqlite`, pure
+Go, so the static `CGO_ENABLED=0` build still works. There's one connection, in WAL
+mode, with temporary data in memory, because the container's root is read-only.
+
+| Table | Holds |
+| --- | --- |
+| `bans` | IP, when, and which dashboard user |
+| `users` | Name, bcrypt hash, when added |
+| `sessions` | SHA-256 of each login token, its user, expiry (7 days) |
+| `meta` | The analytics key |
+| `daily` | One row of totals per UTC day |
+| `visitors` | Day and keyed IP hash, deleted after `-analytics-days` |
+| `races` | Start, end, drivers and protocol of each room that raced |
+
+Nothing touches the disk while the relay holds `mu`. `Ban` changes the map under the
+lock and saves after it; `AttachStore` loads the bans at startup.
+
+### Analytics
+
+Off unless the relay starts with `-analytics`. Then `r.tally` counts one UTC day in
+memory, and the relay's hot paths only bump integers:
+
+| Counted | Where |
+| --- | --- |
+| Visitor | `register`, for any host or join, as HMAC-SHA-256 of the IP with a random key from `meta` |
+| Room, join | `register`, once seated |
+| Refusal | `refuse` |
+| Race, racers | `lock`, the first time a room locks |
+| Finished race | `dropRoom`, when a locked room empties or closes |
+| Peak players | `seat` and `Sweep` |
+| Traffic | `Sweep`, from the per-second rates |
+
+The relay reads nothing it forwards, so it can't see single races: a room's rematches
+are one record. `Sweep` starts a new tally at midnight UTC. `FlushAnalytics` hands the
+tallies over and writes them once a minute, at shutdown, and before the dashboard shows
+or exports them. A visitor hash is inserted with `INSERT OR IGNORE`, and only a new row
+adds to the day's `unique_ips`, so a day's count survives its hashes being pruned. A
+tally holds at most 65536 visitors, so forged sources can't grow it.
 
 ### The dashboard
 
@@ -1531,45 +1574,67 @@ There are no accounts.
 every 2 s and swaps in fresh tables. Recent activity polls `/activity` on its own, and
 the page adds only lines with a higher `Seq`, so the list keeps its scroll position.
 Neither redraws while text is selected, because that would lose the selection, and the
-header says it's paused. Ctrl+A over the list selects just the list.
+header says it's paused. Ctrl+A over the list selects just the list. Analytics, when
+on, poll `/analytics` every minute.
 
 | Route | Method | Action |
 | --- | --- | --- |
 | `/` | GET | Full page |
 | `/live` | GET | Live section |
 | `/activity` | GET | Recent activity lines |
+| `/analytics` | GET | Analytics section, with `-analytics` only |
+| `/export/daily.csv`, `/export/races.csv` | GET | Downloads, with `-analytics` only |
 | `/htmx.js` | GET | Embedded script |
+| `/login` | GET, POST | Login form |
+| `/logout` | POST | End this login |
 | `/close` | POST | Close a room or race, telling the drivers |
 | `/ban` | POST | Ban an IP and remove its clients |
 | `/unban` | POST | Remove a ban |
+| `/users/add`, `/users/password`, `/users/delete` | POST | Manage dashboard users |
 
-`guard` decides who gets in:
+Who gets in:
 
-- **With `-dashboard-token`** (or `SPPPD_DASHBOARD_TOKEN`), anyone with the password,
-  over HTTP Basic with any username. That's how it runs in a container, where no
-  connection looks local.
-- **Without one**, only this machine: the connection must come from loopback, and the
-  `Host` must be loopback too, which stops a page using DNS tricks through a local
-  browser. Forging `Host` from another machine gets nowhere.
+- **With users**, everyone logs in, even on loopback. A login sets an HttpOnly,
+  SameSite=Strict cookie holding a random token; only its hash is stored, so the
+  database alone can't be used to log in. An expired login sends htmx polls to the
+  form through `HX-Redirect`. Ten wrong passwords lock an address out for 15 minutes.
+  Behind Docker every connection can share one address, so there it locks out
+  everyone, which is still better than allowing guesses.
+- **Without users**, only this machine: the connection must come from loopback, and
+  the `Host` must be loopback too, which stops a page using DNS tricks through a local
+  browser. Forging `Host` from another machine gets nowhere. Adding the first user
+  from the page logs you in as them.
 - Either way, a non-GET request's `Origin` must match, so another site can't make a
-  browser post to it.
+  browser post to it, or log it in.
+
+Changing your password ends your other logins. Nobody can remove themselves, so
+there's always a user who can get in. If every password is lost, `relay -db FILE user
+passwd NAME` sets one from the command line.
+
+At startup, `SPPPD_ADMIN_PASSWORD` (or the older `SPPPD_DASHBOARD_TOKEN`) adds the user
+`SPPPD_ADMIN_USER` (default `admin`) if there are no users yet. It never changes an
+existing user, so a password changed on the dashboard survives a deploy.
 
 ### Deploying
 
 The relay runs as a Kamal accessory on the hblabs server: `alpine:3.20` with the static
 binary uploaded beside it, so there's no image to build or registry to push to. It runs
-as `nobody` on a read-only root with every capability dropped. UDP 8080 is public, and
-the dashboard is published on the server's loopback only. Docker's published ports go
-past UFW, as 80 and 443 do, so the firewall needs no rule.
+on a read-only root with every capability dropped, as the deploy user, so it can write
+`~/spppd-relay/data`, which Kamal mounts at `/data` for the database. `bin/relay-deploy`
+looks up that user's IDs over SSH. UDP 8080 is public, and the dashboard is published
+on the server's loopback only. Docker's published ports go past UFW, as 80 and 443 do,
+so the firewall needs no rule. The official server runs with `-analytics`, and its
+Docker log, which holds IP addresses, is capped at 10 MB, as `PRIVACY.md` promises.
 
 ```
 make deploy-relay                                      # first run makes the password
 ssh -L 9090:127.0.0.1:9090 vanillaiice@62.169.20.136   # then http://localhost:9090
+kamal relay-users                                      # list the dashboard users
 ```
 
-`bin/relay-deploy` keeps the password in `~/.config/hblabs/spppd.env`, outside the
-repository. Deploying restarts the relay, and anyone racing is told. Bans don't survive
-that.
+`bin/relay-deploy` keeps the first user's password in `~/.config/hblabs/spppd.env`,
+outside the repository; the user is `admin`. Deploying restarts the relay, and anyone
+racing is told. Bans, users, logins and analytics survive it.
 
 ---
 

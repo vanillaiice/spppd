@@ -23,25 +23,39 @@ accessories:
   relay:
     image: alpine:3.20
     host: 62.169.20.136
-    cmd: /srv/relay -addr :8080 -dashboard :9090
+    # Analytics are on for the official server; PRIVACY.md says what they keep.
+    cmd: /srv/relay -addr :8080 -dashboard :9090 -db /data/relay.db -analytics
     # UDP, open to the world, for the game. Docker keeps the sender's address, which
     # the rate limit and bans depend on.
     port: "8080:8080/udp"
     files:
       # z relabels it for SELinux, and does nothing on a server without it.
       - dist/relay-linux:/srv/relay:ro,z
+    # Bans, dashboard users and analytics, in ~/spppd-relay/data on the server.
+    directories:
+      - data:/data
     options:
       # The dashboard stays on the server's loopback. Reach it over SSH:
       # ssh -L 9090:127.0.0.1:9090 vanillaiice@62.169.20.136
       publish: "127.0.0.1:9090:9090"
       restart: unless-stopped
-      # It faces the internet and needs nothing from the system.
-      user: nobody
+      # The log holds IP addresses, so it's capped at about 10 MB. PRIVACY.md says so.
+      log-opt: max-size=10m
+      # It faces the internet and needs nothing from the system. It runs as the
+      # deploy user, who owns the data folder; bin/relay-deploy looks the IDs up.
+      # Other kamal commands never start it, so they can do without.
+      user: "<%= ENV.fetch('SPPPD_RELAY_USER', 'nobody') %>"
       read-only: true
       cap-drop: ALL
     env:
       secret:
+        # The first dashboard user's password, for the user "admin". It's only
+        # used while there are no users, so changing it later on the dashboard
+        # sticks across deploys.
         - SPPPD_DASHBOARD_TOKEN
 
 aliases:
   relay-logs: accessory logs relay -f
+  relay-users: accessory exec relay --reuse "/srv/relay -db /data/relay.db user list"
+# To add a user or reset a password from here:
+# kamal accessory exec relay --reuse --interactive "/srv/relay -db /data/relay.db user passwd admin"

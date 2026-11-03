@@ -286,7 +286,7 @@ h.describe("network", function()
     end
     network.status = "idle"
     local online = labels(menu.onlineRows())
-    for _, label in ipairs({ "CAR", "PAINT", "HOST A ROOM", "ROOM CODE", "JOIN A ROOM" }) do
+    for _, label in ipairs({ "CAR", "PAINT", "HOST A ROOM", "ROOM CODE", "JOIN A ROOM", "PRIVACY & TERMS" }) do
       h.assertTrue(online[label], label .. " is missing")
     end
     for _, label in ipairs({ "TRACK", "LAPS", "TIME" }) do

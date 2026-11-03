@@ -1,5 +1,29 @@
 # Changelog
 
+## Unreleased
+
+### Added
+
+- PRIVACY & TERMS on the ONLINE screen opens the official server's
+  [privacy policy](PRIVACY.md), which links to its [terms of use](TERMS.md).
+
+### Relay
+
+- Bans, dashboard users and logins are kept in an SQLite file (`-db`), so a restart
+  or deploy no longer clears them.
+- The dashboard has real users, each with a name and password, and a login page in
+  place of the shared password. Users can be added, removed and changed on the
+  dashboard, or with `relay user add|passwd|del|list`. `SPPPD_DASHBOARD_TOKEN` (or
+  `SPPPD_ADMIN_PASSWORD`) now makes the first user, `admin`, when there are none.
+- Optional statistics with `-analytics`: unique IPs (stored as keyed hashes, deleted
+  after `-analytics-days`, 30 by default), rooms, joins, races, drivers, refusals, peak
+  players and traffic per day, and a record of each race. The dashboard shows the last
+  14 days and exports `daily.csv` and `races.csv`. Off by default.
+- `-max-rooms` caps the rooms open at once. Past it, hosting is refused with "The
+  server has no free rooms", and joining an open room still works. The dashboard shows
+  players and rooms against their limits.
+- The official server's log is capped at about 10 MB.
+
 ## 2.3.0 (2026-11-02)
 
 ### Added

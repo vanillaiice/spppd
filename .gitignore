@@ -1,2 +1,6 @@
 dist/
 .backup/
+# The relay's database, when it's run from here.
+*.db
+*.db-wal
+*.db-shm

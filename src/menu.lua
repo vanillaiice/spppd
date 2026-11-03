@@ -57,7 +57,7 @@ menu.ONLINE_NOTES = {
   "Nobody checks results, so a changed game can cheat. Race people you trust.",
   "A slow connection makes cars look late, and contact can look wrong.",
   "Everyone in a room needs the same version of the game.",
-  "The server sees your IP address. Other drivers don't.",
+  "The server sees your IP address. Other drivers don't. See PRIVACY & TERMS.",
 }
 
 -- Weak, so a saved track that's been changed lets go of its old build. The
@@ -356,6 +356,7 @@ local function onlineRows()
     { label = "HOST A ROOM", activate = function() menu.go("host") end },
     room,
     { label = "JOIN A ROOM", disabled = network.roomCode == "", activate = function() menu.connect("join") end },
+    { label = "PRIVACY & TERMS", activate = function() love.system.openURL(config.PRIVACY_URL) end },
     back,
   }
 end

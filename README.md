@@ -61,13 +61,28 @@ and only the host needs the track. REMATCH runs the race again once everyone ask
 Everyone needs the same version of the game. The ONLINE screen lists what else to
 expect: it's new, you can't rejoin after leaving, and nobody checks results.
 
+What the official server keeps is in [PRIVACY.md](PRIVACY.md), and its rules are in
+[TERMS.md](TERMS.md). PRIVACY & TERMS on the ONLINE screen opens them.
+
 To run your own relay, open UDP port 8080 and have everyone set SERVER to your address:
 
     make server
     ./dist/relay -addr :8080 -dashboard 127.0.0.1:9090
 
 The dashboard at <http://localhost:9090> shows rooms and traffic, and can close rooms
-and ban IPs. `make deploy-relay` deploys to the hblabs server. See `ARCHITECTURE.md`.
+and ban IPs. Bans and dashboard users are kept in `spppd-relay.db` (`-db`). Until you
+add a user, the dashboard only answers on this machine; with one, it takes a login from
+anywhere:
+
+    ./dist/relay user add NAME
+
+`-max-players` (2000) and `-max-rooms` (no limit) cap how many people and rooms the
+relay takes at once, and the dashboard shows both against their limits.
+
+Statistics are off unless you start the relay with `-analytics`. They count unique IPs
+as keyed hashes, plus rooms, races and traffic, and the dashboard exports them as CSV.
+If you turn them on, tell your players, as `PRIVACY.md` does for the official server.
+`make deploy-relay` deploys to the hblabs server. See `ARCHITECTURE.md`.
 
 ## Building and testing
 

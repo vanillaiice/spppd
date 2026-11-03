@@ -49,6 +49,8 @@ type Room struct {
 	Proto  string
 	Since  time.Time
 	Locked bool
+	Raced  time.Time // when it locked
+	Racers int       // seats taken when it locked
 	Seats  [maxRoomPlayers]*Client
 }
 
@@ -94,11 +96,12 @@ type Relay struct {
 	mu         sync.Mutex
 	clients    map[string]*Client
 	rooms      map[string]*Room
-	banned     map[string]bool
+	banned     map[string]Ban
 	perIP      map[string]int
 	buckets    map[string]*rateBucket
 	rate       float64 // packets a second per IP, 0 for no limit
 	maxPlayers int
+	maxRooms   int // 0 for no limit beyond maxPlayers
 	events     []Event
 	eventSeq   uint64
 	total      Traffic
@@ -108,13 +111,19 @@ type Relay struct {
 	started    time.Time
 	send       Sender
 	now        func() time.Time
+
+	store        *Store   // nil in tests that don't need one
+	tally        *Tally   // today's analytics, nil when they're off
+	finished     []*Tally // earlier days not yet written
+	analyticsKey []byte
+	flushMu      sync.Mutex
 }
 
 func NewRelay(send Sender) *Relay {
 	r := &Relay{
 		clients:    make(map[string]*Client),
 		rooms:      make(map[string]*Room),
-		banned:     make(map[string]bool),
+		banned:     make(map[string]Ban),
 		perIP:      make(map[string]int),
 		buckets:    make(map[string]*rateBucket),
 		rate:       300,
@@ -128,6 +137,21 @@ func NewRelay(send Sender) *Relay {
 		send(data, to)
 	}
 	return r
+}
+
+// AttachStore keeps bans in the store from now on, starting with the ones it holds.
+func (r *Relay) AttachStore(store *Store) error {
+	bans, err := store.Bans()
+	if err != nil {
+		return err
+	}
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.store = store
+	for _, ban := range bans {
+		r.banned[ban.IP] = ban
+	}
+	return nil
 }
 
 // record keeps a line for the dashboard. Callers hold the lock.
@@ -150,6 +174,9 @@ func (r *Relay) event(format string, args ...any) {
 // send these as fast as they like.
 func (r *Relay) refuse(reason string, addr *net.UDPAddr) {
 	r.send([]byte("event|error|"+reason), addr)
+	if r.tally != nil {
+		r.tally.Refused++
+	}
 	r.record(fmt.Sprintf("[REFUSED] %v: %s", addr, reason))
 }
 
@@ -186,7 +213,7 @@ func (r *Relay) Handle(data []byte, addr *net.UDPAddr) {
 	r.total.PacketsIn++
 	r.total.BytesIn += uint64(len(data))
 	ip := addr.IP.String()
-	if r.banned[ip] {
+	if _, banned := r.banned[ip]; banned {
 		return
 	}
 	if len(data) > maxPacketBytes || !r.allow(ip) {
@@ -215,10 +242,34 @@ func (r *Relay) Handle(data []byte, addr *net.UDPAddr) {
 		r.event("[LEAVE] %v", client.Addr)
 		r.remove(client)
 	case "lock":
-		client.Room.Locked = true
+		r.lock(client.Room)
 	case "host", "join":
 		// The answer may have been lost, so repeat it.
 		r.tell(client)
+	}
+}
+
+// lock starts a room racing. The game may say so more than once.
+func (r *Relay) lock(room *Room) {
+	if room.Locked {
+		return
+	}
+	room.Locked = true
+	room.Raced = r.now()
+	room.Racers = len(room.members())
+	if r.tally != nil {
+		r.tally.Races++
+		r.tally.Racers += room.Racers
+	}
+}
+
+// dropRoom forgets an empty or closed room, and counts it if it raced.
+func (r *Relay) dropRoom(room *Room) {
+	delete(r.rooms, room.Code)
+	if room.Locked && r.tally != nil {
+		r.tally.Finished = append(r.tally.Finished, RaceRecord{
+			Started: room.Raced, Ended: r.now(), Players: room.Racers, Proto: room.Proto,
+		})
 	}
 }
 
@@ -283,6 +334,9 @@ func (r *Relay) seat(room *Room, slot int, addr *net.UDPAddr) *Client {
 	room.Seats[slot-1] = client
 	r.clients[addr.String()] = client
 	r.perIP[addr.IP.String()]++
+	if r.tally != nil {
+		r.tally.Peak = max(r.tally.Peak, len(r.clients))
+	}
 	return client
 }
 
@@ -294,9 +348,11 @@ func (r *Relay) register(parts []string, addr *net.UDPAddr) {
 	}
 	// Clients from before protocol 2 send event|host|CODE, and show this.
 	if len(parts) == 3 {
+		r.visit(addr.IP.String())
 		r.refuse("This game is out of date. Update it to play online", addr)
 		return
 	}
+	r.visit(addr.IP.String())
 	intent, proto, code := parts[1], parts[2], parts[3]
 	if !validProto(proto) {
 		return
@@ -320,9 +376,16 @@ func (r *Relay) register(parts []string, addr *net.UDPAddr) {
 			r.refuse("That room code is taken", addr)
 			return
 		}
+		if r.maxRooms > 0 && len(r.rooms) >= r.maxRooms {
+			r.refuse("The server has no free rooms. Try again soon", addr)
+			return
+		}
 		room := &Room{Code: code, Proto: proto, Since: r.now()}
 		r.rooms[code] = room
 		r.tell(r.seat(room, 1, addr))
+		if r.tally != nil {
+			r.tally.Rooms++
+		}
 		r.event("[HOST] %v created room %q", addr, code)
 	case "join":
 		room, found := r.rooms[code]
@@ -341,6 +404,9 @@ func (r *Relay) register(parts []string, addr *net.UDPAddr) {
 		for slot := 1; slot <= maxRoomPlayers; slot++ {
 			if room.Seats[slot-1] == nil {
 				r.seat(room, slot, addr)
+				if r.tally != nil {
+					r.tally.Joins++
+				}
 				r.event("[JOIN] %v joined room %q in seat %d", addr, code, slot)
 				r.announce(room)
 				return
@@ -369,7 +435,7 @@ func (r *Relay) closeRoom(room *Room, reason string) {
 		r.send([]byte("event|closed|"+reason), member.Addr)
 		r.forget(member)
 	}
-	delete(r.rooms, room.Code)
+	r.dropRoom(room)
 }
 
 // remove takes one client out. A lobby can't go on without its host, because
@@ -383,7 +449,7 @@ func (r *Relay) remove(client *Client) {
 		return
 	}
 	if len(room.members()) == 0 {
-		delete(r.rooms, room.Code)
+		r.dropRoom(room)
 		return
 	}
 	r.announce(room)
@@ -398,6 +464,11 @@ func (r *Relay) Sweep(racing, waiting time.Duration) {
 
 	r.perSecond = r.total.minus(r.sampled)
 	r.sampled = r.total
+	r.rollTally()
+	if r.tally != nil {
+		r.tally.BytesIn += r.perSecond.BytesIn
+		r.tally.BytesOut += r.perSecond.BytesOut
+	}
 
 	now := r.now()
 	for _, client := range r.clients {
@@ -409,6 +480,9 @@ func (r *Relay) Sweep(racing, waiting time.Duration) {
 			r.event("[TIMEOUT] %v", client.Addr)
 			r.remove(client)
 		}
+	}
+	if r.tally != nil {
+		r.tally.Peak = max(r.tally.Peak, len(r.clients))
 	}
 	for _, room := range r.rooms {
 		r.announce(room)
@@ -434,35 +508,53 @@ func (r *Relay) Close(addr string) bool {
 	return true
 }
 
-// Ban ignores an IP until Unban or a restart, and removes its clients now.
-// Anyone else in their rooms carries on without them.
-func (r *Relay) Ban(ip string) bool {
+// Ban ignores an IP until Unban, and removes its clients now. Anyone else in
+// their rooms carries on without them. With a store, the ban outlives a restart.
+func (r *Relay) Ban(ip, by string) bool {
 	parsed := net.ParseIP(ip)
 	if parsed == nil {
 		return false
 	}
-	r.mu.Lock()
-	defer r.mu.Unlock()
-
-	ip = parsed.String()
-	r.banned[ip] = true
-	r.event("[BAN] %s", ip)
-	for _, client := range r.clients {
-		if client.Addr.IP.String() == ip {
-			r.send([]byte("event|closed|Removed by the server"), client.Addr)
-			r.remove(client)
+	ban := Ban{IP: parsed.String(), At: r.now(), By: by}
+	store := r.ban(ban)
+	// The disk is slow next to the relay, so it's kept out of the lock.
+	if store != nil {
+		if err := store.SaveBan(ban); err != nil {
+			log.Printf("[BAN] saving %s: %v", ban.IP, err)
 		}
 	}
 	return true
 }
 
-func (r *Relay) Unban(ip string) {
+func (r *Relay) ban(ban Ban) *Store {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
-	if r.banned[ip] {
+	r.banned[ban.IP] = ban
+	r.event("[BAN] %s", ban.IP)
+	for _, client := range r.clients {
+		if client.Addr.IP.String() == ban.IP {
+			r.send([]byte("event|closed|Removed by the server"), client.Addr)
+			r.remove(client)
+		}
+	}
+	return r.store
+}
+
+func (r *Relay) Unban(ip string) {
+	r.mu.Lock()
+	_, banned := r.banned[ip]
+	if banned {
 		delete(r.banned, ip)
 		r.event("[UNBAN] %s", ip)
+	}
+	store := r.store
+	r.mu.Unlock()
+
+	if banned && store != nil {
+		if err := store.DeleteBan(ip); err != nil {
+			log.Printf("[UNBAN] saving %s: %v", ip, err)
+		}
 	}
 }
 
@@ -493,15 +585,18 @@ type RoomView struct {
 
 // Snapshot is a copy of the relay's state, safe to read without the lock.
 type Snapshot struct {
-	Uptime  time.Duration
-	Players int
-	Rooms   []RoomView // still open to join
-	Races   []RoomView // locked and racing
-	Banned  []string
-	Events  []Event // newest first
-	Total   Traffic
-	Rate    Traffic
-	Dropped uint64
+	Uptime     time.Duration
+	Players    int
+	OpenRooms  int // waiting and racing
+	MaxPlayers int
+	MaxRooms   int
+	Rooms      []RoomView // still open to join
+	Races      []RoomView // locked and racing
+	Banned     []Ban
+	Events     []Event // newest first
+	Total      Traffic
+	Rate       Traffic
+	Dropped    uint64
 }
 
 func (r *Relay) Snapshot() Snapshot {
@@ -510,11 +605,14 @@ func (r *Relay) Snapshot() Snapshot {
 
 	now := r.now()
 	snap := Snapshot{
-		Uptime:  now.Sub(r.started),
-		Players: len(r.clients),
-		Total:   r.total,
-		Rate:    r.perSecond,
-		Dropped: r.dropped,
+		Uptime:     now.Sub(r.started),
+		Players:    len(r.clients),
+		OpenRooms:  len(r.rooms),
+		MaxPlayers: r.maxPlayers,
+		MaxRooms:   r.maxRooms,
+		Total:      r.total,
+		Rate:       r.perSecond,
+		Dropped:    r.dropped,
 	}
 	for code, room := range r.rooms {
 		view := RoomView{Code: code, Age: now.Sub(room.Since)}
@@ -530,12 +628,12 @@ func (r *Relay) Snapshot() Snapshot {
 			snap.Rooms = append(snap.Rooms, view)
 		}
 	}
-	for ip := range r.banned {
-		snap.Banned = append(snap.Banned, ip)
+	for _, ban := range r.banned {
+		snap.Banned = append(snap.Banned, ban)
 	}
 	sort.Slice(snap.Rooms, func(i, j int) bool { return snap.Rooms[i].Code < snap.Rooms[j].Code })
 	sort.Slice(snap.Races, func(i, j int) bool { return snap.Races[i].Code < snap.Races[j].Code })
-	sort.Strings(snap.Banned)
+	sort.Slice(snap.Banned, func(i, j int) bool { return snap.Banned[i].IP < snap.Banned[j].IP })
 	for i := len(r.events) - 1; i >= 0; i-- {
 		snap.Events = append(snap.Events, r.events[i])
 	}
@@ -548,9 +646,41 @@ func main() {
 	waiting := flag.Duration("wait-timeout", 60*time.Second, "drop someone alone in a room after this long without packets")
 	rate := flag.Float64("rate", 300, "packets a second allowed from one IP, 0 for no limit")
 	players := flag.Int("max-players", 2000, "players the relay takes at once")
+	rooms := flag.Int("max-rooms", 0, "rooms open at once, waiting or racing; 0 for no limit beyond -max-players")
 	dashboard := flag.String("dashboard", "", "HTTP address for the dashboard (off if empty)")
-	token := flag.String("dashboard-token", os.Getenv("SPPPD_DASHBOARD_TOKEN"), "password for the dashboard; without one it only answers on loopback")
+	dbPath := flag.String("db", "spppd-relay.db", "SQLite file for bans, dashboard users and analytics; empty keeps them in memory")
+	analytics := flag.Bool("analytics", false, "count unique IPs (as keyed hashes), rooms, races and traffic")
+	analyticsDays := flag.Int("analytics-days", 30, "days to keep the hashed IPs behind the unique counts; daily totals are kept")
+	adminUser := flag.String("admin-user", envOr("SPPPD_ADMIN_USER", "admin"), "dashboard user made from SPPPD_ADMIN_PASSWORD when there are no users yet")
+	flag.Usage = usage
 	flag.Parse()
+
+	store, err := OpenStore(*dbPath)
+	if err != nil {
+		log.Fatalf("Failed to open the database: %v", err)
+	}
+	defer store.Close()
+
+	if flag.NArg() > 0 {
+		os.Exit(runCommand(store, flag.Args()))
+	}
+	if *players < 1 || *rooms < 0 {
+		log.Fatalf("-max-players must be at least 1, and -max-rooms 0 or more")
+	}
+	if *analyticsDays < 7 {
+		log.Fatalf("-analytics-days must be at least 7")
+	}
+
+	// The first user can come from the environment, which is how a container gets
+	// one. An existing user is never changed this way, so a password changed on
+	// the dashboard stays changed.
+	password := envOr("SPPPD_ADMIN_PASSWORD", os.Getenv("SPPPD_DASHBOARD_TOKEN"))
+	if password != "" && !store.HasUsers() {
+		if err := store.AddUser(*adminUser, password, time.Now()); err != nil {
+			log.Fatalf("Failed to add dashboard user %q: %v", *adminUser, err)
+		}
+		log.Printf("Added dashboard user %q", *adminUser)
+	}
 
 	addr, err := net.ResolveUDPAddr("udp", *listen)
 	if err != nil {
@@ -570,11 +700,23 @@ func main() {
 	})
 	relay.rate = *rate
 	relay.maxPlayers = *players
+	relay.maxRooms = *rooms
+	if err := relay.AttachStore(store); err != nil {
+		log.Fatalf("Failed to load bans: %v", err)
+	}
+	if *analytics {
+		key, err := store.AnalyticsKey()
+		if err != nil {
+			log.Fatalf("Failed to set up analytics: %v", err)
+		}
+		relay.EnableAnalytics(key)
+		log.Printf("Analytics on, keeping hashed IPs for %d days", *analyticsDays)
+	}
 
 	if *dashboard != "" {
 		go func() {
 			log.Printf("Dashboard listening on %s", *dashboard)
-			log.Fatalf("Dashboard stopped: %v", http.ListenAndServe(*dashboard, newDashboard(relay, *token)))
+			log.Fatalf("Dashboard stopped: %v", http.ListenAndServe(*dashboard, newDashboard(relay, store, *analyticsDays)))
 		}()
 	}
 
@@ -583,11 +725,21 @@ func main() {
 			relay.Sweep(*racing, *waiting)
 		}
 	}()
+	go func() {
+		for now := range time.Tick(time.Minute) {
+			relay.FlushAnalytics()
+			if err := store.Prune(dayOf(now.AddDate(0, 0, -(*analyticsDays-1))), now); err != nil {
+				log.Printf("[PRUNE] %v", err)
+			}
+		}
+	}()
 
 	stop, _ := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	go func() {
 		<-stop.Done()
 		relay.Shutdown()
+		relay.FlushAnalytics()
+		store.Close()
 		log.Print("Relay server stopped")
 		os.Exit(0)
 	}()
@@ -601,4 +753,11 @@ func main() {
 		}
 		relay.Handle(buffer[:n], remote)
 	}
+}
+
+func envOr(name, fallback string) string {
+	if value := os.Getenv(name); value != "" {
+		return value
+	}
+	return fallback
 }

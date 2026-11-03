@@ -349,6 +349,28 @@ func TestTheRelayHasACeiling(t *testing.T) {
 	}
 }
 
+func TestRoomsHaveACeiling(t *testing.T) {
+	relay, sent, _ := setup()
+	relay.maxRooms = 2
+	host(relay, "ABCD", 1)
+	host(relay, "WXYZ", 2)
+	relay.Handle([]byte("event|lock|"), addr(2)) // racing rooms count too
+	host(relay, "FULL", 3)
+	if last(sent).data != "event|error|The server has no free rooms. Try again soon" || relay.rooms["FULL"] != nil {
+		t.Fatalf("got %v", last(sent))
+	}
+	// Joining an open room takes no new room.
+	join(relay, "ABCD", 4)
+	if relay.clients[addr(4).String()] == nil {
+		t.Fatalf("a join was refused for the room limit")
+	}
+	relay.Handle([]byte("event|leave|"), addr(2))
+	host(relay, "FULL", 3)
+	if relay.rooms["FULL"] == nil {
+		t.Fatalf("a closed room should free its place")
+	}
+}
+
 func TestShutdownTellsEveryone(t *testing.T) {
 	relay, sent, _ := setup()
 	pair(relay)
@@ -481,7 +503,7 @@ func TestBanRemovesClientsAndIgnoresThem(t *testing.T) {
 	relay.Handle([]byte("event|host|2|ABCD"), bad)
 	host(relay, "WXYZ", 2)
 
-	if !relay.Ban("203.0.113.7") {
+	if !relay.Ban("203.0.113.7", "test") {
 		t.Fatalf("ban should accept an IP")
 	}
 	if len(relay.rooms) != 1 || relay.rooms["WXYZ"] == nil {
@@ -510,7 +532,7 @@ func TestBanRemovesClientsAndIgnoresThem(t *testing.T) {
 func TestBanRemovesBothDriversFromOneIP(t *testing.T) {
 	relay, _, _ := setup()
 	pair(relay)
-	relay.Ban("127.0.0.1")
+	relay.Ban("127.0.0.1", "test")
 	if len(relay.clients) != 0 {
 		t.Fatalf("left behind: %v", relay.clients)
 	}
@@ -518,7 +540,7 @@ func TestBanRemovesBothDriversFromOneIP(t *testing.T) {
 
 func TestBanRefusesNonsense(t *testing.T) {
 	relay, _, _ := setup()
-	if relay.Ban("not an ip") || len(relay.banned) != 0 {
+	if relay.Ban("not an ip", "test") || len(relay.banned) != 0 {
 		t.Fatalf("banned %v", relay.banned)
 	}
 }
@@ -528,7 +550,7 @@ func TestABanLeavesTheOthersRacing(t *testing.T) {
 	relay.Handle([]byte("event|host|2|ABCD"), addrAt("198.51.100.1", 1))
 	relay.Handle([]byte("event|join|2|ABCD"), addrAt("198.51.100.2", 1))
 	relay.Handle([]byte("event|lock|"), addrAt("198.51.100.1", 1))
-	relay.Ban("198.51.100.2")
+	relay.Ban("198.51.100.2", "test")
 	if p := last(sent); p.data != "event|room|1|ABCD|1|1" {
 		t.Fatalf("got %v", p)
 	}

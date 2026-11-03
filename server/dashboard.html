@@ -1,10 +1,4 @@
-{{define "page"}}<!doctype html>
-<html lang="en">
-<head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<title>SPPPD Relay</title>
-<style>
+{{define "style"}}<style>
 :root {
   color-scheme: light dark;
   --bg: #f6f6f3; --panel: #ffffff; --line: #deded8; --text: #1d1d1b; --muted: #6c6c66;
@@ -53,13 +47,36 @@ button:hover { border-color: var(--accent); color: var(--accent); }
 .log:empty::before { content: "Nothing has happened yet."; color: var(--muted); font-family: ui-sans-serif, system-ui, sans-serif; }
 .log div { padding: 2px 0; white-space: pre-wrap; overflow-wrap: anywhere; }
 .log time { color: var(--muted); margin-right: 4px; }
-</style>
+.who { display: flex; align-items: center; gap: 12px; font-size: 13px; color: var(--muted); }
+.row-form { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px; }
+.row-form input { width: 180px; max-width: 100%; }
+.note { margin: 8px 0 0; font-size: 13px; color: var(--muted); }
+.error { margin: 8px 0 0; font-size: 13px; color: var(--accent); }
+.notice { margin: 8px 0 0; font-size: 13px; color: var(--ok); }
+.num { text-align: right; font-variant-numeric: tabular-nums; }
+a { color: var(--accent); }
+.login { max-width: 320px; margin: 15vh auto 0; padding: 0 16px; }
+.login form { display: grid; gap: 10px; margin-top: 16px; }
+.login input, .login button { padding: 8px 10px; font-size: 15px; }
+</style>{{end}}
+
+{{define "page"}}<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>SPPPD Relay</title>
+{{template "style"}}
 </head>
 <body>
 <div class="wrap">
   <header>
     <h1>SPPPD Relay</h1>
-    <span id="state">Live</span>
+    <div class="who">
+      <span id="state">Live</span>
+      {{if .Viewer.Name}}<span>{{.Viewer.Name}}</span>
+      <form hx-post="/logout"><button>Log out</button></form>{{end}}
+    </div>
   </header>
   <main id="live" hx-get="/live" hx-trigger="every 2s" hx-swap="innerHTML">{{template "live" .}}</main>
   <h2>Recent activity</h2>
@@ -69,6 +86,8 @@ button:hover { border-color: var(--accent); color: var(--accent); }
     <input name="ip" placeholder="203.0.113.7" aria-label="IP address" required>
     <button>Ban</button>
   </form>
+  {{if .Analytics}}<section id="analytics" hx-get="/analytics" hx-trigger="every 60s" hx-swap="innerHTML">{{template "analytics" .}}</section>{{end}}
+  <section id="users">{{template "users" .}}</section>
 </div>
 <script src="/htmx.js"></script>
 <script>
@@ -126,7 +145,8 @@ button:hover { border-color: var(--accent); color: var(--accent); }
 <div class="stats">
   <div class="stat"><b>{{len .Rooms}}</b><span>rooms waiting</span></div>
   <div class="stat"><b>{{len .Races}}</b><span>races running</span></div>
-  <div class="stat"><b>{{.Players}}</b><span>players</span></div>
+  <div class="stat"><b>{{.Players}}</b><span>players, of {{.MaxPlayers}} allowed</span></div>
+  {{if .MaxRooms}}<div class="stat"><b>{{.OpenRooms}}</b><span>rooms open, of {{.MaxRooms}} allowed</span></div>{{end}}
   <div class="stat"><b>{{.Rate.PacketsIn}}</b><span>packets/s in, {{.Rate.PacketsOut}} out</span></div>
   <div class="stat"><b>{{bytes .Rate.BytesIn}}</b><span>per second in, {{bytes .Rate.BytesOut}} out</span></div>
   <div class="stat"><b>{{age .Uptime}}</b><span>up, {{bytes .Total.BytesIn}} received</span></div>
@@ -147,13 +167,16 @@ button:hover { border-color: var(--accent); color: var(--accent); }
 
 <h2>Banned IPs</h2>
 {{if .Banned}}<div class="table"><table>
+  <tr><th>IP</th><th>Since</th><th>By</th><th></th></tr>
   {{range .Banned}}<tr>
-    <td class="mono">{{.}}</td>
+    <td class="mono">{{.IP}}</td>
+    <td>{{date .At}}</td>
+    <td>{{.By}}</td>
     <td><div class="actions">
-      <form hx-post="/unban" hx-target="#live" hx-swap="innerHTML"><input type="hidden" name="ip" value="{{.}}"><button>Unban</button></form>
+      <form hx-post="/unban" hx-target="#live" hx-swap="innerHTML"><input type="hidden" name="ip" value="{{.IP}}"><button>Unban</button></form>
     </div></td>
   </tr>{{end}}
-</table></div>{{else}}<p class="empty">Nobody is banned. Bans last until the relay restarts.</p>{{end}}
+</table></div>{{else}}<p class="empty">Nobody is banned.</p>{{end}}
 {{end}}
 
 {{define "activity"}}{{range .Events}}<div data-seq="{{.Seq}}"><time>{{clock .At}}</time> {{.Text}}</div>{{end}}{{end}}
@@ -168,3 +191,76 @@ button:hover { border-color: var(--accent); color: var(--accent); }
     <form hx-post="/close" hx-target="#live" hx-swap="innerHTML"><input type="hidden" name="addr" value="{{.First}}"><button>Close</button></form>
   </div></td>
 </tr>{{end}}
+
+{{define "analytics"}}
+<h2>Analytics</h2>
+<div class="stats">
+  <div class="stat"><b>{{.Analytics.Week}}</b><span>unique IPs, last 7 days</span></div>
+  <div class="stat"><b>{{.Analytics.Window}}</b><span>unique IPs, last {{.Analytics.WindowDays}} days</span></div>
+</div>
+{{if .Analytics.Days}}<div class="table" style="margin-top: 10px"><table>
+  <tr><th>Day (UTC)</th><th class="num">Unique IPs</th><th class="num">Rooms</th><th class="num">Joins</th><th class="num">Races</th><th class="num">Racers</th><th class="num">Peak</th><th class="num">Refused</th><th class="num">In</th><th class="num">Out</th></tr>
+  {{range .Analytics.Days}}<tr>
+    <td class="mono">{{.Day}}</td><td class="num">{{.UniqueIPs}}</td><td class="num">{{.Rooms}}</td><td class="num">{{.Joins}}</td>
+    <td class="num">{{.Races}}</td><td class="num">{{.Racers}}</td><td class="num">{{.PeakPlayers}}</td><td class="num">{{.Refused}}</td>
+    <td class="num">{{bytes .BytesIn}}</td><td class="num">{{bytes .BytesOut}}</td>
+  </tr>{{end}}
+</table></div>{{else}}<p class="empty" style="margin-top: 10px">Nothing counted yet.</p>{{end}}
+<p class="note">The last 14 days. A race is a room that started racing, rematches included.
+  Download everything: <a href="/export/daily.csv">daily.csv</a>, <a href="/export/races.csv">races.csv</a>.</p>
+{{end}}
+
+{{define "users"}}
+<h2>Dashboard users</h2>
+{{if .Viewer.Local}}
+<p class="empty">No users yet, so anyone on this machine can use this page, and nobody else can.
+  Add a user to require a login, which also lets the page be reached from elsewhere.</p>
+{{else}}
+<div class="table"><table>
+  <tr><th>Name</th><th>Added</th><th></th></tr>
+  {{$me := .Viewer.Name}}{{range .Users}}<tr>
+    <td>{{.Name}}{{if eq .Name $me}} (you){{end}}</td>
+    <td>{{date .Created}}</td>
+    <td><div class="actions">{{if ne .Name $me}}
+      <form hx-post="/users/delete" hx-target="#users" hx-confirm="Remove {{.Name}}?"><input type="hidden" name="name" value="{{.Name}}"><button>Remove</button></form>
+    {{end}}</div></td>
+  </tr>{{end}}
+</table></div>
+{{end}}
+<form class="row-form" hx-post="/users/add" hx-target="#users">
+  <input name="name" placeholder="name" aria-label="New user's name" autocomplete="off" required>
+  <input name="password" type="password" placeholder="password, 8 or more" aria-label="New user's password" autocomplete="new-password" required>
+  <button>Add user</button>
+</form>
+{{if .Viewer.Name}}
+<form class="row-form" hx-post="/users/password" hx-target="#users">
+  <input name="current" type="password" placeholder="current password" aria-label="Current password" autocomplete="current-password" required>
+  <input name="password" type="password" placeholder="new password" aria-label="New password" autocomplete="new-password" required>
+  <button>Change my password</button>
+</form>
+{{end}}
+{{if .Error}}<p class="error">{{.Error}}</p>{{end}}
+{{if .Notice}}<p class="notice">{{.Notice}}</p>{{end}}
+{{end}}
+
+{{define "login"}}<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>SPPPD Relay</title>
+{{template "style"}}
+</head>
+<body>
+<div class="login">
+  <h1>SPPPD Relay</h1>
+  {{if .Error}}<p class="error">{{.Error}}</p>{{end}}
+  <form method="post" action="/login">
+    <input name="name" placeholder="name" aria-label="Name" autocomplete="username" required autofocus>
+    <input name="password" type="password" placeholder="password" aria-label="Password" autocomplete="current-password" required>
+    <button>Log in</button>
+  </form>
+</div>
+</body>
+</html>
+{{end}}
