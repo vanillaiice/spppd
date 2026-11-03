@@ -1,5 +1,14 @@
 # Changelog
 
+## 2.5.0 (2026-11-03)
+
+### Added
+
+- TOUCH STEERING in SETTINGS: STICK, as before, or BUTTONS. With buttons, left and
+  right arrows steer the way the arrow keys do, and a thumb anywhere on the left half
+  steers to its side and can slide across without lifting. BRAKE sits above DRIFT, and
+  with AUTO GAS off a GAS button takes the corner.
+
 ## 2.4.1 (2026-11-03)
 
 - Minor changes.
