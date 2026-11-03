@@ -1,5 +1,20 @@
 # Changelog
 
+## 2.7.0 (2026-11-03)
+
+### Added
+
+- Wrecks look like wrecks. A car that hits a fence hard enough to wreck folds in where
+  it hit, its paint scuffs dark around the dent, it pours dark smoke while it waits, and
+  bits of it fly back off the wall in its own colour, with black plastic and glass. It
+  goes back on the road whole: damage doesn't build up over a race.
+- A hard hit that doesn't wreck the car still throws a few bits.
+
+### Online
+
+- Protocol 4. A rival's wreck dents and smokes on every screen, not only its own.
+  Everyone in a room needs this version: 2.6.0 and older can't join a 2.7.0 room.
+
 ## 2.6.0 (2026-11-03)
 
 ### Changed
