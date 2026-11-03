@@ -306,6 +306,8 @@ local function processImpacts()
     local strength = e.impulse / 9000
     if strength > 0.02 then
       vfx.scrape(e.x, e.y, e.nx, e.ny, math.min(2.5, strength * 3))
+      if e.carA then car_view.hit(e.carA, e.x, e.y, strength, e.barrier) end
+      if e.carB then car_view.hit(e.carB, e.x, e.y, strength, e.barrier) end
       if mine and not session.demo then
         session.cam.trauma = math.min(1, session.cam.trauma + math.min(0.6, strength * 0.8))
         hardest = math.max(hardest, strength)

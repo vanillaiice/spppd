@@ -24,7 +24,7 @@ local network = {
   vote = 0,         -- the round this player asked for from the results
 }
 
-network.PROTOCOL = 3
+network.PROTOCOL = 4
 network.MAX_PLAYERS = 4
 
 local RESEND = 0.25
@@ -59,7 +59,7 @@ end
 
 -- Packets -----------------------------------------------------------------
 
-local FLAG_HORN, FLAG_REVERSE, FLAG_NITRO, FLAG_LOW, FLAG_HIGH, FLAG_GHOST = 1, 2, 4, 8, 16, 32
+local FLAG_HORN, FLAG_REVERSE, FLAG_NITRO, FLAG_LOW, FLAG_HIGH, FLAG_GHOST, FLAG_WRECK = 1, 2, 4, 8, 16, 32, 64
 
 local function flagged(flags, bit)
   return flags % (bit * 2) >= bit
@@ -68,6 +68,7 @@ end
 function network.packState(s)
   local flags = (s.horn and FLAG_HORN or 0) + (s.reverse and FLAG_REVERSE or 0) + (s.nitro and FLAG_NITRO or 0)
     + (s.lowBeam and FLAG_LOW or 0) + (s.highBeam and FLAG_HIGH or 0) + (s.ghost and FLAG_GHOST or 0)
+    + (s.wreck and FLAG_WRECK or 0)
   return string.format("sync|%d|%d|%.1f|%.1f|%.3f|%.1f|%.1f|%.3f|%d|%.2f|%.2f|%d|%d|%.2f|%.0f|%.3f",
     s.round or 0, s.seq or 0, s.x, s.y, s.a, s.vx, s.vy, s.steer, s.rpm, s.throttle, s.brake, s.gear, flags,
     s.slide or 0, s.distance or 0, s.finish or 0)
@@ -91,7 +92,7 @@ function network.unpackState(str)
   out.gear = math.floor(out.gear)
   out.flags = math.floor(out.flags)
   clamp("gear", 0, 12)
-  clamp("flags", 0, 63)
+  clamp("flags", 0, 127)
   clamp("slide", 0, 1)
   clamp("rpm", 0, 30000)
   clamp("throttle", 0, 1)
@@ -102,6 +103,7 @@ function network.unpackState(str)
   out.lowBeam = flagged(out.flags, FLAG_LOW)
   out.highBeam = flagged(out.flags, FLAG_HIGH)
   out.ghost = flagged(out.flags, FLAG_GHOST)
+  out.wreck = flagged(out.flags, FLAG_WRECK)
   return out
 end
 
@@ -669,7 +671,7 @@ function network.sendCar(car)
     x = car.curX, y = car.curY, a = car.curA, vx = vx, vy = vy,
     steer = model.steer, rpm = model.rpm, throttle = model.throttle, brake = model.brake, gear = model.gear,
     horn = car.horn, reverse = model.reverse, nitro = model.boostState == "active",
-    lowBeam = car.lowBeam, highBeam = car.highBeam, ghost = car.ghostTimer > 0,
+    lowBeam = car.lowBeam, highBeam = car.highBeam, ghost = car.ghostTimer > 0, wreck = car.wreck ~= nil,
     slide = slide, distance = car.distance, finish = car.finishTime,
   }))
 end

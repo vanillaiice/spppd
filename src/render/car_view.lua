@@ -4,6 +4,7 @@ local sprites = require("src/render/car_sprites")
 local textures = require("src/render/textures")
 local vfx = require("src/vfx_manager")
 local skids = require("src/skid_manager")
+local damage = require("src/render/car_damage")
 
 local view = {}
 
@@ -16,12 +17,20 @@ local FLAME_CRACKLE = 6    -- pops a second, on average
 -- reach, where they start under it, how far apart and how wide, in metres.
 local PIPE_OUT, PIPE_IN, PIPE_SPREAD, PIPE_WIDTH = 0.45, 0.25, 0.32, 0.3
 local NEON_PULSE = 2.2     -- radians a second
+-- Crashes: a wreck smokes this many puffs a second from where it folded in, and
+-- throws this many bits of itself. A hit this hard, as impulse / 9000, throws a
+-- few bits without wrecking, but at most every DEBRIS_GAP seconds.
+local WRECK_SMOKE = 20
+local WRECK_DEBRIS = 20
+local HIT_DEBRIS = 0.35
+local DEBRIS_GAP = 0.25
+local HIT_MEMORY = 0.3     -- seconds a contact is still the one a wreck is put down to
 
 -- Per-frame effects ------------------------------------------------------
 
 -- Lights the exhaust for the flame cheat.
 local function fxOf(car)
-  car.fx = car.fx or { trails = { {}, {}, {}, {} }, gear = 1, popTimer = 0, warp = 0 }
+  car.fx = car.fx or { trails = { {}, {}, {}, {} }, gear = 1, popTimer = 0, warp = 0, clock = 0, dents = {}, debrisAt = -1 }
   return car.fx
 end
 
@@ -45,6 +54,80 @@ local function neonColor(car)
   if hi - lo < 0.15 then return 0.1, 0.9, 1 end
   local function push(v) return (v - lo) / (hi - lo) end
   return push(c[1]), push(c[2]), push(c[3])
+end
+
+-- A point in the world, in metres in the car's own frame.
+local function toLocal(car, wx, wy)
+  local x, y = car.body:getPosition()
+  local a = car.body:getAngle()
+  local ca, sa = math.cos(a), math.sin(a)
+  local dx, dy = wx - x, wy - y
+  return (dx * ca + dy * sa) / M, (-dx * sa + dy * ca) / M
+end
+
+local function toWorld(car, lx, ly)
+  local x, y = car.body:getPosition()
+  local a = car.body:getAngle()
+  local ca, sa = math.cos(a), math.sin(a)
+  return x + (lx * ca - ly * sa) * M, y + (lx * sa + ly * ca) * M
+end
+
+-- Wrecked, here or, for a rival online, on their own screen.
+local function wrecked(car)
+  return car.wreck ~= nil or car.remoteWreck == true
+end
+
+-- Bits flying off the car at a point on it, out away from its middle. A wall
+-- throws them back the way they came instead, fanned out along it.
+local function shatter(car, lx, ly, count, offWall)
+  local wx, wy = toWorld(car, lx, ly)
+  local x, y = car.body:getPosition()
+  local nx, ny = wx - x, wy - y
+  local len = math.sqrt(nx * nx + ny * ny)
+  if len < 1e-6 then nx, ny, len = 1, 0, 1 end
+  local vx, vy = car.body:getLinearVelocity()
+  local away = offWall and -1 or 1
+  vfx.shatter(wx, wy, away * nx / len, away * ny / len, vx, vy, count, car.color, offWall and 1.4 or 1.1)
+end
+
+-- A contact at wx, wy in the world, strength being impulse / 9000, against a
+-- wall or another car. While wrecked, a hard one folds the car in further; it's
+-- also what a wreck is put down to.
+function view.hit(car, wx, wy, strength, wall)
+  local fx = fxOf(car)
+  local lx, ly = toLocal(car, wx, wy)
+  local last = fx.lastHit
+  if not last or fx.clock - last.at > HIT_MEMORY or strength >= last.strength then
+    fx.lastHit = { x = lx, y = ly, strength = strength, at = fx.clock }
+  end
+  if strength < HIT_DEBRIS then return end
+  if fx.wrecked then
+    damage.dent(fx.dents, lx, ly, math.min(0.4, strength * 0.25))
+    fx.dentsChanged = true
+  end
+  if fx.clock - fx.debrisAt >= DEBRIS_GAP then
+    fx.debrisAt = fx.clock
+    shatter(car, lx, ly, math.min(8, 2 + strength * 3), wall)
+  end
+end
+
+-- The wreck begins: the car folds in at the hit, bursts into smoke and throws bits.
+local function startWreck(car, fx)
+  local last = fx.lastHit
+  local lx, ly
+  if last and fx.clock - last.at <= HIT_MEMORY then
+    lx, ly = last.x, last.y
+  else
+    lx, ly = car.length / 2 / M, 0
+  end
+  fx.dents = {}
+  damage.dent(fx.dents, lx, ly, damage.wreckDepth(car.fenceHit))
+  fx.dentsChanged = true
+  local wx, wy = toWorld(car, lx * 0.6, ly * 0.6)
+  local vx, vy = car.body:getLinearVelocity()
+  vfx.smokeBurst(wx, wy, vx * 0.3, vy * 0.3, 14)
+  shatter(car, lx, ly, WRECK_DEBRIS, true)
+  fx.debrisAt = fx.clock
 end
 
 local function wheelFx(car, wheel, trail, speed)
@@ -76,6 +159,7 @@ end
 
 function view.updateFx(car, dt)
   local fx = fxOf(car)
+  fx.clock = fx.clock + dt
   local speed = car:getSpeed()
   local model = car.model
   for i = 1, 4 do wheelFx(car, model.wheels[i], fx.trails[i], speed) end
@@ -120,11 +204,38 @@ function view.updateFx(car, dt)
     end
   end
 
-  -- A wreck smokes from under the bonnet until it's put back on the road.
-  if car.wreck then
-    local front = car.length / 2 - 4
-    vfx.tyreSmoke(x + math.cos(a) * front, y + math.sin(a) * front, 0, 0, 0.8)
+  -- A wreck pours smoke from where it folded in until it's put back on the road,
+  -- and goes back whole.
+  if wrecked(car) and not fx.wrecked then
+    fx.wrecked = true
+    startWreck(car, fx)
+  elseif not wrecked(car) and fx.wrecked then
+    fx.wrecked = false
+    fx.dents = {}
+    fx.dentsChanged = true
   end
+  if fx.wrecked and fx.dents[1] then
+    fx.sootCarry = (fx.sootCarry or 0) + WRECK_SMOKE * dt
+    local count = math.floor(fx.sootCarry)
+    fx.sootCarry = fx.sootCarry - count
+    if count > 0 then
+      local d = fx.dents[1]
+      local wx, wy = toWorld(car, d.x * 0.6, d.y * 0.6)
+      local vx, vy = car.body:getLinearVelocity()
+      vfx.smokeBurst(wx, wy, vx * 0.3 + (love.math.random() - 0.5) * 30, vy * 0.3 + (love.math.random() - 0.5) * 30, count)
+    end
+  end
+end
+
+-- The body bent by its dents, or nil for a car in one piece.
+local function bentMesh(car, sprite)
+  local fx = car.fx
+  if not fx or not fx.dents[1] then return nil end
+  if fx.dentsChanged or not fx.mesh then
+    fx.mesh = damage.mesh(sprite, fx.dents, sprite.ppm, fx.mesh)
+    fx.dentsChanged = false
+  end
+  return fx.mesh
 end
 
 -- Drawing ----------------------------------------------------------------
@@ -232,10 +343,21 @@ function view.draw(car, x, y, angle, alpha)
   local roll = math.max(-1, math.min(1, model.ay / 12)) * 1.4
   local pitch = math.max(-1, math.min(1, -model.ax / 12)) * 1.4
   local c = car.color
+  local bent = bentMesh(car, sprite)
   love.graphics.setColor(c[1], c[2], c[3], alpha)
-  love.graphics.draw(sprite.paint, pitch, roll, 0, sprite.scale, sprite.scale, sprite.ox, sprite.oy)
+  if bent then
+    bent:setTexture(sprite.paint)
+    love.graphics.draw(bent, pitch, roll, 0, sprite.scale, sprite.scale, sprite.ox, sprite.oy)
+  else
+    love.graphics.draw(sprite.paint, pitch, roll, 0, sprite.scale, sprite.scale, sprite.ox, sprite.oy)
+  end
   love.graphics.setColor(1, 1, 1, alpha)
-  love.graphics.draw(sprite.detail, pitch, roll, 0, sprite.scale, sprite.scale, sprite.ox, sprite.oy)
+  if bent then
+    bent:setTexture(sprite.detail)
+    love.graphics.draw(bent, pitch, roll, 0, sprite.scale, sprite.scale, sprite.ox, sprite.oy)
+  else
+    love.graphics.draw(sprite.detail, pitch, roll, 0, sprite.scale, sprite.scale, sprite.ox, sprite.oy)
+  end
   love.graphics.pop()
 end
 

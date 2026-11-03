@@ -46,6 +46,9 @@ function RemoteDriver:update(car, race, dt)
   -- Their game put them back on the road, so they're a ghost there. Solid here,
   -- they'd be a stopped car on the racing line that only this driver can hit.
   if state.ghost and not stale then car:ghost(GHOST_HOLD) end
+  -- Wrecked on their screen: only for the smoke and the dent, as their game
+  -- judges the wreck itself.
+  car.remoteWreck = state.wreck and not stale or false
   if state.lowBeam ~= nil then car.lowBeam, car.highBeam = state.lowBeam, state.highBeam end
 
   -- Their own game counts their laps. A copy worked out from a smoothed position

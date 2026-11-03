@@ -401,6 +401,7 @@ function sprites.get(spec)
   local sprite = {
     scale = 12 / RES / SHARPNESS, -- canvas px to world px (see config.METER)
     ox = width / 2, oy = height / 2,
+    ppm = RES * SHARPNESS, -- canvas px per metre of car
     paint = layer(function() drawPaint(style, poly, hl, hw) end),
     detail = layer(function() drawDetails(style, hl, hw) end),
     shadow = layer(function()

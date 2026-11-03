@@ -1,8 +1,14 @@
 -- Particle effects. Each one is tuned to read clearly and then get out of
 -- the way: short-lived, soft, and capped so a pile-up can't fill the screen.
 local textures = require("src/render/textures")
+local config = require("src/config")
 
 local vfx = {}
+
+local M = config.METER
+local DEBRIS_MAX = 90     -- pieces of car on the ground at once
+local DEBRIS_GRAVITY = 14 -- m/s², a bit more than real, so pieces land smartly
+local DEBRIS_GRIP = 5     -- how quickly a piece slides to a stop on the ground
 
 local function newSystem(image, buffer)
   local ps = love.graphics.newParticleSystem(image, buffer)
@@ -73,6 +79,18 @@ function vfx.load(dustColor)
   core:setColors(0.3, 0.55, 1, 0.9, 0.15, 0.35, 1, 0.6, 0.1, 0.2, 0.9, 0)
   vfx.fireCore = core
 
+  -- Thick dark smoke from a wreck, heavier and slower to clear than tyre smoke.
+  local soot = newSystem(textures.smoke, 320)
+  soot:setParticleLifetime(0.9, 1.9)
+  soot:setSizes(0.3, 0.85, 1.5)
+  soot:setSizeVariation(0.5)
+  soot:setSpin(-0.5, 0.5)
+  soot:setRotation(0, math.pi * 2)
+  soot:setLinearDamping(1.4, 2.4)
+  soot:setColors(0.16, 0.15, 0.15, 0.0, 0.2, 0.19, 0.19, 0.4, 0.3, 0.29, 0.29, 0.22, 0.42, 0.41, 0.41, 0)
+  vfx.soot = soot
+
+  vfx.debris = {}
   vfx.density = 1
 end
 
@@ -118,6 +136,97 @@ function vfx.flame(x, y, vx, vy, count)
   vfx.fireCore:emit(math.ceil(count / 2))
 end
 
+-- A puff of dark smoke at x, y, drifting at vx, vy px/s.
+function vfx.smokeBurst(x, y, vx, vy, count)
+  aim(vfx.soot, x, y, vx, vy, 0.8)
+  vfx.soot:setSpread(math.pi * 2)
+  vfx.soot:emit(math.max(1, math.floor(count * vfx.density + 0.5)))
+end
+
+-- Bits of a car thrown off at x, y: outward along nx, ny, on top of the car's own
+-- velocity vx, vy (px/s), fanned spread radians either side. Most are paint,
+-- some black plastic, a few glass.
+function vfx.shatter(x, y, nx, ny, vx, vy, count, paint, spread)
+  local list = vfx.debris
+  local random = love.math.random
+  count = math.floor(count * vfx.density + 0.5)
+  for _ = 1, count do
+    local roll = random()
+    local color
+    if roll < 0.6 then
+      local shade = 0.75 + random() * 0.25
+      color = { paint[1] * shade, paint[2] * shade, paint[3] * shade }
+    elseif roll < 0.85 then
+      color = { 0.07, 0.07, 0.08 }
+    else
+      color = { 0.75, 0.88, 0.95 }
+    end
+    local out = (3 + random() * 9) * M
+    local turn = (random() * 2 - 1) * (spread or 1.1)
+    local dx = nx * math.cos(turn) - ny * math.sin(turn)
+    local dy = nx * math.sin(turn) + ny * math.cos(turn)
+    local size = roll < 0.85 and (0.25 + random() * 0.3) or (0.12 + random() * 0.12)
+    local piece = {
+      x = x, y = y, z = 0.4 + random() * 0.4,
+      vx = vx * (0.4 + random() * 0.3) + dx * out, vy = vy * (0.4 + random() * 0.3) + dy * out,
+      vz = 2 + random() * 4,
+      angle = random() * math.pi * 2, spin = (random() - 0.5) * 24,
+      w = size * M, h = size * (0.4 + random() * 0.5) * M,
+      color = color, age = 0, life = 2.5 + random() * 1.5,
+    }
+    if #list < DEBRIS_MAX then
+      list[#list + 1] = piece
+    else
+      list[random(#list)] = piece
+    end
+  end
+end
+
+local function updateDebris(dt)
+  local list = vfx.debris
+  local i = 1
+  while i <= #list do
+    local p = list[i]
+    p.age = p.age + dt
+    if p.age >= p.life then
+      list[i] = list[#list]
+      list[#list] = nil
+    else
+      if p.z > 0 or p.vz > 0 then
+        p.vz = p.vz - DEBRIS_GRAVITY * dt
+        p.z = p.z + p.vz * dt
+        if p.z <= 0 then
+          p.z = 0
+          -- One small bounce, then it skids.
+          if p.vz < -3 then p.vz = -p.vz * 0.3 else p.vz = 0 end
+          p.vx, p.vy, p.spin = p.vx * 0.6, p.vy * 0.6, p.spin * 0.5
+        end
+      else
+        local grip = math.exp(-DEBRIS_GRIP * dt)
+        p.vx, p.vy, p.spin = p.vx * grip, p.vy * grip, p.spin * grip
+      end
+      p.x, p.y = p.x + p.vx * dt, p.y + p.vy * dt
+      p.angle = p.angle + p.spin * dt
+      i = i + 1
+    end
+  end
+end
+
+local function drawDebris()
+  for _, p in ipairs(vfx.debris) do
+    -- Higher up is nearer the camera, so a little bigger.
+    local s = 1 + p.z * 0.35
+    local hw, hh = p.w * s / 2, p.h * s / 2
+    local c, sn = math.cos(p.angle), math.sin(p.angle)
+    local ax, ay = c * hw, sn * hw
+    local bx, by = -sn * hh, c * hh
+    local fade = math.min(1, (p.life - p.age) / 0.6)
+    love.graphics.setColor(p.color[1], p.color[2], p.color[3], fade)
+    love.graphics.polygon("fill", p.x + ax + bx, p.y + ay + by, p.x - ax + bx, p.y - ay + by,
+      p.x - ax - bx, p.y - ay - by, p.x + ax - bx, p.y + ay - by)
+  end
+end
+
 function vfx.update(dt)
   vfx.smoke:update(dt)
   vfx.dirt:update(dt)
@@ -125,13 +234,18 @@ function vfx.update(dt)
   vfx.pop:update(dt)
   vfx.fire:update(dt)
   vfx.fireCore:update(dt)
+  vfx.soot:update(dt)
+  updateDebris(dt)
 end
 
--- Ground-hugging smoke and dust.
+-- Ground-hugging smoke and dust, the bits of a crash, and the smoke over it.
 function vfx.draw()
   love.graphics.setColor(1, 1, 1, 1)
   love.graphics.draw(vfx.dirt)
   love.graphics.draw(vfx.smoke)
+  drawDebris()
+  love.graphics.setColor(1, 1, 1, 1)
+  love.graphics.draw(vfx.soot)
 end
 
 -- Anything that emits its own light, drawn into the scene and the glow pass.

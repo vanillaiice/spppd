@@ -145,6 +145,12 @@ h.describe("network", function()
     h.assertTrue(not network.unpackState(network.packState(stateOf({}))).ghost)
   end)
 
+  h.it("a rival wrecked on their screen is wrecked here too", function()
+    local s = network.unpackState(network.packState(stateOf({ wreck = true, horn = true })))
+    h.assertTrue(s.wreck and s.horn and not s.nitro and not s.ghost)
+    h.assertTrue(not network.unpackState(network.packState(stateOf({}))).wreck)
+  end)
+
   h.it("rejects malformed packets", function()
     h.assertEq(network.unpackState("sync|1|2"), nil)
     h.assertEq(network.unpackState("sync|a|b|c|d|e|f|g|h|i|j|k|l|m|n|o|p"), nil)
@@ -507,12 +513,13 @@ h.describe("network", function()
     h.assertTrue(fifth.message:find("started"), fifth.message)
 
     local car = fakeCar(5000)
+    car.wreck = 0.8
     h.assertTrue(pump(c, 2, function()
       c[1].sendCar(car)
       return c[2].peers[1].state and c[3].peers[1].state and c[4].peers[1].state
     end), "a car should reach everyone")
     h.assertEq(c[4].peers[1].state.distance, 5000)
-    h.assertTrue(c[4].peers[1].state.nitro, "flags and all")
+    h.assertTrue(c[4].peers[1].state.nitro and c[4].peers[1].state.wreck, "flags and all")
     h.assertEq(c[4].peers[1].state.slide, 0.5)
 
     c[3].disconnect()

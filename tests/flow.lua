@@ -187,6 +187,7 @@ local function steps()
   step(25, function()
     local car = rm.race().player
     expect(car.wreck, "a hard hit on a fence wrecks the car")
+    expect(car.fx and car.fx.dents[1] and car.fx.mesh, "the wreck folds the body in")
     flow.wreckIndex = car.wreckIndex
     love.graphics.captureScreenshot("flow-wreck.png")
     love.keypressed("w", "w", false)
@@ -201,6 +202,7 @@ local function steps()
     local car = rm.race().player
     expect(not car.wreck and car.trackIndex == flow.wreckIndex, "it goes back to the road where it hit")
     expect(car.ghostTimer > 0 and car:getSpeed() < 3, "stopped, and out of the way of the traffic")
+    expect(not car.fx.dents[1], "and goes back in one piece")
     love.graphics.captureScreenshot("flow-recovered.png")
     love.keypressed("w", "w", false)
   end)
