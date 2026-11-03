@@ -20,6 +20,13 @@ function love.conf(t)
   t.modules.video = false
   -- Without this a phone's tilt sensor shows up as a joystick.
   t.accelerometerjoystick = false
+  -- SPPPD_SIZE=576x1024 opens a fixed window of that size, e.g. portrait for Shorts.
+  local w, h = (os.getenv("SPPPD_SIZE") or ""):match("^(%d+)x(%d+)$")
+  if w then
+    t.window.width, t.window.height = tonumber(w), tonumber(h)
+    t.window.minwidth, t.window.minheight = 1, 1
+    t.window.resizable = false
+  end
   if love._os == "Android" or love._os == "iOS" then
     t.window.fullscreen = true
     -- A resizable window lets the phone rotate, which Android then letterboxes.
