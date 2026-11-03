@@ -68,4 +68,46 @@ h.describe("cheats", function()
     local _, tail = audio.hornTuneNote(0.125)
     h.assertTrue(not tail)
   end)
+
+  h.it("a tap of the tune horn plays the whole song, once", function()
+    local car = { hornTune = true, horn = true }
+    local dt = 1 / 60
+    audio.hornStep(car, dt)
+    h.assertTrue(car.hornSounding)
+    car.horn = false
+    local played, t = 0, dt
+    while car.tuneTime do
+      audio.hornStep(car, dt)
+      if car.hornSounding then played = played + dt end
+      t = t + dt
+    end
+    h.assertNear(t, audio.hornTuneLength(), 2 * dt)
+    h.assertTrue(played > audio.hornTuneLength() * 0.5, "sounded for " .. played)
+    audio.hornStep(car, dt)
+    h.assertTrue(not car.hornSounding, "silent once it's over")
+  end)
+
+  h.it("a held tune horn plays the song again, and the plain horn just honks", function()
+    local car = { hornTune = true, horn = true }
+    for _ = 1, math.ceil(audio.hornTuneLength() * 60) + 2 do audio.hornStep(car, 1 / 60) end
+    h.assertTrue(car.tuneTime and car.tuneTime < 0.1, "started over")
+    local plain = { horn = true }
+    audio.hornStep(plain, 1 / 60)
+    h.assertEq(plain.hornRatio, 1)
+    h.assertTrue(plain.hornSounding)
+  end)
+
+  h.it("other drivers learn about the cheats, and older games ignore it", function()
+    local network = require("src/network_manager")
+    local packet = network.packLook({ round = 4, neon = true, tune = false, flames = 2, flameLeft = 2.5 })
+    local look = network.unpackLook(packet)
+    h.assertEq(look.round, 4)
+    h.assertTrue(look.neon and not look.tune)
+    h.assertEq(look.flames, 2)
+    h.assertNear(look.flameLeft, 2.5, 0.01)
+    h.assertEq(network.unpackLook("look|1|2|0|0|0"), nil)
+    h.assertEq(network.unpackLook("look|1|1|1|1|999").flameLeft, 5)
+    -- A game from before reads only the packets it knows.
+    h.assertEq(network.unpackState(packet), nil)
+  end)
 end)

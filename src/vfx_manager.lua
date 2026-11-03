@@ -56,7 +56,7 @@ function vfx.load(dustColor)
   -- own, because the particles pile up under additive blending.
   local flame = newSystem(textures.smoke, 360)
   flame:setParticleLifetime(0.08, 0.22)
-  flame:setSizes(0.18, 0.34, 0.26, 0.06)
+  flame:setSizes(0.08, 0.26, 0.22, 0.05)
   flame:setSizeVariation(0.4)
   flame:setSpin(-3, 3)
   flame:setRotation(0, math.pi * 2)
@@ -68,7 +68,7 @@ function vfx.load(dustColor)
   -- there, so this one is laid over the top with plain blending to stay blue.
   local core = newSystem(textures.smoke, 160)
   core:setParticleLifetime(0.07, 0.14)
-  core:setSizes(0.2, 0.26, 0.08)
+  core:setSizes(0.13, 0.21, 0.07)
   core:setSizeVariation(0.3)
   core:setColors(0.3, 0.55, 1, 0.9, 0.15, 0.35, 1, 0.6, 0.1, 0.2, 0.9, 0)
   vfx.fireCore = core

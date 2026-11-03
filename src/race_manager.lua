@@ -29,6 +29,7 @@ local rm = {}
 local M = config.METER
 local DT = config.PHYSICS_DT
 local SCRAPE_FADE = 12  -- per second, so a car off the wall is silent in 0.08 s
+local LOOK_INTERVAL = 0.5  -- seconds between telling the others about our cheats
 local CRASH_SOUND = 3   -- a wreck is always the biggest crash, however heavy the car
 
 local session -- everything that belongs to the current race
@@ -206,12 +207,20 @@ function rm.setToast(text, color, seconds, size)
   session.toast = { text = text, color = color, time = seconds or 2.5, size = size }
 end
 
+-- Lights the player's exhaust, and tells the others at once.
+local function lightFlames()
+  car_view.flames(session.race.player, cheats.FLAME_TIME)
+  session.flamesLit = (session.flamesLit or 0) + 1
+  session.lookTimer = 0
+end
+
 -- A cheat code typed in the race. Flames go off at once; a toggle says so.
 function rm.cheat(effect, label)
   if not session or session.demo then return end
+  session.lookTimer = 0
   if effect == "flames" then
     cheats.takeFlames()
-    car_view.flames(session.race.player, cheats.FLAME_TIME)
+    lightFlames()
   else
     rm.setToast(label, colors.marshal, 1.6)
   end
@@ -473,6 +482,24 @@ local function updateOnline(dt)
     session.netTimer = 1 / 20
     network.sendCar(race.player)
   end
+  session.lookTimer = (session.lookTimer or 0) - dt
+  if session.lookTimer <= 0 then
+    session.lookTimer = LOOK_INTERVAL
+    local fx = race.player.fx
+    network.sendLook({ neon = settings.neon, tune = settings.tuneHorn, flames = session.flamesLit or 0,
+      flameLeft = fx and fx.flameTime or 0 })
+  end
+  -- The others' cheats, as their games last said.
+  for _, car in ipairs(race.cars) do
+    local look = car ~= race.player and car.slot and network.lookOf(car.slot)
+    if look then
+      car.neon, car.hornTune = look.neon, look.tune
+      if look.flames > (car.flamesLit or 0) and look.flameLeft > 0 then
+        car_view.flames(car, look.flameLeft)
+      end
+      car.flamesLit = look.flames
+    end
+  end
 
   for _, slot in ipairs(network.takeDepartures()) do
     local car = carInSeat(race, slot)
@@ -518,7 +545,7 @@ function rm.update(dt)
         race.justStarted = false
         audio.play("go", 0.7)
         -- A flame code entered in the menus goes off with the lights.
-        if cheats.takeFlames() then car_view.flames(race.player, cheats.FLAME_TIME) end
+        if cheats.takeFlames() then lightFlames() end
         local launch = race.player.model.launch
         if launch >= 0.85 then
           rm.setToast("PERFECT START", colors.sectorGreen, 1.6)
@@ -547,8 +574,8 @@ function rm.update(dt)
 
   if not session.demo then
     local player = race.player
-    player.neon = settings.neon
-    audio.hornTune = settings.tuneHorn
+    player.neon, player.hornTune = settings.neon, settings.tuneHorn
+    for _, car in ipairs(race.cars) do audio.hornStep(car, dt) end
     local rival, nearest
     for _, car in ipairs(race.cars) do
       if car ~= player then

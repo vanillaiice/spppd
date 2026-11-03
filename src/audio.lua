@@ -426,14 +426,14 @@ function audio.flameData()
   return bandNoise(FLAME, 1.5, 0.25)
 end
 
--- Where the tune horn is, t seconds into holding it: the pitch as a ratio of the
--- horn's own, and whether a note is sounding.
 function audio.hornTuneLength()
   local length = 0
   for _, note in ipairs(HORN_TUNE) do length = length + note[2] end
   return length
 end
 
+-- Where the tune horn is, t seconds into the song: the pitch as a ratio of the
+-- horn's own, and whether a note is sounding.
 function audio.hornTuneNote(t)
   t = t % audio.hornTuneLength()
   for _, note in ipairs(HORN_TUNE) do
@@ -444,6 +444,27 @@ function audio.hornTuneNote(t)
     t = t - note[2]
   end
   return 1, false
+end
+
+-- Steps one car's horn and leaves what it plays in car.hornRatio and
+-- car.hornSounding. With the tune on, a press plays the whole song, a press during
+-- it changes nothing, and a horn still held at the end plays it again.
+function audio.hornStep(car, dt)
+  if not car.hornTune then
+    car.tuneTime = nil
+    car.hornRatio, car.hornSounding = 1, car.horn
+    return
+  end
+  if not car.tuneTime then
+    if not car.horn then
+      car.hornRatio, car.hornSounding = 1, false
+      return
+    end
+    car.tuneTime = 0
+  end
+  car.hornRatio, car.hornSounding = audio.hornTuneNote(car.tuneTime)
+  car.tuneTime = car.tuneTime + dt
+  if car.tuneTime >= audio.hornTuneLength() then car.tuneTime = car.horn and 0 or nil end
 end
 
 -- Air, then a whistle for each turbo. Each has a whole number of cycles in the loop
@@ -1339,8 +1360,13 @@ local function updateRival(dt, rival, rivalDistance)
     audio.rivalMotor:setPitch(audio.motorPitch(math.min(1.1, rival.model.rpm / rival.spec.redline)))
   end
   fadeTo(audio.rivalMotor, motorLevel, dt, 3)
-  if rival then audio.rivalHorn:setPitch(audio.hornPitch(rival.spec)) end
-  fadeTo(audio.rivalHorn, rival and rival.horn and near * HORN_LEVEL or 0, dt, HORN_FADE)
+  local rivalHorn = false
+  if rival then
+    audio.rivalHorn:setPitch(audio.hornPitch(rival.spec) * (rival.hornRatio or 1))
+    rivalHorn = rival.hornSounding
+    if rivalHorn == nil then rivalHorn = rival.horn end
+  end
+  fadeTo(audio.rivalHorn, rivalHorn and near * HORN_LEVEL or 0, dt, HORN_FADE)
   for key, engine in pairs(audio.engines) do
     local level = 0
     if voice and voice.key == key then
@@ -1387,16 +1413,9 @@ function audio.update(dt, car, rival, rivalDistance)
   audio.nitro:setPitch(audio.nitroPitch(tank))
   local gas = boosting and audio.boostKind(spec) == "gas" and audio.nitroLevel(tank) or 0
   fadeTo(audio.nitro, gas, dt, gas > 0 and NITRO_IN or NITRO_OUT)
-  local hornPitch, hornOn = audio.hornPitch(spec), car.horn
-  if audio.hornTune and car.horn then
-    local held = audio.tuneTime or 0
-    local ratio, sounding = audio.hornTuneNote(held)
-    hornPitch, hornOn = hornPitch * ratio, sounding
-    audio.tuneTime = held + dt
-  else
-    audio.tuneTime = 0  -- each press starts the tune again
-  end
-  audio.horn:setPitch(hornPitch)
+  audio.horn:setPitch(audio.hornPitch(spec) * (car.hornRatio or 1))
+  local hornOn = car.hornSounding
+  if hornOn == nil then hornOn = car.horn end
   fadeTo(audio.horn, hornOn and HORN_LEVEL or 0, dt, HORN_FADE)
   local fire = car.fx and car.fx.flameTime or 0
   local flame = FLAME_LEVEL * math.min(1, fire / FLAME_FADE)

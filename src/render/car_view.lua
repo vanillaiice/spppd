@@ -8,10 +8,13 @@ local skids = require("src/skid_manager")
 local view = {}
 
 local M = config.METER
-local FLAME_RATE = 110     -- particles a second at full strength
+local FLAME_RATE = 80      -- particles a second from each pipe at full strength
 local FLAME_JET = 260      -- px/s the fire leaves the exhaust, on top of the car's speed
 local FLAME_TAPER = 0.4    -- seconds it takes to die away at the end
 local FLAME_CRACKLE = 6    -- pops a second, on average
+-- The two pipes the flame cheat puts out the back: how far past the bumper they
+-- reach, where they start under it, how far apart and how wide, in metres.
+local PIPE_OUT, PIPE_IN, PIPE_SPREAD, PIPE_WIDTH = 0.45, 0.25, 0.32, 0.3
 local NEON_PULSE = 2.2     -- radians a second
 
 -- Per-frame effects ------------------------------------------------------
@@ -28,6 +31,11 @@ end
 
 local function flaming(car)
   return car.fx and car.fx.flameTime and car.fx.flameTime > 0
+end
+
+-- The pipe ends, in the car's own frame: side is -1 or 1.
+local function pipeTip(car, side)
+  return -car.length / 2 - PIPE_OUT * M, side * car.width / 2 * PIPE_SPREAD * 2
 end
 
 -- The neon cheat's colour: the paint at full strength, or cyan for a grey car.
@@ -101,10 +109,15 @@ function view.updateFx(car, dt)
     fx.flameCarry = (fx.flameCarry or 0) + FLAME_RATE * strength * vfx.density * dt
     local count = math.floor(fx.flameCarry)
     fx.flameCarry = fx.flameCarry - count
-    if count > 0 then
-      vfx.flame(ex, ey, vx + math.cos(back) * jet, vy + math.sin(back) * jet, count)
+    local ca, sa = math.cos(a), math.sin(a)
+    for side = -1, 1, 2 do
+      local px, py = pipeTip(car, side)
+      local tx, ty = x + px * ca - py * sa, y + px * sa + py * ca
+      if count > 0 then
+        vfx.flame(tx, ty, vx + math.cos(back) * jet, vy + math.sin(back) * jet, count)
+      end
+      if love.math.random() < dt * FLAME_CRACKLE / 2 then vfx.backfire(tx, ty, back) end
     end
-    if love.math.random() < dt * FLAME_CRACKLE then vfx.backfire(ex, ey, back) end
   end
 
   -- A wreck smokes from under the bonnet until it's put back on the road.
@@ -176,6 +189,19 @@ local function drawSlipstream(car, alpha)
   end
 end
 
+-- The flame cheat's two pipes, poking out from under the back bumper.
+local function drawPipes(car, alpha)
+  local w = PIPE_WIDTH * M
+  for side = -1, 1, 2 do
+    local tipX, py = pipeTip(car, side)
+    local fromX = -car.length / 2 + PIPE_IN * M
+    love.graphics.setColor(0.32, 0.32, 0.35, alpha)
+    love.graphics.rectangle("fill", tipX, py - w / 2, fromX - tipX, w, w / 3)
+    love.graphics.setColor(0.08, 0.06, 0.06, alpha)
+    love.graphics.rectangle("fill", tipX, py - w / 3, w / 3, w * 2 / 3)
+  end
+end
+
 function view.draw(car, x, y, angle, alpha)
   alpha = alpha or 1
   if car.ghostTimer > 0 then alpha = alpha * (0.4 + 0.25 * math.sin(car.ghostTimer * 22)) end
@@ -194,12 +220,13 @@ function view.draw(car, x, y, angle, alpha)
     local pulse = 0.85 + 0.15 * math.sin(love.timer.getTime() * NEON_PULSE)
     love.graphics.setBlendMode("add")
     love.graphics.setColor(r, g, b, pulse * alpha)
-    love.graphics.draw(blob, 0, 0, 0, car.length * 1.6 / blob:getWidth(), car.width * 3 / blob:getHeight(),
+    love.graphics.draw(blob, 0, 0, 0, car.length * 2.3 / blob:getWidth(), car.width * 4.6 / blob:getHeight(),
       blob:getWidth() / 2, blob:getHeight() / 2)
     love.graphics.setBlendMode("alpha")
   end
   local shift = sprites.layout(car.spec)
   for i = 1, 4 do drawWheel(model.wheels[i], model.steer, shift) end
+  if flaming(car) then drawPipes(car, alpha) end
 
   -- The body leans a pixel or two against the suspension.
   local roll = math.max(-1, math.min(1, model.ay / 12)) * 1.4
@@ -245,8 +272,11 @@ function view.drawLamps(car, x, y, angle)
     lamp(x, y, angle, hl * head[1], hw * head[2], 1, 0.96, 0.82, b, 2.6 * M)
   end
   if flaming(car) then
-    local flicker = 0.6 + 0.4 * love.math.random()
-    lamp(x, y, angle, -hl - 0.4 * M, 0, 1, 0.45, 0.1, flicker * 0.6, 3 * M)
+    for side = -1, 1, 2 do
+      local px, py = pipeTip(car, side)
+      local flicker = 0.6 + 0.4 * love.math.random()
+      lamp(x, y, angle, px, py, 1, 0.45, 0.1, flicker * 0.5, 2.2 * M)
+    end
   end
 end
 
@@ -280,7 +310,7 @@ function view.drawBeams(car, x, y, angle, beams)
   if car.neon then
     local r, g, b = neonColor(car)
     love.graphics.setColor(r * 0.6, g * 0.6, b * 0.6, 1)
-    love.graphics.draw(glow, x, y, angle, s * 0.75, s * 0.45, 32, 32)
+    love.graphics.draw(glow, x, y, angle, s * 1.1, s * 0.7, 32, 32)
   end
 end
 

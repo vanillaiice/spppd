@@ -105,6 +105,22 @@ function network.unpackState(str)
   return out
 end
 
+-- Cheat codes that change how a car looks or sounds: neon, the tune horn, and the
+-- flames, as a count of how many times they've been lit and the seconds left on
+-- the last. A packet of its own, so a game without them ignores it, and sent twice
+-- a second, so a lost one costs half a second of fire at most.
+function network.packLook(l)
+  return string.format("look|%d|%d|%d|%d|%.2f", l.round or 0, l.neon and 1 or 0, l.tune and 1 or 0,
+    l.flames or 0, l.flameLeft or 0)
+end
+
+function network.unpackLook(str)
+  local round, neon, tune, flames, left = str:match("^look|(%d+)|([01])|([01])|(%d+)|([%d%.]+)$")
+  if not round then return nil end
+  return { round = tonumber(round), neon = neon == "1", tune = tune == "1", flames = tonumber(flames),
+    flameLeft = math.min(5, tonumber(left) or 0) }
+end
+
 -- Who I am, what I've got and what I want: car, paint, whether I hold the track,
 -- the round I'm ready to start, and the round I've asked for.
 function network.packHello(h)
@@ -239,7 +255,7 @@ local function beginRound(round)
   network.pending = true
   -- Whoever left before now isn't on this grid, and their seat may be someone else's.
   network.departures = {}
-  for _, peer in pairs(network.peers) do peer.state = nil end
+  for _, peer in pairs(network.peers) do peer.state, peer.look = nil, nil end
 end
 
 function network.startRace()
@@ -500,6 +516,9 @@ local function handlePeer(from, data)
       peer.seq = s.seq
       peer.state = s
     end
+  elseif kind == "look" then
+    local look = network.unpackLook(data)
+    if look and look.round == network.round then peer.look = look end
   elseif kind == "hello" then
     local hello = network.unpackHello(data)
     if hello then
@@ -614,6 +633,18 @@ function network.update(dt)
       connectionLost("Lost the connection to the server")
     end
   end
+end
+
+function network.sendLook(look)
+  if not network.udp or network.status ~= "racing" then return end
+  look.round = network.round
+  send(network.packLook(look))
+end
+
+-- How one driver's car looks, or nil if their game hasn't said.
+function network.lookOf(slot)
+  local peer = network.peers[slot]
+  return peer and peer.look
 end
 
 -- The freshest state from one driver and how old it is, in seconds.
