@@ -16,6 +16,7 @@ local settings = {
   showFps = false,
   fullscreen = false,
   touch = "auto",
+  touchSteer = "stick",  -- or "buttons"
   autoGas = true,
   vibration = true,
   tuneHorn = false,  -- cheat codes, see src/cheats.lua

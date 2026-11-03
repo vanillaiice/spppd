@@ -50,6 +50,44 @@ local function thumbOn(bot)
   return thumb
 end
 
+-- Puts a keyboard-style bot through the on-screen buttons: one thumb on the
+-- arrows, rocking or lifting, and the other on brake.
+local function buttonsOn(bot)
+  local thumb = {}
+  local layout = touch.layout(1280, 720)
+  local function find(action)
+    for _, b in ipairs(layout.buttons) do
+      if b.action == action then return b end
+    end
+  end
+  local left, right, brake = find("steerLeft"), find("steerRight"), find("brake")
+  local side, braking = 0, false
+  function thumb.update(_, car, race, dt)
+    bot:update(car, race, dt)
+    local want = car.input
+    local steer = want.steer > 0 and 1 or (want.steer < 0 and -1 or 0)
+    if steer ~= side then
+      if side ~= 0 and steer ~= 0 then
+        local to = steer < 0 and left or right
+        touch.moved(1, to.x, to.y)
+      elseif steer == 0 then
+        touch.released(1)
+      else
+        local to = steer < 0 and left or right
+        touch.pressed(1, to.x, to.y, 1280, 720)
+      end
+      side = steer
+    end
+    if (want.brake > 0) ~= braking then
+      braking = want.brake > 0
+      if braking then touch.pressed(2, brake.x, brake.y, 1280, 720) else touch.released(2) end
+    end
+    input.applyTo(want, false)
+    touch.applyTo(want)
+  end
+  return thumb
+end
+
 -- Drive the player with a bot and report how the laps went.
 local function botLaps(entry, spec, laps, opts)
   opts = opts or {}
@@ -139,6 +177,24 @@ h.describe("race", function()
       end
       touch.reset()
       settings.touch = "auto"
+    end)
+
+    h.it("a thumb on the buttons can lap " .. entry.name .. " on auto gas", function()
+      input.clear()
+      touch.reset()
+      settings.touch, settings.autoGas, settings.touchSteer = "on", true, "buttons"
+      for _, spec in ipairs(garage) do
+        local r = botLaps(entry, spec, 2, { thumb = buttonsOn, digital = true, reaction = 0.05, skill = 0.9 })
+        print(string.format("        %-10s %-15s lap %.1fs  off %.1fs  respawns %d  crashes %d",
+          entry.name, spec.name, r.last or -1, r.offSeconds, r.respawns, r.crashes))
+        touch.reset()
+        h.assertTrue(r.finished, spec.name .. " did not finish, laps " .. r.laps)
+        h.assertEq(r.respawns, 0, spec.name .. " needed respawns")
+        h.assertTrue(r.offSeconds < r.time * 0.25,
+          string.format("%s off the road for %.0f of %.0f s", spec.name, r.offSeconds, r.time))
+      end
+      touch.reset()
+      settings.touch, settings.touchSteer = "auto", "stick"
     end)
 
     h.it("a manual car shifts for itself after the flag on " .. entry.name, function()

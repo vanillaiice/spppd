@@ -1165,6 +1165,15 @@ With AUTO GAS on, the car accelerates by itself and the stick only brakes. Stick
 revs at the lights, past a deadzone of 0.3. Touch always forces the automatic gearbox,
 because there are no shift buttons.
 
+TOUCH STEERING (`settings.touchSteer`) swaps the stick for buttons. The left and right
+arrows press the keyboard's steering keys, so they wind on through the same filter as
+the arrow keys. A thumb anywhere on the left half steers towards its side of the
+line between the arrows, and can rock across without lifting. BRAKE sits above DRIFT,
+out of the dash's row, which is too narrow on 16:9 phones. Without AUTO GAS, GAS takes
+the corner and BOOST moves beside BRAKE. An action held by two fingers is let go only
+when the last one lifts. `layout.buttons[1..5]` keep their order in both layouts
+(boost, drift, pause, reset, horn), because `tests/flow.lua` picks them by index.
+
 `touch.shown()` is true when the setting is `on`, or when it's `auto` and a touch has
 been seen. A key press or pad button in a race hands back.
 

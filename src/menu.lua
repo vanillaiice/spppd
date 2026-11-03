@@ -319,6 +319,8 @@ local function settingsRows()
     toggle("MINIMAP", "minimap"),
     toggle("SHOW FPS", "showFps"),
     toggle("AUTO GAS", "autoGas"),
+    stepper("TOUCH STEERING", function() return settings.touchSteer end,
+      function(v) settings.touchSteer = v end, { "stick", "buttons" }, { stick = "STICK", buttons = "BUTTONS" }),
     toggle("VIBRATION", "vibration"),
   }
   -- A phone always has the touch controls and always fills the screen.
@@ -557,7 +559,13 @@ local function drawControls(sw, sh, s, w)
     { "RESET TO TRACK", "R" }, { "CAMERA", "C" }, { "SHIFT GEARS", "Q E" }, { "NEXT SONG", "N" },
     { "HORN", "H" }, { "PAUSE", "ESC / P" },
   }
-  if ui.mobile then
+  if ui.mobile and settings.touchSteer == "buttons" then
+    rows = {
+      { "STEER", "LEFT, RIGHT" }, { "ACCELERATE", settings.autoGas and "AUTO" or "HOLD GAS" },
+      { "BRAKE, REVERSE", "HOLD BRAKE" }, { "DRIFT", "HOLD DRIFT" }, { "BOOST", "TAP BOOST" },
+      { "HORN, RESET, PAUSE", "TOP RIGHT" },
+    }
+  elseif ui.mobile then
     rows = {
       { "STEER", "STICK" }, { "ACCELERATE", "AUTO, OR STICK UP" }, { "BRAKE, REVERSE", "STICK DOWN" },
       { "DRIFT", "HOLD DRIFT" }, { "BOOST", "TAP BOOST" }, { "HORN, RESET, PAUSE", "TOP RIGHT" },

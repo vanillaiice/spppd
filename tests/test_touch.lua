@@ -11,6 +11,7 @@ local function fresh(mode)
   touch.reset()
   settings.touch = mode or "on"
   settings.autoGas = true
+  settings.touchSteer = "stick"
   return { steer = 0, throttle = 0, brake = 0 }
 end
 
@@ -207,17 +208,129 @@ h.describe("touch", function()
     touch.released(1)
   end)
 
+  -- Every layout on desktop sizes and phones, 16:9 and 20:9, in LÖVE's units.
+  local function eachLayout(fn)
+    local sizes = { { 640, 480 }, { 800, 360 }, { 1280, 720 }, { 2400, 1080 }, { 640, 360, true }, { 853, 384, true } }
+    for _, steer in ipairs({ "stick", "buttons" }) do
+      for _, gas in ipairs({ true, false }) do
+        for _, size in ipairs(sizes) do
+          settings.touchSteer, settings.autoGas, ui.mobile = steer, gas, size[3] or false
+          fn(touch.layout(size[1], size[2]), size[1], size[2],
+            string.format("%s %s %dx%d", steer, gas and "auto gas" or "gas", size[1], size[2]))
+        end
+      end
+    end
+    settings.touchSteer, settings.autoGas, ui.mobile = "stick", true, false
+  end
+
   h.it("buttons don't overlap, even with their slop", function()
-    for _, size in ipairs({ { 640, 480 }, { 800, 360 }, { 1280, 720 }, { 2400, 1080 } }) do
-      local list = touch.layout(size[1], size[2]).buttons
+    eachLayout(function(layout, _, _, name)
+      local list = layout.buttons
       for i = 1, #list do
         for j = i + 1, #list do
           local a, b = list[i], list[j]
           local d = math.sqrt((a.x - b.x) ^ 2 + (a.y - b.y) ^ 2)
-          h.assertTrue(d > a.r + b.r, a.action .. " overlaps " .. b.action)
+          h.assertTrue(d > a.r + b.r, a.action .. " overlaps " .. b.action .. " on " .. name)
         end
       end
-    end
+    end)
+  end)
+
+  h.it("buttons stay off the dash and on the screen", function()
+    eachLayout(function(layout, sw, sh, name)
+      local s = layout.s
+      local dw, dh = 112 * s, 44 * s
+      local dx, dy = (sw - dw) / 2, sh - dh - 8 * s
+      for _, b in ipairs(layout.buttons) do
+        local nx = math.max(dx, math.min(b.x, dx + dw))
+        local ny = math.max(dy, math.min(b.y, dy + dh))
+        h.assertTrue((b.x - nx) ^ 2 + (b.y - ny) ^ 2 > b.r ^ 2, b.action .. " covers the dash on " .. name)
+        h.assertTrue(b.x - b.r >= 0 and b.x + b.r <= sw and b.y - b.r >= 0 and b.y + b.r <= sh,
+          b.action .. " off the screen on " .. name)
+      end
+    end)
+  end)
+
+  h.it("with buttons, a thumb anywhere on the left steers to its side", function()
+    fresh()
+    settings.touchSteer = "buttons"
+    local layout = touch.layout(SW, SH)
+    touch.pressed(1, 20, 300, SW, SH)
+    h.assertEq(touch.stick, nil, "no stick")
+    local t = { steer = 0, throttle = 0, brake = 0 }
+    input.applyTo(t)
+    touch.applyTo(t)
+    h.assertEq(t.steer, -1)
+    h.assertTrue(t.keyboard, "winds on like the arrow keys")
+    h.assertEq(t.throttle, 1, "auto gas")
+    touch.released(1)
+    touch.pressed(1, layout.divide + 40, SH - 20, SW, SH)
+    h.assertEq(apply().steer, 1)
+    touch.released(1)
+    h.assertEq(apply().steer, 0, "let go, straight")
+  end)
+
+  h.it("a steering thumb rocks across without lifting", function()
+    fresh()
+    settings.touchSteer = "buttons"
+    local layout = touch.layout(SW, SH)
+    touch.pressed(1, layout.divide - 30, SH - 40, SW, SH)
+    h.assertEq(apply().steer, -1)
+    touch.moved(1, layout.divide + 30, SH - 40)
+    h.assertEq(apply().steer, 1)
+    h.assertTrue(not input.isDown("steerLeft"), "left let go")
+    touch.moved(1, layout.divide - 30, SH - 40)
+    h.assertEq(apply().steer, -1)
+    touch.released(1)
+    h.assertEq(apply().steer, 0)
+  end)
+
+  h.it("two thumbs on one arrow: lifting one keeps it held", function()
+    fresh()
+    settings.touchSteer = "buttons"
+    touch.pressed(1, 20, SH - 40, SW, SH)
+    touch.pressed(2, 30, SH - 100, SW, SH)
+    touch.released(1)
+    h.assertEq(apply().steer, -1)
+    touch.released(2)
+    h.assertEq(apply().steer, 0)
+  end)
+
+  h.it("brake lifts auto gas and steering keeps working", function()
+    fresh()
+    settings.touchSteer = "buttons"
+    local b = button("brake")
+    touch.pressed(1, 20, SH - 40, SW, SH)
+    touch.pressed(2, b.x, b.y, SW, SH)
+    local t = apply()
+    h.assertEq(t.brake, 1)
+    h.assertEq(t.throttle, 0)
+    h.assertEq(t.steer, -1)
+    touch.released(2)
+    h.assertEq(apply().throttle, 1)
+    touch.reset()
+    h.assertTrue(not input.isDown("steerLeft"), "reset lets go of steering")
+  end)
+
+  h.it("without auto gas the buttons get a gas pedal", function()
+    fresh()
+    settings.touchSteer, settings.autoGas = "buttons", false
+    h.assertEq(apply().throttle, 0)
+    local b = button("throttle")
+    touch.pressed(1, b.x, b.y, SW, SH)
+    h.assertEq(apply().throttle, 1)
+    h.assertEq(touch.revs(), 0, "the gas button revs through the keyboard's own throttle")
+    h.assertEq(input.throttle(), 1)
+    touch.released(1)
+    h.assertEq(apply().throttle, 0)
+    settings.autoGas = true
+  end)
+
+  h.it("the stick layout has no steering or pedal buttons", function()
+    fresh()
+    h.assertEq(button("steerLeft"), nil)
+    h.assertEq(button("brake"), nil)
+    h.assertEq(touch.layout(SW, SH).divide, nil)
   end)
 
   h.it("reset lets go of everything", function()

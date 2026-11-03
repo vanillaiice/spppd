@@ -118,6 +118,16 @@ local SCENES = {
     touch.pressed(1, 150, sh * 0.7, sw, sh)
     touch.moved(1, 150 + layout.radius * 0.7, sh * 0.7 + layout.radius * 0.5)
   end,
+  touchbuttons = function()
+    phone()
+    settings.touchSteer = "buttons"
+    settings.autoGas = os.getenv("SPPPD_AUTOGAS") ~= "off"
+    race({ track = "mirage", time = "day" })
+    autopilot()
+    local touch = require("src/touch")
+    local sw, sh = love.graphics.getDimensions()
+    touch.pressed(1, 40, sh - 40, sw, sh)
+  end,
   phonemain = function() phone() menu.enter() end,
   phonesetup = function() phone() menu.enter() settings.mode = "race" menu.go("setup") end,
   phonesettings = function() phone() menu.enter() menu.go("settings") end,

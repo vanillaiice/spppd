@@ -1,6 +1,7 @@
--- On-screen driving controls: a stick that appears under the left thumb and
--- buttons under the right. The buttons press the same bindings as the keyboard,
--- so a touch is just another pair of hands.
+-- On-screen driving controls: a stick that appears under the left thumb, or
+-- left and right buttons in its place, and buttons under the right. The buttons
+-- press the same bindings as the keyboard, so a touch is just another pair of
+-- hands, and button steering winds on as smoothly as the arrow keys.
 local ui = require("src/ui")
 local input = require("src/input")
 local colors = require("src/colors")
@@ -19,26 +20,68 @@ function touch.shown()
   return settings.touch == "auto" and touch.active
 end
 
+function touch.buttons()
+  return settings.touchSteer == "buttons"
+end
+
 -- Nitro sits under the resting right thumb with drift just inside it. Reset, pause
 -- and the horn are up top, where a thumb won't hit them by accident.
+--
+-- With buttons, brake sits above drift, clear of the dash's row, and the left
+-- thumb rocks between two arrows. Without auto gas, gas takes the corner and
+-- nitro moves out beside the brake.
 function touch.layout(sw, sh)
   local s = ui.scale(sw, sh)
-  return {
+  local function at(action, label, size, right, up, r, shape)
+    return { action = action, label = label, size = size * s, x = sw - right * s, y = sh - up * s,
+      r = r * s, shape = shape }
+  end
+  local layout = {
     s = s,
     radius = STICK_RADIUS * s,
     rest = { x = 62 * s, y = sh - 62 * s },
     buttons = {
-      { action = "boost", label = "BOOST", size = 8 * s, x = sw - 52 * s, y = sh - 52 * s, r = 34 * s },
-      { action = "handbrake", label = "DRIFT", size = 7 * s, x = sw - 124 * s, y = sh - 40 * s, r = 26 * s },
+      at("boost", "BOOST", 8, 52, 52, 34),
+      at("handbrake", "DRIFT", 7, 124, 40, 26),
       { action = "pause", label = "II", size = 7 * s, x = sw - 24 * s, y = 24 * s, r = 17 * s },
       { action = "respawn", label = "RESET", size = 5 * s, x = sw - 62 * s, y = 24 * s, r = 17 * s },
       { action = "horn", label = "HORN", size = 5 * s, x = sw - 100 * s, y = 24 * s, r = 17 * s },
     },
   }
+  if not touch.buttons() then return layout end
+  local list = layout.buttons
+  list[#list + 1] = at("brake", "BRAKE", 7, 134, 104, 26)
+  if not settings.autoGas then
+    list[1] = at("boost", "BOOST", 6, 196, 96, 22)
+    list[#list + 1] = at("throttle", "GAS", 8, 52, 52, 34)
+  end
+  local left = { action = "steerLeft", shape = "left", x = 42 * s, y = sh - 46 * s, r = 32 * s }
+  local right = { action = "steerRight", shape = "right", x = 116 * s, y = sh - 46 * s, r = 32 * s }
+  list[#list + 1], list[#list + 2] = left, right
+  -- A thumb anywhere on the left half steers, to whichever side of this line it's on.
+  layout.divide = (left.x + right.x) / 2
+  return layout
 end
 
 local function keyFor(action)
   return input.binds[action][1]
+end
+
+-- Two thumbs can share an action, so it's only let go when the last one lifts.
+local function hold(id, action)
+  if touch.fingers[id] == action then return end
+  local before = touch.fingers[id]
+  touch.fingers[id] = action
+  if before then
+    local still = false
+    for _, a in pairs(touch.fingers) do still = still or a == before end
+    if not still then input.release(keyFor(before)) end
+  end
+  input.press(keyFor(action))
+end
+
+local function steerSide(layout, x)
+  return x < layout.divide and "steerLeft" or "steerRight"
 end
 
 function touch.pressed(id, x, y, sw, sh)
@@ -49,10 +92,15 @@ function touch.pressed(id, x, y, sw, sh)
     if d < b.r * HIT_SLOP and d < nearest then hit, nearest = b, d end
   end
   if hit then
-    touch.fingers[id] = hit.action
-    input.press(keyFor(hit.action))
+    hold(id, hit.action)
+  elseif x < sw / 2 and layout.divide then
+    hold(id, steerSide(layout, x))
   elseif x < sw / 2 and not touch.stick then
     touch.stick = { id = id, baseX = x, baseY = y, x = 0, y = 0, radius = layout.radius }
+  end
+  if touch.fingers[id] == "steerLeft" or touch.fingers[id] == "steerRight" then
+    touch.steering = touch.steering or {}
+    touch.steering[id] = { sw = sw, sh = sh }
   end
 end
 
@@ -66,6 +114,12 @@ local function follow(base, thumb, radius)
 end
 
 function touch.moved(id, x, y)
+  -- A steering thumb rocks from one arrow to the other without lifting.
+  local steering = touch.steering and touch.steering[id]
+  if steering then
+    hold(id, steerSide(touch.layout(steering.sw, steering.sh), x))
+    return
+  end
   local stick = touch.stick
   if not stick or stick.id ~= id then return end
   local r = stick.radius
@@ -80,8 +134,11 @@ function touch.released(id)
   local action = touch.fingers[id]
   if action then
     touch.fingers[id] = nil
-    input.release(keyFor(action))
+    local still = false
+    for _, a in pairs(touch.fingers) do still = still or a == action end
+    if not still then input.release(keyFor(action)) end
   end
+  if touch.steering then touch.steering[id] = nil end
   if touch.stick and touch.stick.id == id then touch.stick = nil end
 end
 
@@ -89,6 +146,7 @@ end
 function touch.reset()
   for id in pairs(touch.fingers) do touch.released(id) end
   touch.stick = nil
+  touch.steering = nil
 end
 
 local function pedal(v)
@@ -114,7 +172,8 @@ function touch.applyTo(target)
   target.brake = math.max(target.brake, pedal(-up))
   local gas = settings.autoGas and 1 or pedal(up)
   target.throttle = math.max(target.throttle, target.brake > 0 and 0 or gas)
-  -- There are no shift buttons on screen.
+  -- With buttons, the arrows press the keyboard's own steering. There are no
+  -- shift buttons on screen.
   target.manual = false
 end
 
@@ -143,7 +202,16 @@ local function buttonColor(action, car)
     if state == "active" then return colors.sectorPurple end
     return state == "cooldown" and colors.muted or colors.sectorGreen
   end
+  if action == "brake" then return colors.kerb end
+  if action == "throttle" then return colors.sectorGreen end
   return action == "handbrake" and colors.marshal or colors.paint
+end
+
+local function drawArrow(b, c)
+  local w = b.r * 0.42
+  local dir = b.shape == "left" and -1 or 1
+  love.graphics.setColor(c)
+  love.graphics.polygon("fill", b.x + dir * w, b.y, b.x - dir * w * 0.7, b.y - w, b.x - dir * w * 0.7, b.y + w)
 end
 
 local function drawButton(b, car, s)
@@ -160,13 +228,19 @@ local function drawButton(b, car, s)
   love.graphics.setColor(c[1], c[2], c[3], 0.9)
   love.graphics.setLineWidth(2 * s)
   love.graphics.circle("line", b.x, b.y, b.r)
-  ui.text(b.label, b.x - b.r, b.y - b.size / 2, b.size, held and panel or c, "center", b.r * 2)
+  if b.shape then
+    drawArrow(b, held and panel or c)
+  else
+    -- Red text on the dark panel is hard to read, so brake is labelled in white.
+    local text = b.action == "brake" and colors.paint or (held and panel or c)
+    ui.text(b.label, b.x - b.r, b.y - b.size / 2, b.size, text, "center", b.r * 2)
+  end
 end
 
 function touch.draw(sw, sh, car)
   if not touch.shown() then return end
   local layout = touch.layout(sw, sh)
-  drawStick(layout)
+  if not layout.divide then drawStick(layout) end
   for _, b in ipairs(layout.buttons) do drawButton(b, car, layout.s) end
 end
 
