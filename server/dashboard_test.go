@@ -172,6 +172,15 @@ func TestPageServesHtmx(t *testing.T) {
 	}
 }
 
+func TestPageServesFavicon(t *testing.T) {
+	relay, _, _ := setup()
+	page, _ := dash(t, relay)
+	out := request(page, http.MethodGet, "/favicon.svg", nil, nil)
+	if out.Code != http.StatusOK || out.Header().Get("Content-Type") != "image/svg+xml" || !strings.Contains(out.Body.String(), "<svg") {
+		t.Fatalf("status %d %v", out.Code, out.Header())
+	}
+}
+
 func TestUnknownPagesAreMissing(t *testing.T) {
 	relay, _, _ := setup()
 	page, _ := dash(t, relay)

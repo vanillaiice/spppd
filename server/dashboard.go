@@ -21,6 +21,9 @@ var dashboardHTML string
 //go:embed htmx.min.js
 var htmxScript []byte
 
+//go:embed favicon.svg
+var faviconSVG []byte
+
 const (
 	cookieName    = "spppd_session"
 	maxLoginFails = 10
@@ -206,6 +209,11 @@ func newDashboard(relay *Relay, store *Store, analyticsDays int) http.Handler {
 	mux.HandleFunc("/htmx.js", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "text/javascript; charset=utf-8")
 		_, _ = w.Write(htmxScript)
+	})
+	mux.HandleFunc("/favicon.svg", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "image/svg+xml")
+		w.Header().Set("Cache-Control", "public, max-age=86400")
+		_, _ = w.Write(faviconSVG)
 	})
 	mux.HandleFunc("/login", d.login)
 	mux.HandleFunc("/logout", d.logout)
