@@ -23,6 +23,11 @@ Every new sound has to meet this.
 44.1 kHz, 16-bit, mono, rendered in Lua. The target feel is a cohesive, believable
 arcade car, not samples of a real one.
 
+The menu music (`src/music.lua`) is the one exception: 22.05 kHz, because everything in
+it is low-passed under 3 kHz and it's 30 s long. It renders a slice a frame while the
+menu is up, never in `audio.load`, and keeps its own cache folder, `musiccache/`, so a
+change to either file leaves the other's renders alone.
+
 ### Palette
 
 | Ingredient | Used for |
@@ -35,6 +40,7 @@ arcade car, not samples of a real one.
 | Sines | Only things that really whine: thump under a crash, and a turbo's faint whistle, which must wander |
 | A narrow pulse, clean | The supercharger's whine, and nothing else |
 | Slides that fall, noise that coarsens as it dies | How things end |
+| Pulse lead, saw bass, sine-drop kick, noise drums, all low-passed | The menu music, and nothing else |
 
 ### Rulings from play
 
@@ -119,6 +125,7 @@ then through the assumed phone corner. The VOLUME setting defaults to 0.8, -1.9 
 | Shift | -23, phone -29 |
 | Lights, lap, finish | -14 to -21 |
 | Menus | -29 to -33 |
+| Menu music | -21 as played (`LEVEL` 0.8 on files rendered to -19.4), phone about -22.5. Every take renders to the same RMS, so they match within 0.1 dB |
 
 Crashes are measured by how far they lift the loudness over a steady drive, in 400 ms
 windows: graze under 1 dB, tap about 1, hit 2 to 4, crash 5 or more. Sizes must not
@@ -173,6 +180,10 @@ one is too noisy to judge a small change. The supercharger takes about 0.2 s and
 three turbos about 0.33 s, and shortening their 1.7 s loops is the first place to save. Anything longer has to pay for itself: shorten a loop, or drop
 oversampling somewhere it isn't doing anything.
 
+The menu music isn't part of that budget: it renders in 4 ms slices over menu frames,
+0.25 to 0.6 s a take with the JIT off, so a first launch opens on a quiet menu for a
+moment. `--sounds new` prints its times separately.
+
 ## Inventory
 
 | Sound | Made by | When | How it plays |
@@ -202,6 +213,7 @@ oversampling somewhere it isn't doing anything.
 | `finish` | model | Crossing the line | One-shot at 0.6, lower if not first |
 | `click`, `select` | sfxr | Menus, and `select` on a respawn | One-shot at 0.3, ±3% (0.5 on a respawn) |
 | `startup` | model | The splash | One-shot at 0.8 |
+| `music_a`, `b`, `c` | `src/music.lua` | Menu screens, while MUSIC is on, the one SONG picks | Loop at 0.8, fades in over 1.2 s and out over 0.35 s, pauses at zero and resumes where it was |
 
 All are static sources. The radio is the only stream. Loops pause at zero volume, and
 `audio.play` restarts its source, so a sound can't pile up on itself.
@@ -386,6 +398,11 @@ the same car at the same rpm. `[` and `]` change car.
    question is a whole lap: is a held note this loud still good on MUSCLE MONSTER and
    BAJA BEAST, or tiring? The volume is the `blower` line in `audio.engineMix`, and
    `blowerPitch` sets the climb.
+10. **Menu music:** three songs, all kept by the user's word, picked with SETTINGS >
+   SONG: PIT LANE (chiptune, A minor, 132 BPM, the default), NIGHT DRIVE (synthwave,
+   D minor, 112 BPM), SUNDAY CUP (bouncy, C major, swung, 140 BPM). The user liked all
+   three in the menu. Still open: do they sit right under the menu clicks, and on a
+   phone? `LEVEL` in `src/music.lua` sets the volume.
 
 ## Measuring again
 

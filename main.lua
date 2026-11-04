@@ -34,6 +34,7 @@ local rm = require("src/race_manager")
 local editor = require("src/editor")
 local audio = require("src/audio")
 local radio = require("src/radio")
+local music = require("src/music")
 local post = require("src/render/post")
 local textures = require("src/render/textures")
 local catalog = require("src/tracks/catalog")
@@ -64,6 +65,7 @@ function love.load(args)
   love.graphics.setDefaultFilter("linear", "linear")
   love.keyboard.setKeyRepeat(false)
   settings.load()
+  music.setTake(settings.musicTake)
   if settings.fullscreen then love.window.setFullscreen(true, "desktop") end
   loading = coroutine.create(loadGame)
 
@@ -103,6 +105,10 @@ function love.quit()
 end
 
 function love.update(dt)
+  -- Menus only. It renders ahead anywhere but a race, where frames matter.
+  if not loading then
+    music.update(dt, state.screen == "menu" and settings.music, settings.music and state.screen ~= "race")
+  end
   if loading then
     stepLoading()
   elseif state.screen == "splash" then

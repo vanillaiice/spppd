@@ -1079,6 +1079,97 @@ h.describe("sound cache", function()
   end)
 end)
 
+h.describe("menu music", function()
+  local music = require("src/music")
+  local rendered = {}
+  local function render(id)
+    rendered[id] = rendered[id] or music.render(id)
+    return rendered[id]
+  end
+
+  h.it("reads notes and chords", function()
+    h.assertEq(music.midi("A4"), 69)
+    h.assertEq(music.midi("C#5"), 73)
+    h.assertEq(music.midi("Bb4"), 70)
+    h.assertNear(music.hz(69), 440, 1e-9)
+    h.assertNear(music.hz(81), 880, 1e-9)
+    local root, intervals = music.chord("F#m")
+    h.assertEq(root, 6)
+    h.assertEq(intervals[2], 3)
+    local _, major = music.chord("Bb")
+    h.assertEq(major[2], 4)
+  end)
+
+  h.it("every take is whole bars and only notes it can play", function()
+    for _, id in ipairs(music.ORDER) do
+      local song = music.TAKES[id]
+      h.assertEq(music.length(song) % 64, 0, id .. " splits into sixteenths")
+      local events = music.events(song)
+      h.assertTrue(#events > 100, id .. " has a tune")
+      for _, e in ipairs(events) do
+        h.assertBetween(e.at, 0, music.length(song) - 1, id .. " note inside the loop")
+        if e.midi then h.assertBetween(e.midi, 28, 100, id .. " note in range") end
+      end
+    end
+  end)
+
+  h.it("renders clean, loud enough and seamless", function()
+    for _, id in ipairs(music.ORDER) do
+      local data = render(id)
+      local n = data:getSampleCount()
+      h.assertEq(n, music.length(music.TAKES[id]))
+      h.assertEq(data:getSampleRate(), music.RATE)
+      local peak, sum, step = 0, 0, 0
+      local last = data:getSample(n - 1)
+      for i = 0, n - 1 do
+        local v = data:getSample(i)
+        peak = math.max(peak, math.abs(v))
+        sum = sum + v * v
+        if i < music.RATE then step = math.max(step, math.abs(v - (i > 0 and data:getSample(i - 1) or last))) end
+      end
+      h.assertTrue(peak <= 0.9, id .. " peaks under -0.9 dBFS: " .. peak)
+      h.assertBetween(math.sqrt(sum / n), 0.1, 0.12, id .. " level")
+      -- The step from the last sample round to the first is like any other.
+      h.assertTrue(math.abs(data:getSample(0) - last) <= step, id .. " has no click at the loop")
+    end
+  end)
+
+  h.it("renders the same a slice at a time", function()
+    local job = coroutine.create(function() return music.render("a") end)
+    local slices, ok, sliced = 0, nil, nil
+    repeat
+      ok, sliced = music.step(job, 0)
+      h.assertTrue(ok, tostring(sliced))
+      slices = slices + 1
+    until coroutine.status(job) == "dead"
+    h.assertTrue(slices > 10, "it gave frames a turn: " .. slices)
+    local whole = render("a")
+    h.assertEq(sliced:getSampleCount(), whole:getSampleCount())
+    for i = 0, whole:getSampleCount() - 1, 997 do h.assertEq(sliced:getSample(i), whole:getSample(i)) end
+  end)
+
+  h.it("is kept on disk, in its own folder", function()
+    local first = music.data("c")
+    local folders = love.filesystem.getDirectoryItems("musiccache")
+    h.assertEq(#folders, 1)
+    h.assertTrue(love.filesystem.getInfo("musiccache/" .. folders[1] .. "/c.wav") ~= nil, "saved")
+    local second = music.data("c")
+    h.assertEq(second:getSampleCount(), first:getSampleCount())
+    for i = 0, first:getSampleCount() - 1, 991 do h.assertNear(second:getSample(i), first:getSample(i), 1e-4) end
+  end)
+
+  h.it("does nothing without sound", function()
+    if love.audio then return end
+    music.update(0.1, true, true)
+    h.assertTrue(not music.isPlaying())
+  end)
+
+  h.it("has a switch, on by default", function()
+    h.assertEq(type(settings.music), "boolean")
+    h.assertTrue(music.TAKES[settings.musicTake] ~= nil, "a take that exists")
+  end)
+end)
+
 h.describe("radio", function()
   local function clearMusic()
     for _, name in ipairs(love.filesystem.getDirectoryItems("music")) do

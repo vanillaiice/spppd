@@ -14,6 +14,7 @@ local sprites = require("src/render/car_sprites")
 local hud = require("src/hud")
 local audio = require("src/audio")
 local radio = require("src/radio")
+local music = require("src/music")
 local network = require("src/network_manager")
 local dynamics = require("src/sim/dynamics")
 local cheats = require("src/cheats")
@@ -303,6 +304,11 @@ local function settingsRows()
       settings.volume = v
       audio.setVolume(v)
     end, VOLUMES, VOLUME_NAMES),
+    toggle("MUSIC", "music"),
+    stepper("SONG", function() return music.take() end, function(v)
+      settings.musicTake = v
+      music.setTake(v)
+    end, music.ORDER, { a = music.TAKES.a.name, b = music.TAKES.b.name, c = music.TAKES.c.name }),
     stepper("CAMERA", function() return settings.camera end, function(v) settings.camera = v end,
       { "chase", "fixed" }, { chase = "CHASE", fixed = "FIXED" }),
     stepper("ZOOM", function() return settings.zoom end, function(v) settings.zoom = v end,

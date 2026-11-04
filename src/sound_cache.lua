@@ -23,6 +23,7 @@ local function clear(path)
     love.filesystem.remove(child)
   end
 end
+cache.clear = clear  -- src/music.lua keeps a folder of its own
 
 function cache.key(sources)
   return love.data.encode("string", "hex", love.data.hash("md5", table.concat(sources, "\0")))

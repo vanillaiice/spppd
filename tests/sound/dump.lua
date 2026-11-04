@@ -134,7 +134,24 @@ return function(which, folder)
     file:write(string.format("%s\t%s\t%.3f\t%.1f\n", entry.name, record.loops[entry.data] and "loop" or "shot",
       entry.data:getDuration(), entry.took * 1000))
   end
+  -- The menu music, off the load path: it renders over menu frames instead.
+  local songs = {}
+  if which == "new" then
+    local music = require("src/music")
+    for _, id in ipairs(music.ORDER) do
+      local started = love.timer.getTime()
+      local data = music.render(id)
+      local took = love.timer.getTime() - started
+      local name = "music_" .. id
+      local wav = assert(io.open(folder .. "/" .. name .. ".wav", "wb"))
+      wav:write(realCache.wav(data))
+      wav:close()
+      file:write(string.format("%s\tloop\t%.3f\t%.1f\n", name, data:getDuration(), took * 1000))
+      songs[#songs + 1] = string.format("%s %.2f s", id, took)
+    end
+  end
   file:close()
   print(string.format("%d sounds in %s, rendered in %.2f s with the JIT off", #record.order, folder, total))
+  if #songs > 0 then print("menu music, rendered over menu frames: " .. table.concat(songs, ", ")) end
   runScenes(audio, folder, record)
 end
