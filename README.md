@@ -49,6 +49,52 @@ by itself unless you turn Auto Gas off.
 - **Radio**: freestyle plays MP3, OGG, FLAC or WAV files. Drop them on the game window,
   or use MUSIC FOLDER in freestyle setup. Not on phones.
 
+## Cars
+
+| Car | Engine | Drive | Power | Weight | 0-100 km/h | 0-200 km/h | Top speed |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| HOT HATCH | Turbo 4-cyl | FWD | 239 kW (321 hp) | 1380 kg | 4.1 s | 14.3 s | 271 km/h |
+| 4WD MONSTER | Turbo 4-cyl | AWD | 311 kW (417 hp) | 1540 kg | 3.1 s | 11.5 s | 258 km/h |
+| ROCKET | Twin-turbo 6-cyl | RWD | 360 kW (482 hp) | 1500 kg | 2.9 s | 9.6 s | 323 km/h |
+| SAMURAI | 8-cyl | AWD | 349 kW (469 hp) | 1950 kg | 3.5 s | 13.5 s | 273 km/h |
+| BIG BULL | Twin-turbo 8-cyl | AWD | 453 kW (607 hp) | 2250 kg | 3.2 s | 11.6 s | 302 km/h |
+| MUSCLE MONSTER | Supercharged 8-cyl | RWD | 601 kW (806 hp) | 1980 kg | 3.4 s | 8.6 s | 340 km/h |
+| CYBER | Tri-motor electric | AWD | 774 kW (1038 hp) | 2160 kg | 2.4 s | 6.4 s | 328 km/h |
+| TOFU RUNNER | 4-cyl | RWD | 175 kW (235 hp) | 1040 kg | 4.0 s | 15.5 s | 259 km/h |
+| WEDGE | 12-cyl, mid-engined | RWD | 435 kW (584 hp) | 1520 kg | 3.0 s | 8.7 s | 331 km/h |
+| QUAD TURBO | Quad-turbo 16-cyl | AWD | 683 kW (916 hp) | 1950 kg | 2.2 s | 6.5 s | 381 km/h |
+| BAJA BEAST | Supercharged 8-cyl | AWD | 466 kW (625 hp) | 2900 kg | 3.9 s | 15.1 s | 276 km/h |
+| OPEN WHEELER | Turbo 6-cyl | RWD | 502 kW (673 hp) | 920 kg | 3.1 s | 6.5 s | 338 km/h |
+
+The times and speeds come from the game's own physics on Arcade handling: full throttle
+from a standstill, without boost. A good launch at the lights takes about half a second
+off. Sport handling has less grip, so most cars are slower off the line there.
+Up to 100 km/h every car is limited by its tyres, not its engine, so all-wheel drive and
+weight over the driven wheels count most. Power shows after that: OPEN WHEELER is only
+mid-pack to 100 km/h, but with the best power to weight here it's among the quickest to 200.
+Raw numbers aren't the whole story: corners decide most laps, and TOFU RUNNER and 4WD
+MONSTER corner harder than MUSCLE MONSTER or BIG BULL.
+
+## Desktop and phone
+
+The game is the same on both, with the same cars, tracks and physics, and phones race
+desktops online. What differs:
+
+| | Desktop (Windows, Linux) | Phone (Android) |
+| --- | --- | --- |
+| Race, time trial, freestyle | Yes | Yes |
+| Online, two to four players | Yes | Yes |
+| Track editor | Yes | No |
+| Your own tracks | Make and race them | Race them online, from the host |
+| Freestyle radio, your own music | Yes | No |
+| Controls | Keyboard, pad, or touch on a touchscreen | Touch stick or buttons |
+| Auto gas | With touch controls | On by default, can be turned off |
+| Manual gearbox | Yes | No, automatic only |
+| Headlights | Low or high beam | High beam only |
+| Camera | Switch while driving | In SETTINGS |
+| Vibration | Pad rumble, road and hits | Phone buzz on hits |
+| Fullscreen | Optional | Always |
+
 ## Track editor
 
 Open it from the main menu, on a desktop. Click to add a node, drag to move it, right

@@ -11,3 +11,6 @@ site/.astro/
 site/public/download/
 # The official server's details and dashboard password, read by the deploy scripts.
 .env
+
+# Video kit (end cards, thumbnails), kept out of the repo
+kit/

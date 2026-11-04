@@ -52,6 +52,7 @@ export function megabytes(bytes: number): string {
 // On the site those become the pages that show them, and links to anything else in
 // the repository, which isn't published, become plain text.
 const PAGES: Record<string, { href: string; name: string }> = {
+  'README.md': { href: '/guide/', name: 'guide' },
   'PRIVACY.md': { href: '/privacy/', name: 'privacy policy' },
   'TERMS.md': { href: '/terms/', name: 'terms of use' },
   'CHANGELOG.md': { href: '/changelog/', name: 'changelog' },
