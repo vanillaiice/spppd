@@ -1,5 +1,26 @@
 # Changelog
 
+## 2.8.0 (2026-11-04)
+
+### Added
+
+- The menus have music. There are three songs, made by the game itself like all its other
+  sounds: PIT LANE plays by default, and SETTINGS > SONG switches to NIGHT DRIVE or
+  SUNDAY CUP. SETTINGS > MUSIC turns it off. It plays in the menus only and picks up
+  where it left off after a race. The very first launch takes a moment to start it.
+
+### Changed
+
+- QUAD TURBO has taller top gears. Its top speed goes from 335 to 381 km/h, the highest
+  of any car, and 0-100 and 0-200 km/h are unchanged.
+- 4WD MONSTER has a turbo four-cylinder in place of a five, and sounds like one.
+- The website has a guide: the controls, every car's numbers including 0-200 km/h, and
+  what differs between desktop and phone.
+
+### Online
+
+- Nothing changes online: 2.7 and 2.8 race each other.
+
 ## 2.7.2 (2026-11-04)
 
 ### Changed
