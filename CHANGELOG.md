@@ -1,5 +1,11 @@
 # Changelog
 
+## 2.7.2 (2026-11-04)
+
+### Changed
+
+- Nitro is now called boost everywhere: the menus, the controls help and the website.
+
 ## 2.7.1 (2026-11-03)
 
 ### Changed
