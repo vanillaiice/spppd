@@ -85,6 +85,7 @@ function rm.start(opts)
     spec = opts.spec, color = opts.color, assist = opts.assist or settings.assists,
     difficulty = opts.difficulty, seed = opts.seed, startDelay = opts.startDelay,
     online = opts.online,
+    lot = opts.mode == "freestyle" and not opts.demo,
     manualGearbox = settings.gearbox == "manual",
     onLap = function(car, time, clean) rm.onLap(car, time, clean) end,
     onCrash = function(car, hit) rm.onCrash(car, hit) end,
@@ -229,6 +230,8 @@ end
 function rm.onLap(car, time, clean)
   if not session or car ~= session.race.player or session.demo then return end
   local race = session.race
+  -- Freestyle counts no laps out loud.
+  if race.mode == "freestyle" then return end
   -- The last lap gets the finish sting instead.
   if race.mode ~= "race" or car.lapsDone < race.laps then audio.play("lap", 0.5) end
 
@@ -304,7 +307,14 @@ local function processImpacts()
   for _, e in ipairs(events) do
     local mine = e.carA == player or e.carB == player
     local strength = e.impulse / 9000
-    if strength > 0.02 then
+    if e.prop then
+      -- A cone: a puff and a knock, never a dent or a broken combo.
+      if e.car == player and not session.demo then
+        local vx, vy = player.body:getLinearVelocity()
+        for _ = 1, 3 do vfx.dust(e.x, e.y, vx, vy, 1) end
+        audio.knock(e.impulse)
+      end
+    elseif strength > 0.02 then
       vfx.scrape(e.x, e.y, e.nx, e.ny, math.min(2.5, strength * 3))
       if e.carA then car_view.hit(e.carA, e.x, e.y, strength, e.barrier) end
       if e.carB then car_view.hit(e.carB, e.x, e.y, strength, e.barrier) end
@@ -644,6 +654,7 @@ local function drawWorld(sw, sh)
   withCamera(sw, sh, function()
     scene:drawGround()
     skids.draw()
+    if race.cones then scene:drawCones(race.cones) end
     drawGhost(env)
     for _, car in ipairs(race.cars) do
       local x, y, a = car:interpolated(alpha)

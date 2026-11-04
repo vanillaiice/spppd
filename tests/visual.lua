@@ -48,7 +48,7 @@ local SCENES = {
     menu.enter()
     settings.mode = "freestyle"
     menu.go("setup")
-    ui.focus.setup = 6
+    ui.focus.setup = 7
   end,
   -- Any one car, by id: SPPPD_CAR=cyber.
   car = function()
@@ -78,6 +78,21 @@ local SCENES = {
     rm.race().player.driver = { update = function(_, c)
       c.input.throttle, c.input.steer, c.input.handbrake = 1, 0.9, (love.timer.getTime() * 2) % 1 < 0.2
     end }
+  end,
+  -- Freestyle's lot, parked by one of its spots: SPPPD_SPOT=donut, slalom, wall,
+  -- blocks or start, and SPPPD_TIME for the time of day.
+  lot = function()
+    race({ time = os.getenv("SPPPD_TIME") or "day", mode = "freestyle", opponents = 0 })
+    local M = require("src/config").METER
+    local spots = {
+      start = { 0, 0, -math.pi / 2 }, donut = { -12, -72, -math.pi / 4 }, slalom = { 60, -40, -math.pi / 2 },
+      wall = { -66, 10, -math.pi / 2 }, blocks = { 0, 105, math.pi / 2 },
+    }
+    local spot = spots[os.getenv("SPPPD_SPOT") or "start"] or spots.start
+    local r = rm.race()
+    r.player:teleport(spot[1] * M, spot[2] * M, spot[3])
+    rm.syncCamera(1)
+    r.player.driver = { update = function(_, c) c.input.throttle, c.input.handbrake = 0, true end }
   end,
   editor = function()
     local em = require("src/editor_model")

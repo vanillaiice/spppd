@@ -351,11 +351,13 @@ local function steps()
   step(3, function()
     expect(settings.mode == "freestyle", "FREESTYLE opens its setup")
     expect(#radio.tracks == 2, "and it has found the songs")
-    ui.focus.setup = 7  -- car, paint, time, handling, radio, music folder, start
+    settings.freestyleTrack = "lot"
+    ui.focus.setup = 8  -- track, car, paint, time, handling, radio, music folder, start
     press("return")
   end)
   step(3, function()
     expect(state.screen == "race", "START begins freestyle")
+    expect(rm.race().track == nil and rm.race().cones, "on the lot, with its cones out")
     expect(radio.isPlaying(), "the radio is on")
     expect(flow.onAir and flow.onAir:match("one") or flow.onAir:match("two"), "and names the song")
     flow.song = radio.song()
@@ -410,6 +412,14 @@ local function steps()
   end)
   step(3, function()
     expect(not radio.isPlaying(), "RADIO OFF keeps freestyle quiet")
+    rm.stop()
+    settings.freestyleTrack = "mirage"
+    menu.startRace()
+  end)
+  step(3, function()
+    local race = rm.race()
+    expect(race.mode == "freestyle" and race.track and not race.cones, "freestyle drives a circuit too")
+    settings.freestyleTrack = "lot"
     settings.mode = "race"
     settings.radioVolume = 0.6
     rm.setToast = flow.toast

@@ -8,6 +8,7 @@ local RemoteDriver = require("src/sim/remote_driver")
 local slipstream = require("src/sim/slipstream")
 local garage = require("src/entities/garage")
 local world = require("src/world")
+local lot = require("src/sim/lot")
 
 local Race = {}
 Race.__index = Race
@@ -38,6 +39,7 @@ local CRASH_SPEED = 15
 local CRASH_MEMORY = 0.15  -- seconds; a nose and then the tail swinging in are one hit
 local WRECK_TIME = 1.2     -- seconds out of the car's hands before it goes back
 local SHUNT_GRACE = 0.4    -- seconds after touching a car when a fence can't wreck it
+local RECOVER_CLEARANCE = 4 * M  -- how far out from a wall a wreck off the road restarts
 
 -- Seats can have gaps, because someone left the lobby. The grid doesn't.
 local function gridPlace(online, slot)
@@ -66,6 +68,10 @@ function Race.new(opts)
   self.onRecover = opts.onRecover
 
   world.load(self.track)
+  -- Freestyle's playground, when it isn't on a circuit.
+  if opts.lot and not self.track then
+    self.cones = world.addLot(lot.layout(), lot.CONE_RADIUS, lot.CONE_MASS)
+  end
 
   local spec = opts.spec or garage[1]
   local online = opts.online
@@ -194,10 +200,31 @@ local function placeOnLine(car, s)
   car.lapClean = false
 end
 
+-- Knocked cones go back to their spots: all of them, or only the ones the
+-- player is far enough from not to see it happen.
+function Race:resetCones(all)
+  if not self.cones then return end
+  local px, py = self.player.body:getPosition()
+  local far = lot.CONE_RESET_DISTANCE ^ 2
+  local moved = (1 * M) ^ 2
+  for _, cone in ipairs(self.cones) do
+    local body = cone.body
+    local x, y = body:getPosition()
+    if (x - cone.homeX) ^ 2 + (y - cone.homeY) ^ 2 > moved
+      and (all or (px - cone.homeX) ^ 2 + (py - cone.homeY) ^ 2 > far) then
+      body:setPosition(cone.homeX, cone.homeY)
+      body:setAngle(0)
+      body:setLinearVelocity(0, 0)
+      body:setAngularVelocity(0)
+    end
+  end
+end
+
 function Race:respawn(car)
   local track = self.track
   if not track then
     car:teleport(0, 0, -math.pi / 2)
+    if car == self.player then self:resetCones(true) end
     return
   end
   local index = car.trackIndex or 1
@@ -209,6 +236,19 @@ end
 -- past what updateProgress would count.
 local function recover(self, car)
   local track = self.track
+  if not track then
+    -- No road to go back to: out from what it hit, along it, from a stop.
+    local spot = car.wreckSpot
+    if not spot.x then spot = { x = car.body:getX(), y = car.body:getY(), nx = 0, ny = 0 } end
+    local nx, ny = spot.nx or 0, spot.ny or 0
+    local along = math.atan2(nx, -ny)
+    local heading = car.body:getAngle()
+    -- Whichever way along it is nearer where the car was pointing.
+    if math.cos(heading - along) < 0 then along = along + math.pi end
+    car:teleport(spot.x + nx * RECOVER_CLEARANCE, spot.y + ny * RECOVER_CLEARANCE, along)
+    if self.onRecover then self.onRecover(car) end
+    return
+  end
   local s = track.samples[car.wreckIndex]
   local delta = (s.s - car.trackS + track.length / 2) % track.length - track.length / 2
   car.distance = car.distance + delta
@@ -220,6 +260,7 @@ end
 local function wreck(self, car, hit)
   car.wreck = WRECK_TIME
   car.wreckIndex = car.trackIndex
+  car.wreckSpot = { x = car.fenceX, y = car.fenceY, nx = car.fenceNx, ny = car.fenceNy }
   local input = car.input
   input.throttle, input.brake, input.steer = 0, 1, 0
   input.handbrake, input.boost, input.shiftUp, input.shiftDown = false, false, false, false
@@ -235,6 +276,7 @@ function Race:updateCrash(car, dt)
   car.touchedCar = false
   car.fenceHit = car.fenceHit * math.exp(-dt / CRASH_MEMORY) + car.fenceImpulse / (car.spec.mass * M)
   car.fenceImpulse = 0
+  car.fencePeak = 0
 
   if car.wreck then
     car.wreck = car.wreck - dt
@@ -290,7 +332,8 @@ function Race:updateProgress(car, dt)
   else
     car.wrongWayTime = 0
   end
-  car.wrongWay = car.wrongWayTime > WRONG_WAY_TIME
+  -- Freestyle goes whichever way it likes.
+  car.wrongWay = self.mode ~= "freestyle" and car.wrongWayTime > WRONG_WAY_TIME
 
   -- Laps
   local completed = floor(car.distance / length)
@@ -415,6 +458,7 @@ function Race:step(dt)
   end
 
   if self.track then self:standings() end
+  self:resetCones(false)
 
   if self.finishGrace then
     self.finishGrace = self.finishGrace - dt

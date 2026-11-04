@@ -99,6 +99,9 @@ local IMPACT_TIERS = {
 }
 audio.IMPACT_TIERS = IMPACT_TIERS
 local GRAZE_LEVEL = 0.35   -- a touch too small for any of those
+local KNOCK_LEVEL = 0.45   -- a cone, at its loudest
+local KNOCK_PITCH = 1.7
+local KNOCK_GAP = 0.08     -- seconds
 local DUCK_RECOVERY = 3.5  -- per second, so the engine is back within 0.3 s
 local IMPACT_MASS = 1400   -- a car this heavy plays a crash at its written pitch
 
@@ -1087,6 +1090,25 @@ end
 -- A heavy car's crash sits lower than a light one's.
 function audio.impactPitch(spec)
   return math.max(0.85, math.min(1.15, (IMPACT_MASS / spec.mass) ^ 0.3))
+end
+
+-- A cone bowled over: the graze, pitched up into a hollow plastic knock.
+-- impulse is in N s, about 150 for a cone taken flat out.
+function audio.knock(impulse)
+  if not audio.ready then return end
+  -- One cone touches a car over several steps.
+  local now = love.timer.getTime()
+  if now - (audio.lastKnock or 0) < KNOCK_GAP then return end
+  audio.lastKnock = now
+  local pool = audio.impacts[0]
+  local free = pool[1]
+  for _, s in ipairs(pool) do
+    if not s:isPlaying() then free = s end
+  end
+  free:stop()
+  free:setVolume(KNOCK_LEVEL * math.min(1, 0.3 + impulse / 150))
+  free:setPitch(KNOCK_PITCH * audio.variedPitch(0.1))
+  free:play()
 end
 
 -- strength is the crash's impulse / 9000. spec is the car it happened to.

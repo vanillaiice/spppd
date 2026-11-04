@@ -127,6 +127,7 @@ src/
 
   render/post.lua         Canvases, night lightmap, glow, final grade
   render/track_renderer.lua  Track to meshes; road, ground and gravel shaders
+  sim/lot.lua             Freestyle's playground layout, as data
   render/car_view.lua     Draws cars, spawns tyre smoke and marks
   render/car_sprites.lua  Generates car sprites
   render/car_plans.lua    Hand-drawn top views of the cars
@@ -753,7 +754,7 @@ A player who takes the flag gets an AI driver with `skill = 0.7` for the cool-do
 | --- | --- | --- | --- | --- |
 | `race` | Yes | 1 to 20 | Player last, up to 5 AI | At the flag |
 | `trial` | Yes | 9999 | Alone, slot 1 | Never |
-| `freestyle` | None, a concrete apron | 9999 | Alone | Never |
+| `freestyle` | THE LOT (a concrete apron with a playground), or any track | 9999 | Alone | Never |
 | Online | Yes | Host's choice | Two to four drivers, in seat order | 25 s after the first car home |
 
 Difficulty sets AI skill:
@@ -956,7 +957,20 @@ Scenery uses an RNG seeded from the track's sample count, so a track looks the s
 each time.
 
 Freestyle's `loadApron` is a separate small scene: one huge quad and painted bays
-drawn around wherever the camera is.
+drawn around wherever the camera is, with the playground from `sim/lot.lua` in the
+middle. The playground is a donut pad around a tyre stack, a slalom of cones, an S
+of wall to slide along and two blocks of containers for figure eights. The wall
+and containers are baked meshes. The cones move, so they're drawn each frame,
+only near the screen.
+
+In physics, the wall, containers and tyre stack are barriers, so a hard hit
+wrecks the car as a fence does. With no road to go back to, the car restarts
+4 m out from where it hit, pointing along it. Cones are light Box2D bodies with
+`{ prop = true }` as user data. `postSolve` keeps them out of fence hits, car
+contact and dents, and reports them only as a knock and a puff of dust. A
+knocked cone goes back to its spot once the player is 60 m away, and all of them
+go back on RESPAWN. Freestyle on a circuit counts laps silently and never shows
+WRONG WAY.
 
 ### Time of day
 
@@ -1210,7 +1224,7 @@ Most screens show a panel down the left with a live demo race behind it.
 | Screen | Contents |
 | --- | --- |
 | `main` | RACE, TIME TRIAL, FREESTYLE, ONLINE, TRACK EDITOR (not on phones), SETTINGS, CONTROLS, CREDITS, QUIT |
-| `setup` | Track, car, paint, laps, opponents, difficulty, time, handling, radio rows in freestyle, START |
+| `setup` | Track (THE LOT first in freestyle), car, paint, laps, opponents, difficulty, time, handling, radio rows in freestyle, START |
 | `settings` | Volume, camera, zoom, gearbox, units, effects, toggles, touch and fullscreen on desktop |
 | `online` | Server, car, paint, HOST A ROOM, room code, JOIN A ROOM, with `menu.ONLINE_NOTES` beside them. Once in a room it shrinks to the code, START RACE for the host and CANCEL, with the race and its drivers beside it |
 | `host` | Track, laps, time, START ROOM |

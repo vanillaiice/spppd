@@ -839,4 +839,103 @@ h.describe("race", function()
     h.assertTrue(race.player:getSpeed() > 3, "should be moving")
     race:destroy()
   end)
+
+  local lot = require("src/sim/lot")
+  local world = require("src/world")
+
+  local function lotRace(opts)
+    opts = opts or {}
+    local race = Race.new({ mode = "freestyle", lot = true, spec = garage[3], seed = 3, startDelay = 0,
+      onRecover = opts.onRecover })
+    race.player.driver = { update = function(_, c) c.input.throttle = 1 c.input.steer = 0 end }
+    run(race, 0.05)
+    return race, race.player
+  end
+
+  -- Puts the car at x, y metres, going along dx, dy at speed m/s.
+  local function launch(car, x, y, dx, dy, speed)
+    car:teleport(x * M, y * M, math.atan2(dy, dx))
+    car.body:setLinearVelocity(dx * speed * M, dy * speed * M)
+  end
+
+  h.it("the lot has its playground, and only when asked for", function()
+    local race = lotRace()
+    h.assertEq(#race.cones, #lot.layout().cones)
+    h.assertTrue(#race.cones >= 20, "a slalom and gates")
+    -- The wall, two container blocks and the donut's tyre stack.
+    h.assertEq(#world.barriers, 4)
+    race:destroy()
+    local bare = Race.new({ mode = "freestyle", spec = garage[3], seed = 3, startDelay = 0 })
+    h.assertEq(bare.cones, nil)
+    h.assertEq(#world.barriers, 0)
+    bare:destroy()
+  end)
+
+  h.it("cones get knocked flying but never wreck the car", function()
+    local race, car = lotRace()
+    local first = lot.layout().cones[1]
+    launch(car, first.x / M, first.y / M + 25, 0, -1, 30)
+    local wrecked = false
+    run(race, 3, function() wrecked = wrecked or car.wreck ~= nil end)
+    h.assertTrue(not wrecked, "a cone wrecked the car")
+    local moved = 0
+    for _, cone in ipairs(race.cones) do
+      local x, y = cone.body:getPosition()
+      if (x - cone.homeX) ^ 2 + (y - cone.homeY) ^ 2 > (0.5 * M) ^ 2 then moved = moved + 1 end
+    end
+    h.assertTrue(moved >= 3, "should have bowled cones over, moved " .. moved)
+    checkFinite(race)
+    race:destroy()
+  end)
+
+  h.it("a container on the lot wrecks the car, which goes back clear of it", function()
+    local recoveries = 0
+    local race, car = lotRace({ onRecover = function() recoveries = recoveries + 1 end })
+    local block = lot.layout().blocks[2]
+    local cx = (block.x + block.w / 2) / M
+    launch(car, cx, block.y / M - 20, 0, 1, 30)
+    run(race, 1.5, function() return car.wreck end)
+    h.assertTrue(car.wreck, "should be wrecked")
+    run(race, Race.WRECK_TIME + 0.1, function() return not car.wreck end)
+    h.assertEq(recoveries, 1)
+    h.assertTrue(car:getSpeed() < 3, "starts again from a stop")
+    local x, y = car.body:getPosition()
+    h.assertTrue(y < block.y - 1.5 * M, string.format("should be clear of the block: %.1f m short", (block.y - y) / M))
+    h.assertTrue(math.abs(x / M - cx) < 10, "back where it hit")
+    h.assertTrue(math.abs(math.cos(car.body:getAngle())) > 0.95, "pointing along the wall")
+    run(race, 1)
+    h.assertEq(car.wreck, nil, "driving off doesn't wreck it again")
+    checkFinite(race)
+    race:destroy()
+  end)
+
+  h.it("knocked cones go back once you're far off, and all of them on a respawn", function()
+    local race, car = lotRace()
+    local near, far = race.cones[1], race.cones[#race.cones]
+    car:teleport(near.homeX + 10 * M, near.homeY, 0)
+    near.body:setPosition(near.homeX + 3 * M, near.homeY)
+    far.body:setPosition(far.homeX + 3 * M, far.homeY)
+    race.player.driver = { update = function(_, c) c.input.throttle = 0 c.input.brake = 1 end }
+    run(race, 0.1)
+    h.assertTrue(near.body:getX() > near.homeX + 1 * M, "a cone in view stays where it was knocked")
+    h.assertEq(far.body:getX(), far.homeX, "one out of sight goes back")
+    race:respawn(car)
+    h.assertEq(near.body:getX(), near.homeX)
+    race:destroy()
+  end)
+
+  h.it("freestyle on a circuit goes any way it likes", function()
+    local track = Track.new(catalog.builtin()[1].def)
+    local race = Race.new({ mode = "freestyle", track = track, laps = 9999, spec = garage[3], seed = 3, startDelay = 0 })
+    h.assertEq(race.cones, nil, "no cones on a circuit")
+    local car = race.player
+    local s = track.samples[1]
+    car.driver = { update = function(_, c) c.input.throttle = 0.3 end }
+    car:teleport(s.x, s.y, math.atan2(-s.ty, -s.tx))
+    car.body:setLinearVelocity(-s.tx * 15 * M, -s.ty * 15 * M)
+    local warned = false
+    run(race, 3, function() warned = warned or car.wrongWay end)
+    h.assertTrue(not warned, "freestyle said wrong way")
+    race:destroy()
+  end)
 end)

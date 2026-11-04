@@ -27,6 +27,7 @@ local settings = {
   -- Last race setup
   mode = "race",
   track = "mirage",
+  freestyleTrack = "lot",  -- or any track's name
   car = 1,
   hue = 1,
   laps = 3,

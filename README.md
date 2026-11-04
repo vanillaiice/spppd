@@ -9,8 +9,9 @@ Its website, with downloads, the changelog and a blog, is
 
     make run
 
-Race the AI, set time trials, drift around in freestyle, build your own tracks, or
-race up to three friends online. There are 12 cars, 10 tracks and four times of day.
+Race the AI, set time trials, play in freestyle's lot of cones and containers or
+cruise any circuit with no clock, build your own tracks, or race up to three
+friends online. There are 12 cars, 10 tracks and four times of day.
 
 ## Controls
 

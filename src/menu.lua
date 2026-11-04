@@ -98,6 +98,14 @@ local function currentEntry()
   return catalog.find(settings.track) or catalog.builtin()[1]
 end
 
+-- Freestyle keeps its own track, so a drive round a circuit doesn't change the
+-- race's. The lot is nil, and so is a track that's gone.
+local LOT = "lot"
+local function freestyleEntry()
+  if settings.freestyleTrack == LOT then return nil end
+  return catalog.find(settings.freestyleTrack)
+end
+
 local function currentCar()
   return garage[math.max(1, math.min(#garage, settings.car))]
 end
@@ -132,7 +140,8 @@ function menu.startRace(extra)
   local spec = currentCar()
   menu.demoRunning = false
   local mode = extra.online and "race" or settings.mode
-  local entry = mode ~= "freestyle" and (extra.entry or currentEntry()) or nil
+  local entry
+  if mode == "freestyle" then entry = freestyleEntry() else entry = extra.entry or currentEntry() end
   rm.start({
     mode = mode,
     entry = entry,
@@ -219,6 +228,16 @@ local function trackRow()
     function(v) settings.track = v end, names, titles)
 end
 
+local function freestyleTrackRow()
+  local names, titles = { LOT }, { [LOT] = "THE LOT" }
+  for _, e in ipairs(catalog.all()) do
+    names[#names + 1] = e.name
+    titles[e.name] = e.title
+  end
+  return stepper("TRACK", function() return freestyleEntry() and settings.freestyleTrack or LOT end,
+    function(v) settings.freestyleTrack = v end, names, titles)
+end
+
 local function carRow()
   local ids, names = {}, {}
   for i, spec in ipairs(garage) do
@@ -251,7 +270,7 @@ end
 local function setupRows()
   local rows = {}
   local mode = settings.mode
-  if mode ~= "freestyle" then rows[#rows + 1] = trackRow() end
+  rows[#rows + 1] = mode == "freestyle" and freestyleTrackRow() or trackRow()
   rows[#rows + 1] = carRow()
   rows[#rows + 1] = paintRow()
 
@@ -496,19 +515,25 @@ local function drawSetupPreview(sw, sh, boardW, s, carOnly)
   local w = sw - x - 14 * s
   if w < 120 * s then return end
 
-  if settings.mode ~= "freestyle" and not carOnly then
-    local entry = currentEntry()
+  local entry
+  if not carOnly then
+    if settings.mode == "freestyle" then entry = freestyleEntry() else entry = currentEntry() end
+  end
+  if entry then
     local data = cachedTrack(entry)
     -- Stops short of the car panel on a screen as low as a phone's.
     local size = math.min(w, sh * 0.5, sh - 138 * s)
     ui.panel(x, 14 * s, w, size + 34 * s, 0.82)
     minimap.drawOutline(data.track, data.line, x + (w - size) / 2 + 10 * s, 20 * s, size - 20 * s, 3, colors.paint)
     ui.text(entry.title, x + 6 * s, 14 * s + size + 8 * s, 8 * s, colors.marshal)
-    local best = settings.bestLap(entry.name, currentCar().id)
     local detail = string.format("%.2f KM", data.track.length / config.METER / 1000)
     ui.text(detail, x, 14 * s + size + 8 * s, 6 * s, colors.paint, "right", w - 6 * s)
-    ui.text("BEST " .. hud.formatTime(best), x + 6 * s, 14 * s + size + 20 * s, 6 * s,
-      best and colors.sectorPurple or colors.muted)
+    -- Freestyle times nothing, so a best lap means nothing there.
+    if settings.mode ~= "freestyle" then
+      local best = settings.bestLap(entry.name, currentCar().id)
+      ui.text("BEST " .. hud.formatTime(best), x + 6 * s, 14 * s + size + 20 * s, 6 * s,
+        best and colors.sectorPurple or colors.muted)
+    end
   end
 
   if carOnly then drawOnlineNotes(x, 14 * s, w, s) end

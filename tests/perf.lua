@@ -28,6 +28,8 @@ local CASES = {
   { name = "mirage-midnight-boost-high", track = "mirage", time = "midnight", quality = "high", boost = true },
   -- The worst of it: speed blur, the warp and a full minute for a phone to heat up.
   { name = "mirage-night-boost-high", track = "mirage", time = "night", quality = "high", boost = true, sample = 60 },
+  -- Freestyle's lot: lapping the slalom, through the cones.
+  { name = "lot-night-high", lot = true, time = "night", quality = "high" },
 }
 
 -- Fires the boost again whenever braking for a corner has cancelled it.
@@ -121,12 +123,19 @@ function perf.start()
     post.quality = case.quality
     settings.time = case.time
     rm.start({
-      mode = "race", entry = catalog.find(case.track), spec = garage[3], laps = 99, opponents = 5,
+      mode = case.lot and "freestyle" or "race", entry = case.track and catalog.find(case.track), spec = garage[3],
+      laps = 99, opponents = case.lot and 0 or 5,
       difficulty = "pro", time = case.time, startDelay = 0.2, seed = 3, assist = "arcade",
     })
     state.screen = "race"
     local race = rm.race()
-    race.player.driver = AI.new(race.track, race.player, { skill = 0.92 })
+    if case.lot then
+      local M = require("src/config").METER
+      race.player:teleport(40 * M, -50 * M, -math.pi / 2)
+      race.player.driver = { update = function(_, c) c.input.throttle, c.input.steer = 0.75, 0.3 end }
+    else
+      race.player.driver = AI.new(race.track, race.player, { skill = 0.92 })
+    end
     if case.boost then race.player.driver = boosting(race.player.driver) end
     clock, frames = 0, {}
   end

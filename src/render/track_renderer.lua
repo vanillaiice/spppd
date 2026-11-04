@@ -3,6 +3,7 @@
 local config = require("src/config")
 local textures = require("src/render/textures")
 local environment = require("src/render/environment")
+local lot = require("src/sim/lot")
 
 local renderer = {}
 
@@ -213,11 +214,11 @@ local function buildGravel(track, theme)
   return mesh
 end
 
-local function barrierMesh(points, theme, halfWidth, shift)
+local function barrierMesh(points, theme, halfWidth, shift, open)
   local verts, indices = {}, {}
   local n = #points
   local segment = 0
-  for i = 1, n do
+  for i = 1, open and n - 1 or n do
     local a, b = points[i], points[i % n + 1]
     local dx, dy = b.x - a.x, b.y - a.y
     local len = math.sqrt(dx * dx + dy * dy)
@@ -482,7 +483,77 @@ function renderer.load(track, timeName)
   return setmetatable(self, { __index = renderer })
 end
 
--- Freestyle has no circuit: just a huge concrete apron with worn paint.
+-- The playground's containers, baked like the quay's: shadow, ink, then paint.
+local LOT_COLORS = { { 0.93, 0.2, 0.2 }, { 0.1, 0.5, 0.92 }, { 0.98, 0.72, 0.1 }, { 0.12, 0.72, 0.5 }, { 0.95, 0.95, 0.97 } }
+
+local function lotBlocks(layout, env)
+  local rects = {}
+  local sx, sy = env.sun[1] * env.shadowLength * 3, env.sun[2] * env.shadowLength * 3
+  local cw, ch, edge = lot.CONTAINER_W, lot.CONTAINER_H, 1.5
+  local n = 0
+  for _, b in ipairs(layout.blocks) do
+    addRect(rects, b.x + sx, b.y + sy, b.w, b.h, { 0, 0, 0 }, env.shadowAlpha)
+    addRect(rects, b.x - edge, b.y - edge, b.w + edge * 2, b.h + edge * 2, INK)
+    for c = 0, b.cols - 1 do
+      for r = 0, b.rows - 1 do
+        n = n + 1
+        local x, y = b.x + c * cw, b.y + r * ch
+        addRect(rects, x + edge, y + edge, cw - edge * 2, ch - edge * 2, LOT_COLORS[(n * 3) % #LOT_COLORS + 1])
+      end
+    end
+  end
+  return rectMesh(rects)
+end
+
+local function lotWall(self, layout)
+  local half = lot.WALL_HALF
+  local paint = { barrierA = { 0.98, 0.98, 0.96 }, barrierB = { 0.93, 0.13, 0.18 } }
+  local ink = { barrierA = INK, barrierB = INK }
+  local dark = { barrierA = { 0, 0, 0 }, barrierB = { 0, 0, 0 } }
+  local sun, len = self.env.sun, self.env.shadowLength
+  self.wall = barrierMesh(layout.wall, paint, half, nil, true)
+  self.wallEdge = barrierMesh(layout.wall, ink, half + 2.5, nil, true)
+  self.wallShadow = barrierMesh(layout.wall, dark, half + 1, { sun[1] * len, sun[2] * len }, true)
+end
+
+-- Painted markings: the start box, the donut ring and the slalom's line.
+local function drawLotPaint(layout)
+  love.graphics.setColor(0.98, 0.98, 0.96, 0.85)
+  love.graphics.setLineWidth(4)
+  local b = layout.startBox
+  love.graphics.rectangle("line", b.x, b.y, b.w, b.h)
+  local d = layout.donut
+  love.graphics.circle("line", d.x, d.y, d.ring, 64)
+  love.graphics.circle("line", d.x, d.y, d.ring + 6 * M, 64)
+  local sl = layout.slalom
+  love.graphics.setColor(0.98, 0.82, 0.12, 0.9)
+  for y = sl.fromY, sl.toY, -4 * M do
+    love.graphics.line(sl.x, y, sl.x, y - 2 * M)
+  end
+end
+
+local function drawPillars(layout, env)
+  local sx, sy = env.sun[1] * env.shadowLength * 2, env.sun[2] * env.shadowLength * 2
+  for _, p in ipairs(layout.pillars) do
+    love.graphics.setColor(0, 0, 0, env.shadowAlpha)
+    love.graphics.circle("fill", p.x + sx, p.y + sy, p.r)
+    love.graphics.setColor(INK)
+    love.graphics.circle("fill", p.x, p.y, p.r + 2.5)
+    -- A stack of tyres, looked down on: rings, with the hole in the middle.
+    for i, shade in ipairs({ 0.2, 0.28, 0.2, 0.28 }) do
+      love.graphics.setColor(shade, shade, shade + 0.03)
+      love.graphics.circle("fill", p.x, p.y, p.r * (1 - (i - 1) * 0.16))
+    end
+    love.graphics.setColor(0.93, 0.13, 0.18)
+    love.graphics.setLineWidth(3)
+    love.graphics.circle("line", p.x, p.y, p.r * 0.72)
+    love.graphics.setColor(0.06, 0.06, 0.08)
+    love.graphics.circle("fill", p.x, p.y, p.r * 0.3)
+  end
+end
+
+-- Freestyle has no circuit: just a huge concrete apron with worn paint, and the
+-- playground in the middle of it.
 function renderer.loadApron(timeName)
   textures.load()
   local self = {}
@@ -498,6 +569,10 @@ function renderer.loadApron(timeName)
     { -extent, -extent, 0, 0 }, { extent, -extent, 1, 0 },
     { extent, extent, 1, 1 }, { -extent, extent, 0, 1 },
   }, "fan", "static")
+
+  self.layout = lot.layout()
+  lotWall(self, self.layout)
+  self.blockMesh = lotBlocks(self.layout, self.env)
 
   self.floods, self.pools = {}, {}
   for x = -8, 8 do
@@ -530,6 +605,42 @@ function renderer.loadApron(timeName)
       local x, y = (cx + i) * cell, (cy + i) * cell
       love.graphics.line(x, (cy - reach) * cell, x, (cy + reach) * cell)
       love.graphics.line((cx - reach) * cell, y, (cx + reach) * cell, y)
+    end
+
+    drawLotPaint(self.layout)
+    love.graphics.setColor(1, 1, 1, self.env.shadowAlpha * 0.9)
+    love.graphics.draw(self.wallShadow)
+    love.graphics.setColor(1, 1, 1)
+    love.graphics.draw(self.wallEdge)
+    love.graphics.draw(self.wall)
+    love.graphics.draw(self.blockMesh)
+    drawPillars(self.layout, self.env)
+  end
+
+  -- Cones move, so they're drawn where they are, and only near the screen.
+  function self:drawCones(cones)
+    local sw, sh = love.graphics.getWidth(), love.graphics.getHeight()
+    local cx, cy = love.graphics.inverseTransformPoint(sw / 2, sh / 2)
+    local ex, ey = love.graphics.inverseTransformPoint(0, 0)
+    local reach = (ex - cx) ^ 2 + (ey - cy) ^ 2 + (4 * M) ^ 2
+    local env = self.env
+    local sx, sy = env.sun[1] * env.shadowLength * 0.8, env.sun[2] * env.shadowLength * 0.8
+    local r = lot.CONE_RADIUS
+    for _, cone in ipairs(cones) do
+      local x, y = cone.body:getPosition()
+      if (x - cx) ^ 2 + (y - cy) ^ 2 < reach then
+        love.graphics.setColor(0, 0, 0, env.shadowAlpha)
+        -- Drawn bigger than it is to hit, so it reads from the chase camera.
+        love.graphics.circle("fill", x + sx, y + sy, r * 2)
+        love.graphics.setColor(INK)
+        love.graphics.circle("fill", x, y, r * 2 + 2)
+        love.graphics.setColor(1, 0.45, 0.08)
+        love.graphics.circle("fill", x, y, r * 2)
+        love.graphics.setColor(0.98, 0.98, 0.96)
+        love.graphics.circle("fill", x, y, r * 1.3)
+        love.graphics.setColor(1, 0.45, 0.08)
+        love.graphics.circle("fill", x, y, r * 0.75)
+      end
     end
   end
   function self:drawOverhead() end
