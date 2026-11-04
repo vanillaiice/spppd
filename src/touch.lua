@@ -24,12 +24,12 @@ function touch.buttons()
   return settings.touchSteer == "buttons"
 end
 
--- Nitro sits under the resting right thumb with drift just inside it. Reset, pause
+-- Boost sits under the resting right thumb with drift just inside it. Reset, pause
 -- and the horn are up top, where a thumb won't hit them by accident.
 --
 -- With buttons, brake sits above drift, clear of the dash's row, and the left
 -- thumb rocks between two arrows. Without auto gas, gas takes the corner and
--- nitro moves out beside the brake.
+-- boost moves out beside the brake.
 function touch.layout(sw, sh)
   local s = ui.scale(sw, sh)
   local function at(action, label, size, right, up, r, shape)
@@ -216,7 +216,7 @@ end
 
 local function drawButton(b, car, s)
   local c = buttonColor(b.action, car)
-  -- Nitro stays lit for as long as it's on, not just while it's pressed.
+  -- Boost stays lit for as long as it's on, not just while it's pressed.
   local held = input.isDown(b.action) or (b.action == "boost" and car.model.boostState == "active")
   local panel = colors.asphaltDeep
   if held then

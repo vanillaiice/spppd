@@ -8,7 +8,7 @@ folder. No audio files ship, and that stays true: a sound's parameters are the s
 
 **How to read the numbers.** "Measured" means a tool produced the figure from the
 rendered samples or from the real `audio.update`. "Inferred" means it's reasoning from
-those. By ear, the pass's first version of the speed, slide and nitro sounds failed,
+those. By ear, the pass's first version of the speed, slide and boost sounds failed,
 and the numbers had called them fine. What replaced them was picked by ear on the
 bench, out of three takes of each, but hasn't been judged in a race. Nothing else here
 says a sound is better. [What to listen for](#what-to-listen-for)
@@ -29,7 +29,7 @@ arcade car, not samples of a real one.
 | --- | --- |
 | Square waves, plain sfxr | Anything that's the game talking: lights, lap, menus, finish |
 | Stepped noise (sfxr's sample-and-hold) | Crunch, grit, anything mechanical breaking |
-| White noise through a low-pass and a high-pass, moving | Air and rubber: road, wind, off-road, scrub, nitro, turbo |
+| White noise through a low-pass and a high-pass, moving | Air and rubber: road, wind, off-road, scrub, boost, turbo |
 | Noise ringing in resonators | Pipes, dead metal. Never a clean sine for a mechanical sound |
 | Sawtooths a little off each other | Rubber stick-slipping: the squeal |
 | Sines | Only things that really whine: thump under a crash, and a turbo's faint whistle, which must wander |
@@ -56,16 +56,16 @@ These came from the user playing the game. Measurements don't overrule them.
 - A slide isn't noise either, and it has to last. It was "horrible, especially when
   higher". A real drift pins `slide` at 1, so the top of the range is what a slide
   sounds like for seconds at a time. Judge it held, not as a moment.
-- Nitro is "smooth like a can slowly releasing air, but with pressure", never "too
+- Boost is "smooth like a can slowly releasing air, but with pressure", never "too
   strident". Smooth roll-off, a chest under it, a swell in, a slow sigh out.
 - The takes picked by ear, each out of three: speed is rumble and air, not mostly air
   and not rumble alone. Slide is a low rubber howl, not a higher squeal and not a
-  scuff alone. Nitro is gas with a chest, not a deeper push and not an airier can.
+  scuff alone. Boost is gas with a chest, not a deeper push and not an airier can.
 
-- Nitro sounds like what feeds the engine, not one sound for every car. An NA car keeps
+- Boost sounds like what feeds the engine, not one sound for every car. An NA car keeps
   the gas. A supercharger's whine and CYBER's motor get louder and climb. A turbo car
   was "barely" different with its own loop turned up, because that loop sits in the
-  exhaust's band: it added 2 dB at 4 kHz where the gas added 10. What reads as nitro is
+  exhaust's band: it added 2 dB at 4 kHz where the gas added 10. What reads as boost is
   the lift around 2 kHz. So a turbo car gets a layer of its own there, air and a noise
   whistle, picked by ear out of whistle, roar and both, and the exhaust steps back 18%
   under it. Check where a change lands before turning anything up.
@@ -94,7 +94,7 @@ different kind of sound.
 | --- | --- |
 | 60 Hz to 1 kHz | Engine. Crash thumps pass through. Road and wind sit under it, quietly |
 | 300 Hz to 1 kHz | The engine's phone presence. Keep this strong. The tyre howl's note sits in it, at about 520 Hz, and so does the turbo's whistle, at 470 to 680 Hz under full pressure |
-| 1 to 2.5 kHz | The howl's harmonics, the turbo's air, menus, the top of the nitro |
+| 1 to 2.5 kHz | The howl's harmonics, the turbo's air, menus, the top of the boost |
 | 3 kHz and up | Nothing steady, but for the supercharger's whine at high revs. Only crash edges and other things that are over quickly |
 
 ### Levels
@@ -114,8 +114,8 @@ then through the assumed phone corner. The VOLUME setting defaults to 0.8, -1.9 
 | Road | -29 at 40 m/s, -24 at 70 |
 | Wind | -28 at 70 m/s, -36 at 40 |
 | Off-road | -28, phone -29 |
-| Nitro, NA | -20 full, -24 near empty |
-| Nitro, added to a turbo car | +10 to +14 dB around 2 kHz against no nitro, bigger with more turbos. Under 6% above 4 kHz |
+| Boost, NA | -20 full, -24 near empty |
+| Boost, added to a turbo car | +10 to +14 dB around 2 kHz against no boost, bigger with more turbos. Under 6% above 4 kHz |
 | Shift | -23, phone -29 |
 | Lights, lap, finish | -14 to -21 |
 | Menus | -29 to -33 |
@@ -137,7 +137,7 @@ Car to car, a scene's mix stays within about 4 dB, on either kind of speaker.
 - First sample near zero, and at least 30 ms of fade at the end of a one-shot.
 - **Nothing that plays for seconds is static.** As played, at the highest pitch it
   gets: spectral flatness under 0.35 from 200 Hz to 8 kHz, and at most about 5% of its
-  energy above 4 kHz. Look at those two, not only loudness. The old nitro read 0.93 and
+  energy above 4 kHz. Look at those two, not only loudness. The old boost read 0.93 and
   about two thirds, and passing every level target said nothing about that. Read `flat` and `high`
   in `analyze.py`'s spectrum table as faults, not as notes. `blower` is the one
   exception, by ruling: 21% above 4 kHz at full revs, and 4.5% at its rendered pitch.
@@ -151,7 +151,7 @@ Car to car, a scene's mix stays within about 4 dB, on either kind of speaker.
 | Crash | Loudest within 10 ms | Falls away at once, no plateau | Gone by its length, 0.2 to 0.85 s by size |
 | Menus and lights | Under 1 ms | Held, sfxr's decay | About 20 ms to 0.6 s |
 | Gas and air one-shots | About 15 ms | Falling pitch | Up to 0.6 s |
-| Loops | None: faded in `audio.update`. Nitro swells in over 0.1 s and sighs out over 0.3 s | No step at the join. Only what's meant to move may move: wind gusts on purpose | |
+| Loops | None: faded in `audio.update`. Boost swells in over 0.1 s and sighs out over 0.3 s | No step at the join. Only what's meant to move may move: wind gusts on purpose | |
 
 ### Loops
 
@@ -190,8 +190,8 @@ oversampling somewhere it isn't doing anything.
 | `road` | `bandNoise` | Moving | Loop, pitch and volume from speed |
 | `wind` | `bandNoise` | Over 18 m/s | Loop, from speed and slipstream |
 | `loose` | `bandNoise` | Grass, gravel, kerbs | Loop, from share of wheels and speed |
-| `nitro` | `bandNoise` | Nitro on an NA car | Loop, pitch and level sag as the tank empties |
-| `turboboost1`, `2`, `4` | `bandNoise` | Nitro on a turbo car | Loop, pitch and level sag as the tank empties, with a blow-off when it stops |
+| `boostgas` | `bandNoise` | Boost on an NA car | Loop, pitch and level sag as the tank empties |
+| `turboboost1`, `2`, `4` | `bandNoise` | Boost on a turbo car | Loop, pitch and level sag as the tank empties, with a blow-off when it stops |
 | `horn` | `hornData` | H, B, Circle or the HORN button | Loop, pitch from mass. Rival has its own |
 | `impact1,2,3` | `crashData` | Crash, by strength | One-shot, 2 voices each, ±6% pitch, pitch from mass |
 | `scrape` | sfxr | A graze, strength under 0.15 | One-shot, 2 voices, ±6% pitch |
@@ -227,7 +227,7 @@ The numbers in it are measured.
 
 ### What listening overturned
 
-The first report said road, wind, off-road, nitro and scrub had "kept their loudness and
+The first report said road, wind, off-road, boost and scrub had "kept their loudness and
 spectrum", as if that were a pass. It was the fault. Measured as played, before and
 after the rebuild, for the same moment in a race:
 
@@ -235,7 +235,7 @@ after the rebuild, for the same moment in a race:
 | --- | --- | --- | --- | --- |
 | Road, 70 m/s | 2455 > 358 Hz | 0.48 > 0.00 | 34% > 0.3% | -24.7 > -23.8 |
 | Wind, 70 m/s | 4603 > 725 Hz | 0.80 > 0.02 | 65% > 1.5% | -28.4 > -27.9 |
-| Nitro, full tank | 5546 > 1625 Hz | 0.93 > 0.31 | 87% > 32% | -17.4 > -20.3 |
+| Boost, full tank | 5546 > 1625 Hz | 0.93 > 0.31 | 87% > 32% | -17.4 > -20.3 |
 | Scrub, slide 1 | 1395 > 815 Hz | 0.24 > 0.04 | 21% > 4% | -30.6 > -29.7 |
 | Squeal, slide 1 | 1457 > 776 Hz | 0.02 > 0.00 | Two thin noise bands > a note and its harmonics, 3% | -25.0 > -29.2 |
 | Off-road | 2290 > 449 Hz | 0.43 > 0.01 | 29% > 0.6% | -26.1 > -27.7 |
@@ -248,7 +248,7 @@ after the rebuild, for the same moment in a race:
   loudest. It's now a note at about 520 Hz with its harmonics, 4 dB quieter. It's
   still 5 to 6 dB over the original at 1 to 2.5 kHz. Against the first version of the
   squeal, that band is 4 to 6 dB lower.
-- **Nitro** was the loudest noise in the game and 87% over 2 kHz. It now has a -12 dB per
+- **Boost** was the loudest noise in the game and 87% over 2 kHz. It now has a -12 dB per
   octave roll-off from 2.4 kHz, a chest under 320 Hz, a 0.1 s swell in, a 0.3 s sigh out,
   and loses up to 30% of its level as the tank empties.
 - **Engine.** The rasp raised the noise above 1 kHz by 6 to 7 dB at the top of the revs,
@@ -268,7 +268,7 @@ Measured identical, so not touched by accident: `beep`, `go`, `click`, `select`,
 user had played most of them. `turbo1,2,4` and `blower` were left alone too, and failed
 by ear later: see the rulings.
 
-Nitro and scrub stopped being sfxr presets: at their settings sfxr's noise is plain
+Boost and scrub stopped being sfxr presets: at their settings sfxr's noise is plain
 white, so eightfold oversampling did nothing measurable and took 22% of the first
 launch. They use sfxr's filters directly, for about a fifth of the cost.
 
@@ -360,10 +360,10 @@ the deep bass is 3.8 dB lighter than it was. That's the trade made for a phone.
 `make listen`, or `love . --visual listen`. TAB swaps old and new at any moment, on
 the same car at the same rpm. `[` and `]` change car.
 
-1. **Speed, slide and nitro in a race.** These were picked on the bench, away from a
+1. **Speed, slide and boost in a race.** These were picked on the bench, away from a
    real lap. Does a long drift wear? `SQUEAL_MAX` sets it. Does the howl get lost under a
-   loud engine, now that it shares the engine's band? Does nitro still feel like a
-   reward over a flat-out engine? `NITRO_LEVEL` sets it.
+   loud engine, now that it shares the engine's band? Does boost still feel like a
+   reward over a flat-out engine? `BOOST_GAS_LEVEL` sets it.
 2. **Crashes:** keys 1 to 6, on SAMURAI then TOFU RUNNER. Can you tell a tap from a hit
    from a crash with your eyes shut? Does anything ring like a pan? `CRASHES` and
    `IMPACT_TIERS` in `src/audio.lua` hold all of it.

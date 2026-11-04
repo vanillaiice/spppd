@@ -23,4 +23,4 @@ Ideas that are agreed in principle but not built yet.
   away from.
 - **Car upgrade trees:** not until the career exists.
 - **Drift scoring and a Drift mode:** tried and dropped on 2026-11-01. Sliding
-  earns nitro, and that's enough.
+  earns boost, and that's enough.

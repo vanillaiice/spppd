@@ -19,7 +19,7 @@ race up to three friends online. There are 12 cars, 10 tracks and four times of 
 | Steer | A D / arrows | Left stick |
 | Accelerate, brake and reverse | W S / arrows | RT LT / R2 L2 |
 | Handbrake (drift on Arcade) | Shift | RB / R1 |
-| Nitro on/off | Space | LB / L1 |
+| Boost on/off | Space | LB / L1 |
 | Reset to the track | R | Y / Triangle |
 | Headlights (low, high) | F, G | |
 | Change camera | C | Back / Share |
@@ -41,7 +41,7 @@ by itself unless you turn Auto Gas off.
 - **Handling** is set in race setup. Arcade is the default, with big grip and a held
   drift on the handbrake. Sport adds realistic grip with driver aids, and Sim has no
   aids at all. Online races always use Arcade.
-- **Nitro** fills on its own, and three times faster while the car is sliding.
+- **Boost** fills on its own, and three times faster while the car is sliding.
 - **Slipstream**: sit close behind a car at speed for less drag, then pull out and
   slingshot past.
 - **Pace notes** at the top of the screen show the next corner, how tight it is (1 is a

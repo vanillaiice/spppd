@@ -260,7 +260,7 @@ h.describe("race", function()
       local car = race.player
       local held = true
       car.driver = {
-        nitroButton = function() return held end,
+        boostButton = function() return held end,
         update = function(_, c) c.input.boost = held end,
       }
       for _, each in ipairs(race.cars) do h.assertEq(each.model.boostTank, each.spec.boostTime, each.name) end
@@ -730,7 +730,7 @@ h.describe("race", function()
     end
   end)
 
-  h.it("a wreck can't reverse or earn nitro on the way to a stop", function()
+  h.it("a wreck can't reverse or earn boost on the way to a stop", function()
     local race, car = fenceRace(garage[3])
     aimAtFence(race, car, 60, 45)
     run(race, 0.5, function() return car.wreck end)

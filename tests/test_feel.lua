@@ -33,7 +33,7 @@ local function refilled(beta)
   return c.boostTank - 1, c
 end
 
-h.describe("drift nitro", function()
+h.describe("drift boost", function()
   h.it("a slide fills the tank three times faster than cruising", function()
     local cruising = refilled(nil)
     local sliding = refilled(math.rad(25))
@@ -47,7 +47,7 @@ h.describe("drift nitro", function()
     h.assertTrue(slid.boostFilling, "a slide should show on the gauge")
   end)
 
-  h.it("nothing fills while the nitro is burning", function()
+  h.it("nothing fills while the boost is burning", function()
     local c = dynamics.new(garage[1], "arcade")
     dynamics.step(c, pedals({ boost = true }), 25, 0, 0, DT)
     h.assertEq(c.boostState, "active")
@@ -120,11 +120,11 @@ h.describe("vibration", function()
     h.assertEq(r, 0)
   end)
 
-  h.it("nitro, kerbs and grass each have their own feel", function()
+  h.it("boost, kerbs and grass each have their own feel", function()
     local boost = calm()
     boost.boostState = "active"
     local bl, br = rumble.levels(boost, 30, 0, 0)
-    h.assertTrue(bl > br and br > 0, "nitro leans on the heavy motor")
+    h.assertTrue(bl > br and br > 0, "boost leans on the heavy motor")
 
     local kerb = calm()
     kerb.wheels[1].surface = "kerb"
@@ -207,7 +207,7 @@ h.describe("vibration", function()
     local model = calm()
     model.boostState = "active"
     for _ = 1, 60 do rumble.update(1 / 60, car(model)) end
-    h.assertEq(buzzes, 2, "nitro buzzes once as it lights, not all the way through")
+    h.assertEq(buzzes, 2, "boost buzzes once as it lights, not all the way through")
 
     love.system.vibrate, ui.mobile = real, mobile
     rumble.stop()

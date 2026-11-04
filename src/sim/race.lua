@@ -384,7 +384,7 @@ function Race:step(dt)
       car.input.handbrake = false
       -- The clutch is in at the lights, so the pedal only spins the engine.
       car.input.rev = car.driver and car.driver.revs and car.driver:revs(dt) or 0
-      car.input.boost = car.driver and car.driver.nitroButton and car.driver:nitroButton() or false
+      car.input.boost = car.driver and car.driver.boostButton and car.driver:boostButton() or false
     end
     if self.timer >= self.startDelay then
       self.phase = "racing"

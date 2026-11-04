@@ -134,7 +134,7 @@ local function drawDash(car, sw, sh, s)
   love.graphics.rectangle("fill", boxX, y + 13 * s, 20 * s, 20 * s)
   ui.text(gear, boxX, y + 15 * s, 16 * s, colors.asphaltDeep, "center", 20 * s + 2)
 
-  -- Nitro gauge
+  -- Boost gauge
   local fill, c = model.boostTank / spec.boostTime, colors.sectorGreen
   if model.boostState == "active" then
     c = colors.sectorPurple

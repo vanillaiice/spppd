@@ -40,7 +40,7 @@ function RemoteDriver:update(car, race, dt)
   model.steer, model.rpm, model.throttle, model.brake = state.steer, state.rpm, state.throttle, state.brake
   model.gear = math.max(1, state.gear)
   model.reverse = state.reverse or false
-  model.boostState = state.nitro and "active" or "ready"
+  model.boostState = state.boost and "active" or "ready"
   for _, wheel in ipairs(model.wheels) do wheel.slide = state.slide or 0 end
   car.horn = state.horn or false
   -- Their game put them back on the road, so they're a ghost there. Solid here,

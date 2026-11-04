@@ -48,7 +48,7 @@ local LAUNCH_FADE = 0.15        -- share of redline over which a launch goes fro
 local LAUNCH_PUSH = 7.5           -- extra pull from a perfect launch (m/s^2), fading away
 local LAUNCH_TIME = 1.2
 local BOOST_RATED_SPEED = 22    -- speed (m/s) at which the push equals boostPower
-local BOOST_MIN_TANK = 0.25     -- seconds of nitro needed to light it again
+local BOOST_MIN_TANK = 0.25     -- seconds of boost needed to light it again
 local SLIDE_REFILL = 3          -- how many times faster the tank fills in a slide
 -- Hard cornering on the racing line reaches 18 degrees; a held drift sits past 25.
 local SLIDE_MIN_BETA = math.rad(20)
@@ -174,7 +174,7 @@ function dynamics.new(spec, assist)
     slipstream = 0, -- 0..1 how far into another car's wake, set by the race
 
     boostState = "ready",
-    boostTank = spec.boostTime,  -- seconds of nitro left
+    boostTank = spec.boostTime,  -- seconds of boost left
     boostHeld = false,
     boostFilling = false,  -- a slide is filling the tank right now
 
@@ -320,7 +320,7 @@ function dynamics.sliding(c, speed)
   return abs(c.beta) > SLIDE_MIN_BETA and speed > SLIDE_MIN_SPEED and not c.reverse
 end
 
--- Each press switches the nitro on or off, so a tank can be spent in sips. It
+-- Each press switches the boost on or off, so a tank can be spent in sips. It
 -- only refills while off, faster in a slide, and braking shuts it so it can't
 -- fight the brakes. It can't be lit at the lights, and a button still held when
 -- they go out has to be pressed again.
@@ -747,7 +747,7 @@ function dynamics.step(c, input, vx, vy, r, dt)
       fxTotal = fxTotal + spec.mass * LAUNCH_PUSH * c.launch * fade * pedal
     end
   end
-  -- Nitro pushes the car itself. Sent through the tyres it would be cut by
+  -- Boost pushes the car itself. Sent through the tyres it would be cut by
   -- traction control just where it's wanted, in low gears and out of corners.
   if boosting and not c.reverse then
     fxTotal = fxTotal + spec.boostPower / BOOST_RATED_SPEED

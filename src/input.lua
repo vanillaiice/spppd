@@ -1,5 +1,5 @@
 -- Keyboard and gamepad, merged into one set of driving controls. Touch sits on
--- top of this in src/touch.lua. The pad borrows R1 handbrake and L1 nitro from
+-- top of this in src/touch.lua. The pad borrows R1 handbrake and L1 boost from
 -- Need for Speed: Most Wanted on PS2, with the triggers kept for partial gas
 -- and braking.
 local input = {

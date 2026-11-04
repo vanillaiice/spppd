@@ -136,7 +136,7 @@ h.describe("input", function()
     h.assertTrue(not input.consume("respawn"))
   end)
 
-  h.it("the nitro input follows the key, so the car can see each press", function()
+  h.it("the boost input follows the key, so the car can see each press", function()
     input.clear()
     local t = {}
     input.press("space")
@@ -147,7 +147,7 @@ h.describe("input", function()
     h.assertTrue(not t.boost)
   end)
 
-  h.it("a tap shorter than one frame still fires nitro", function()
+  h.it("a tap shorter than one frame still fires boost", function()
     input.clear()
     local t = {}
     input.press("space")
@@ -166,7 +166,7 @@ h.describe("input", function()
     h.assertTrue(t.shiftUp, "square changes up")
     h.assertTrue(t.shiftDown, "cross changes down")
     h.assertTrue(t.handbrake, "R1 is the handbrake")
-    h.assertTrue(t.boost, "L1 is the nitro")
+    h.assertTrue(t.boost, "L1 is the boost")
     input.clear()
   end)
 
@@ -338,8 +338,8 @@ h.describe("audio", function()
     h.assertBetween(peakOf(data), 0.1, 0.95, "peak level, clipping sounds harsh")
   end)
 
-  h.it("synthesises a nitro release that loops", function()
-    local data = audio.nitroData()
+  h.it("synthesises a boost release that loops", function()
+    local data = audio.boostGasData()
     local n = data:getSampleCount()
     h.assertTrue(math.abs(data:getSample(0) - data:getSample(n - 1)) < 0.2, "loop point")
     h.assertBetween(peakOf(data), 0.1, 0.95, "peak level")
@@ -651,17 +651,17 @@ h.describe("audio", function()
     return above / all
   end
 
-  h.it("nitro is smooth gas with a chest, and loses pressure as it runs out", function()
-    local data = audio.nitroData()
+  h.it("boost is smooth gas with a chest, and loses pressure as it runs out", function()
+    local data = audio.boostGasData()
     h.assertTrue(windowOf(data, 0.3, 1) > 0.08, "loud enough to hear")
     h.assertTrue(shareAbove(data, 4000) < 0.08, "strident: " .. shareAbove(data, 4000))
     h.assertTrue(shareAbove(data, 400) < 0.6, "no chest: " .. shareAbove(data, 400))
-    h.assertTrue(audio.nitroPitch(0) < audio.nitroPitch(1))
-    h.assertTrue(audio.nitroLevel(0) < audio.nitroLevel(1))
-    h.assertTrue(audio.nitroLevel(0) > audio.nitroLevel(1) * 0.5, "still heard on the last of it")
+    h.assertTrue(audio.boostGasPitch(0) < audio.boostGasPitch(1))
+    h.assertTrue(audio.boostGasLevel(0) < audio.boostGasLevel(1))
+    h.assertTrue(audio.boostGasLevel(0) > audio.boostGasLevel(1) * 0.5, "still heard on the last of it")
   end)
 
-  h.it("nitro drives what each car already has", function()
+  h.it("boost drives what each car already has", function()
     local audio = require("src/audio")
     local garage = require("src/entities/garage")
     local kinds = {}
@@ -679,7 +679,7 @@ h.describe("audio", function()
     end
   end)
 
-  h.it("nitro lifts a car's own sound, and more turbos lift it further", function()
+  h.it("boost lifts a car's own sound, and more turbos lift it further", function()
     local audio = require("src/audio")
     local function spec(id) return require("src/entities/garage").byId(id) end
     local function lift(id, part)
@@ -695,14 +695,14 @@ h.describe("audio", function()
     lift("cyber", "motor")
     h.assertEq(audio.engineMix(spec("wedge"), 0.9, 1, 1, 1).turbo, 0, "no turbo to drive")
     h.assertEq(audio.engineMix(spec("rocket"), 0.9, 1, 0.2, 0).turbo, audio.engineMix(spec("rocket"), 0.9, 1, 0.2).turbo,
-      "nothing changes without nitro")
+      "nothing changes without boost")
   end)
 
-  h.it("a turbo car gets a layer above the exhaust on nitro, bigger with more turbos", function()
+  h.it("a turbo car gets a layer above the exhaust on boost, bigger with more turbos", function()
     local audio = require("src/audio")
     local garage = require("src/entities/garage")
     local function layer(id, boost) return audio.engineMix(garage.byId(id), 0.9, 1, 1, boost).turboBoost end
-    h.assertEq(layer("rocket", 0), 0, "silent without nitro")
+    h.assertEq(layer("rocket", 0), 0, "silent without boost")
     h.assertTrue(layer("hot_hatch", 1) < layer("rocket", 1) and layer("rocket", 1) < layer("quad_turbo", 1), "more turbos are bigger")
     for _, id in ipairs({ "wedge", "muscle_monster", "cyber" }) do
       h.assertEq(layer(id, 1), 0, id .. " has no turbo")
@@ -719,7 +719,7 @@ h.describe("audio", function()
     end
   end)
 
-  h.it("nitro eases in and out, and sags with the tank", function()
+  h.it("boost eases in and out, and sags with the tank", function()
     local audio = require("src/audio")
     h.assertNear(audio.boostStep(0, true, 1, 0.05), 0.5, 0.001, "a swell, not a step")
     h.assertNear(audio.boostStep(1, false, 1, 0.1), 0.7, 0.001, "and a sigh")
@@ -965,7 +965,7 @@ h.describe("audio", function()
   end)
 
   h.it("noise loops don't dip at the join", function()
-    local loops = { scrub = audio.scrubData(), nitro = audio.nitroData(), loose = audio.looseData(), road = audio.roadData() }
+    local loops = { scrub = audio.scrubData(), boost = audio.boostGasData(), loose = audio.looseData(), road = audio.roadData() }
     for name, data in pairs(loops) do
       local n = data:getSampleCount()
       local joined = levelOf(data, 2000, 8000)  -- the middle of the crossfade
@@ -977,7 +977,7 @@ h.describe("audio", function()
   h.it("nothing that plays for seconds is static", function()
     local loops = {
       road = audio.roadData(), wind = audio.windData(), loose = audio.looseData(),
-      scrub = audio.scrubData(), squeal = audio.squealData(), nitro = audio.nitroData(),
+      scrub = audio.scrubData(), squeal = audio.squealData(), boost = audio.boostGasData(),
     }
     for name, data in pairs(loops) do
       h.assertTrue(shareAbove(data, 4000) < 0.08, name .. " is a hiss: " .. shareAbove(data, 4000))

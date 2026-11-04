@@ -89,7 +89,7 @@ still() {
 }
 
 clip race hero 240 600 HERO_TRACK="${HERO_TRACK:-oasis}" HERO_CAR="${HERO_CAR:-wedge}"
-clip nitro boost 380 540
+clip boost boost 380 540
 clip midnight midnight 300 600
 clip pack night 200 600
 still editor editor 1280x720

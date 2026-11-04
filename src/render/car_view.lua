@@ -164,7 +164,7 @@ function view.updateFx(car, dt)
   local model = car.model
   for i = 1, 4 do wheelFx(car, model.wheels[i], fx.trails[i], speed) end
 
-  -- The warp eases in and out, so a quick tap of nitro never flashes.
+  -- The warp eases in and out, so a quick tap of boost never flashes.
   local warpTarget = model.boostState == "active" and 1 or 0
   fx.warp = fx.warp + (warpTarget - fx.warp) * math.min(1, dt * (warpTarget == 1 and 9 or 5))
 
@@ -260,7 +260,7 @@ local function drawWisp(front, y, len, width, a)
   love.graphics.polygon("fill", front, y, front - len * 0.3, y - width, front - len, y, front - len * 0.3, y + width)
 end
 
--- Nitro is the slipstream at a harder pace: more air, moving faster.
+-- Boost is the slipstream at a harder pace: more air, moving faster.
 local function drawWarp(car, alpha)
   local amount = warpAmount(car) * alpha
   if amount < 0.02 then return end
@@ -286,7 +286,7 @@ end
 
 -- Air sliding down both sides of a car that is being towed.
 local function drawSlipstream(car, alpha)
-  -- The warp takes over from these while nitro is on.
+  -- The warp takes over from these while boost is on.
   local amount = car.model.slipstream * (1 - warpAmount(car))
   if amount < 0.05 then return end
   local hl, hw = car.length / 2, car.width / 2

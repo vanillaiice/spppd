@@ -47,7 +47,7 @@ local DEFAULTS = {
   -- Steering
   steerLock = math.rad(34),
   steerSpeed = math.rad(420),
-  -- Nitrous
+  -- Boost
   boostPower = 150000,
   boostTime = 3,
   boostCooldown = 10,

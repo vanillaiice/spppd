@@ -253,7 +253,9 @@ def report(rows):
 
 def compare(rows, older):
     print("\nBEFORE -> AFTER")
-    known = {r["name"]: r for r in older}
+    # Nitro was renamed boost, and its sound with it.
+    renamed = {"nitro": "boostgas"}
+    known = {renamed.get(r["name"], r["name"]): r for r in older}
 
     def change(key):
         def cell(row):

@@ -26,7 +26,7 @@ SAMPLES = int(RATE * FRAME)
 PHONE_CORNER = 300.0
 LAYERS = [("engine", r"^engine"), ("turbo", r"^turbo"), ("blower", r"^blower"), ("motor", r"^motor"),
           ("road", r"^road"), ("wind", r"^wind"), ("tyres", r"^(scrub|squeal)"), ("loose", r"^loose"),
-          ("nitro", r"^nitro"), ("grind", r"^grind"), ("shots", r"")]
+          ("boost", r"^(boostgas|nitro)"), ("grind", r"^grind"), ("shots", r"")]
 
 
 def layer_of(name):

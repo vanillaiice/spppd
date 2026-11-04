@@ -30,7 +30,7 @@ local carIndex = 1
 local running = true
 local sweeping
 local held = { throttle = false }
-local toggles = { nitro = false, grass = false, wall = false, brake = false, limiter = false }
+local toggles = { boost = false, grass = false, wall = false, brake = false, limiter = false }
 local sliders = {
   { key = "revs", label = "Revs", value = 0, max = 1 },
   { key = "throttle", label = "Throttle", value = 0, max = 1 },
@@ -111,7 +111,7 @@ local SITUATIONS = {
   { key = "f", label = "Full drift", values = { revs = 0.75, throttle = 1, speed = 28, slide = 1 } },
   { key = "g", label = "Off road", values = { revs = 0.7, throttle = 1, speed = 28, slide = 0, grass = true } },
   { key = "b", label = "Along a wall", values = { revs = 0.7, throttle = 1, speed = 35, slide = 0, wall = true } },
-  { key = "t", label = "Flat out, nitro", values = { revs = 0.9, throttle = 1, speed = 75, slide = 0, nitro = true } },
+  { key = "t", label = "Flat out, boost", values = { revs = 0.9, throttle = 1, speed = 75, slide = 0, boost = true } },
   { key = "l", label = "Limiter", values = { revs = 1, throttle = 1, speed = 0, slide = 0, limiter = true } },
 }
 
@@ -131,7 +131,7 @@ local function drive(dt)
   model.throttle = held.throttle and 1 or throttle
   model.brake = toggles.brake and 1 or 0
   model.limiting = toggles.limiter and spec.cylinders > 0
-  model.boostState = toggles.nitro and "active" or "ready"
+  model.boostState = toggles.boost and "active" or "ready"
   model.shiftTimer = math.max(0, model.shiftTimer - dt)
   car.speed = slider("speed").value
   car.scraping = toggles.wall and 1 or 0
@@ -160,8 +160,8 @@ local function playing()
   end
   if module.turbos then add("turbo", module.turbos[spec.turbos]) end
   if module.turboBoosts then add("turbo boost", module.turboBoosts[spec.turbos]) end
-  for _, name in ipairs({ "blower", "motor", "road", "wind", "scrub", "squeal", "grind", "loose", "nitro", "horn" }) do
-    add(name, module[name])
+  for _, name in ipairs({ "blower", "motor", "road", "wind", "scrub", "squeal", "grind", "loose", "boostGas", "horn" }) do
+    add(name, module[name] or (name == "boostGas" and module.nitro))
   end
   return list
 end
@@ -211,7 +211,7 @@ local function drawToggles(x, y)
   label("Hold or toggle", x, y, DIM, SMALL)
   local rows = {
     { "W", "Hold: full throttle", held.throttle }, { "H", "Hold: horn", car.horn },
-    { "N", "Nitro", toggles.nitro }, { "K", "Brakes on", toggles.brake }, { "A", "Sweep the revs", sweeping ~= nil },
+    { "N", "Boost", toggles.boost }, { "K", "Brakes on", toggles.brake }, { "A", "Sweep the revs", sweeping ~= nil },
     { "E", "Engine on or off", running },
   }
   for i, row in ipairs(rows) do keyRow(row[1], row[2], x, y + 4 + i * ROW, row[3] and NEW_COLOUR or INK) end
@@ -278,7 +278,7 @@ function listen.keypressed(key)
   elseif key == "down" then focus = focus % #sliders + 1
   elseif key == "w" then held.throttle = true
   elseif key == "h" then car.horn = true
-  elseif key == "n" then toggles.nitro = not toggles.nitro
+  elseif key == "n" then toggles.boost = not toggles.boost
   elseif key == "k" then toggles.brake = not toggles.brake
   elseif key == "a" then sweeping = not sweeping and { at = 0 } or nil
   elseif key == "e" then

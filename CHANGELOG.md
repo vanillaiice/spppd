@@ -113,7 +113,7 @@
 
 - The default online server is now `spppd.vanillaiice.xyz`, with no port to type.
   Saves holding the old address move to it, and a server you chose yourself stays.
-- Each car has its own nitro sound.
+- Each car has its own boost sound.
 
 ### Online
 
@@ -141,7 +141,7 @@ still only bounces.
 - MIDNIGHT, a fourth time of day with no floodlights.
 - A horn.
 - Vibration on pads and phones.
-- Sliding fills the nitro tank faster.
+- Sliding fills the boost tank faster.
 - The finish shows at the line, with the results three seconds later.
 
 ### Changed
@@ -157,7 +157,7 @@ still only bounces.
 
 - A freestyle radio: drop your own music on the window.
 - Touch controls for phones.
-- Stronger on/off nitro with a warp effect, and synthesised sound effects.
+- Stronger on/off boost with a warp effect, and synthesised sound effects.
 - Engine types, and CYBER, modelled on a Model S Plaid.
 
 ### Changed

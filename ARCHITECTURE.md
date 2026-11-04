@@ -293,7 +293,7 @@ countdown phase                          racing and finished phases
   for each car:                            for each car:
     throttle, steer, handbrake = off         driver:update(car, race, dt)
     input.rev = driver:revs(dt) or 0
-    input.boost = driver:nitroButton()
+    input.boost = driver:boostButton()
   timer >= startDelay:
     phase = racing, justStarted = true
     clear input.rev; launch every local car
@@ -350,11 +350,11 @@ and sets `car.touchedCar` on a contact between cars. See "Wrecks" in section 9.
 
 `src/sim/dynamics.lua` turns chassis velocity and driver input into a net force and
 yaw moment. Its model object (`c`) holds everything persistent: steering angle, gear,
-revs, filtered accelerations, nitro state, and per-wheel loads and slips.
+revs, filtered accelerations, boost state, and per-wheel loads and slips.
 
 ### Order of one `dynamics.step`
 
-1. Nitro state, drift amount, steering.
+1. Boost state, drift amount, steering.
 2. Pedals, including the shift into reverse.
 3. Slip angle `beta` and its rate.
 4. Stability control and drift moments.
@@ -362,7 +362,7 @@ revs, filtered accelerations, nitro state, and per-wheel loads and slips.
 6. Gearbox and drive force.
 7. For each wheel: grip, tyre forces, brakes, ABS, traction control, friction circle,
    rolling resistance.
-8. Aero drag, then the arcade push terms: carry, tow, launch and nitro.
+8. Aero drag, then the arcade push terms: carry, tow, launch and boost.
 9. Filter `ax`, `ay` for the next step's weight transfer.
 
 ### Handling tiers
@@ -491,15 +491,15 @@ scores 1, falling to 0 over a further 15% of redline. The score gives up to
 7.5 m/s² of extra push, fading over 1.2 s and scaled by throttle. It's applied to the
 chassis, not the tyres, so wheelspin can't eat it.
 
-### Nitro
+### Boost
 
 `boostState` is `ready`, `active` or `cooldown`, and each press toggles it. The full
 rules:
 
 - The tank holds `boostTime` seconds (3 by default) and burns 1 per second.
-- It refills at `boostTime / boostCooldown` per second, only while nitro is off.
+- It refills at `boostTime / boostCooldown` per second, only while boost is off.
 - A slide triples the refill. `dynamics.sliding` means more than 20° of slip above
-  7 m/s, not in reverse. **This is the only way to earn nitro, and that's deliberate.**
+  7 m/s, not in reverse. **This is the only way to earn boost, and that's deliberate.**
 - Below 0.25 s in the tank it reads `cooldown` and can't be lit.
 - Braking shuts it off and blocks lighting it.
 - Nothing happens at the lights, and a button held through lights-out needs a fresh
@@ -545,7 +545,7 @@ also derives `brakeForce` and `inertia` unless a file sets its own.
 `garage` order matters: settings save a position in that list, so new cars go on the
 end.
 
-| # | Car | Body | Drive | kg | kW | N·m | Gears | Gearing limit km/h | Engine sound | Nitro kW |
+| # | Car | Body | Drive | kg | kW | N·m | Gears | Gearing limit km/h | Engine sound | Boost kW |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | 1 | HOT HATCH | hatch | FWD | 1380 | 239 | 400 | 6 | 266 | 4, 1 turbo | 110 |
 | 2 | 4WD MONSTER | sedan | AWD | 1540 | 281 | 470 | 6 | 253 | 5, 1 turbo | 130 |
@@ -736,7 +736,7 @@ with opposite lock. After three tries it respawns.
 **At the lights** each driver hunts around 68% throttle on a sine wave. The swing
 grows as skill falls, so better drivers launch better and none is perfect.
 
-AI drivers never use nitro or the handbrake, and darkness doesn't affect them.
+AI drivers never use boost or the handbrake, and darkness doesn't affect them.
 
 `opts.digital` and `opts.reaction` make the AI behave like a keyboard or thumb player.
 Only tests use them, to prove a person with those limits can lap every track.
@@ -795,7 +795,7 @@ same limit, however heavy it is.
 
 At `CRASH_SPEED` (15 m/s) the car is wrecked for `WRECK_TIME` (1.2 s). Its controls are
 cut and the brake is held. `input.wrecked` stops that brake finding reverse and stops
-the slide earning nitro. Then the car goes back to the racing line where it hit, not
+the slide earning boost. Then the car goes back to the racing line where it hit, not
 where it slid to, stationary and ghosted for 2.5 s, and the lap is spoiled. The slide
 comes off `car.distance`. Without that, a wreck is quicker than braking, because a
 strong car regains corner speed in moments.
@@ -884,10 +884,10 @@ hasn't been measured.
 The camera eases towards a target at a rate of 4/s:
 
 - **Zoom** comes from window size, the NEAR, MID or FAR setting and speed, tightening
-  or falling back with acceleration, and pulling back 14% under nitro.
+  or falling back with acceleration, and pulling back 14% under boost.
 - **Rotation** (chase camera) follows heading plus 55% of the slip angle.
 - **Position** looks ahead of the car by a quarter of the screen height.
-- **Shake** adds up crash trauma, kerb buzz, high-speed buffet and nitro.
+- **Shake** adds up crash trauma, kerb buzz, high-speed buffet and boost.
 
 The FIXED camera stays north-up and leads by velocity instead.
 
@@ -932,7 +932,7 @@ The composite shader runs in this order:
 2. Multiply by the lightmap, at dusk and after dark.
 3. Add glow. Only lamps, flames and sparks glow, so daylight whites never bloom.
 4. Colour grade and saturation.
-5. Vignette, deepened under nitro.
+5. Vignette, deepened under boost.
 
 Canvases are created lazily and rebuilt when the window size changes.
 
@@ -983,7 +983,7 @@ Chaikin corner cutting. OPEN WHEELER's `formula` style has its own drawing code,
 because its wheels show.
 
 `car_view.draw` adds wheels that turn with the steering, a pixel or two of body roll
-and pitch, slipstream wisps and the nitro warp. `car_view.updateFx` emits tyre smoke,
+and pitch, slipstream wisps and the boost warp. `car_view.updateFx` emits tyre smoke,
 dust, skid marks and backfires per frame.
 
 ### Particles and skids
@@ -1011,13 +1011,13 @@ measurements behind them.
 | Kind | Sounds | How |
 | --- | --- | --- |
 | sfxr presets | beep, go, click, select, lap, scrape | The `SHOTS` table |
-| Filtered noise | road, loose, wind, scrub, nitro, turbo boost, grind | `bandNoise`, `grindData` |
+| Filtered noise | road, loose, wind, scrub, boost, turbo boost, grind | `bandNoise`, `grindData` |
 | Physical models | Engines, startup, shift, blow-off, crashes, turbo, supercharger, motor, squeal, horn, finish | Written in `audio.lua` |
 
 `bandNoise` is sfxr's filters on white noise without its eightfold oversampling. At
-the scrub's and nitro's settings that oversampling changed nothing measurable and took
+the scrub's and boost's settings that oversampling changed nothing measurable and took
 over a fifth of the first launch. Its settings are the `ROAD`, `WIND`, `LOOSE`, `SCRUB`
-and `NITRO` tables. Nothing steady keeps much energy over 2 kHz, because noise held up
+and `BOOST_GAS` tables. Nothing steady keeps much energy over 2 kHz, because noise held up
 there for seconds is static whatever it's meant to be. `wander` and `swell` move each
 one over its loop, and that movement is what tells them apart.
 
@@ -1074,7 +1074,7 @@ the join, so a fade by power would swell. The motor is half and half.
 | Scrub, road, loose, wind | Slip, speed, surface and slipstream. Speed mostly raises their level and how fast their texture goes, and barely their brightness |
 | Squeal | A note, not noise: detuned sawtooths, over the scrub once a tyre is well past its limit |
 | Grind | `car.scraping` and speed |
-| Nitro | Sounds like what feeds the engine, through `audio.boost`, which swells in, sighs out over about 0.3 s, and sags as the tank empties. An NA car plays the gas. A supercharger or motor gets louder and climbs. A turbo car has its loop driven to full pressure, plus `turboboost<n>` above the exhaust, the exhaust ducked 18% and a blow-off when the bottle shuts off, except on a race engine |
+| Boost | Sounds like what feeds the engine, through `audio.boost`, which swells in, sighs out over about 0.3 s, and sags as the tank empties. An NA car plays the gas. A supercharger or motor gets louder and climbs. A turbo car has its loop driven to full pressure, plus `turboboost<n>` above the exhaust, the exhaust ducked 18% and a blow-off when the bottle shuts off, except on a race engine |
 | Horn | Pitch from car mass, so heavy cars are lower |
 | Rival | One engine loop, motor or horn, within about 42 m |
 
@@ -1103,7 +1103,7 @@ is rendered as normal.
 On the Galaxy A04 a full render took about 14.5 s and a cached launch 2.3 s
 (2026-11-01). That was before the crashes, squeal, grind and idle loops were added.
 With the JIT off on the desktop the render is about 14% longer now, because moving the
-scrub and nitro off sfxr paid for most of them.
+scrub and boost off sfxr paid for most of them.
 
 If `audio.load` fails, the game carries on silently and `audio.ready` stays false.
 
@@ -1138,7 +1138,7 @@ filter in `dynamics`. The stick has a deadzone of 0.08 and a curved response.
 | Steer | A D, arrows | Left stick |
 | Gas, brake | W S, arrows | RT, LT (analogue) |
 | Handbrake | Shift | RB / R1 |
-| Nitro | Space | LB / L1 |
+| Boost | Space | LB / L1 |
 | Shift up, down | E, Q | X, A (Square, Cross) |
 | Reset | R | Y / Triangle |
 | Camera | C | Back / Share |
@@ -1147,7 +1147,7 @@ filter in `dynamics`. The stick has a deadzone of 0.08 and a curved response.
 | Lights | F, G | None |
 | Pause | Esc, P | Start / Options |
 
-The pad layout borrows R1 handbrake and L1 nitro from Need for Speed: Most Wanted on
+The pad layout borrows R1 handbrake and L1 boost from Need for Speed: Most Wanted on
 PS2, with the triggers kept for analogue control. The keyboard is deliberately left as
 it always was.
 
@@ -1181,10 +1181,10 @@ been seen. A key press or pad button in a race hands back.
 
 `rumble.lua` reads what the car is doing, never the input.
 
-- **Pad:** heavy motor for crashes, nitro and grass. Light motor for gears, nitro,
+- **Pad:** heavy motor for crashes, boost and grass. Light motor for gears, boost,
   kerbs and slip. Messages go at most 30 times a second, each lasting 0.2 s, so a
   stall can't leave the motors running.
-- **Phone:** one crude buzzer, so only crashes and nitro lighting, with a 0.15 s
+- **Phone:** one crude buzzer, so only crashes and boost lighting, with a 0.15 s
   minimum gap.
 
 ---
@@ -1223,8 +1223,8 @@ Most screens show a panel down the left with a live demo race behind it.
 | --- | --- |
 | Tower (race) | Lap, time, order, gaps |
 | Trial panel | Now, last, best |
-| Dash | Rev lights, launch bar at the lights, speed, gear, nitro gauge, TC, ABS and ESC tags |
-| Nitro gauge colours | Green ready, purple burning, yellow filling from a slide, grey cooldown |
+| Dash | Rev lights, launch bar at the lights, speed, gear, boost gauge, TC, ABS and ESC tags |
+| Boost gauge colours | Green ready, purple burning, yellow filling from a slide, grey cooldown |
 | Others | Slipstream meter, pace note, start lights, toast, WRONG WAY, minimap, FPS |
 
 With touch controls up, the dash moves to the centre and the minimap moves to the top
@@ -1327,7 +1327,7 @@ forwards with the sender's seat, as `2|sync|...`, so a client can't pose as anot
 | `sync\|round\|seq\|x\|y\|a\|vx\|vy\|steer\|rpm\|throttle\|brake\|gear\|flags\|slide\|distance\|finish` | Everyone | Car state, about 100 bytes, 20 Hz |
 
 `paint` is an index into `PAINTS` in `menu.lua`, so that list's order is part of the
-protocol. `flags` holds the horn, reverse, nitro, the two beams and whether the car is a ghost.
+protocol. `flags` holds the horn, reverse, boost, the two beams and whether the car is a ghost.
 
 ### Versions
 
@@ -1414,7 +1414,7 @@ rival's time arrives. The results panel, 3 s later, is right.
 2. Extrapolate: `target = position + velocity × age`.
 3. Move the body a fraction of the way there, `1 - exp(-dt × 12)`, or all of the way
    if it's over 25 m out.
-4. Copy steering, rpm, pedals, gear, reverse, nitro, tyre slide, horn and headlights
+4. Copy steering, rpm, pedals, gear, reverse, boost, tyre slide, horn and headlights
    into the car, then progress and finish.
 
 The remote car is still a real Box2D body, so the local car bounces off it. Its
@@ -1741,7 +1741,7 @@ there. There are no tags and no CI.
 | `test_track` | 9 | Every track: closed, oriented, barriers sane, surfaces |
 | `test_dynamics` | 39 | Handling targets, many run per car, CYBER against Model S Plaid figures |
 | `test_slipstream` | 14 | Wake shape, build, fade, full grids |
-| `test_feel` | 12 | Slide nitro, the clean-lap slide check, vibration |
+| `test_feel` | 12 | Slide boost, the clean-lap slide check, vibration |
 | `test_race` | 28 | AI, keyboard and thumb bots lapping, rules, anti-cutting, online results |
 | `test_support` | 64 | Settings, input, catalogue, midnight, audio, cache, radio |
 | `test_touch` | 20 | Stick, buttons, phone layout |
@@ -1766,7 +1766,7 @@ must stay playable, not the thing to tune for, so visuals aren't cut for it unle
 drops below playable.
 
 `love . --perf` drives an AI around nine cases covering day to midnight, low and high
-effects, and sustained nitro including a 60 s heat test. Each prints fps, frame time
+effects, and sustained boost including a 60 s heat test. Each prints fps, frame time
 percentiles, draw calls, garbage and time per subsystem.
 
 Measured on the A04 on 2026-11-01, before the horn was added: every case held about

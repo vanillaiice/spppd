@@ -30,7 +30,7 @@ local CASES = {
   { name = "mirage-night-boost-high", track = "mirage", time = "night", quality = "high", boost = true, sample = 60 },
 }
 
--- Fires the nitro again whenever braking for a corner has cancelled it.
+-- Fires the boost again whenever braking for a corner has cancelled it.
 local function boosting(ai)
   return { update = function(_, car, race, dt)
     ai:update(car, race, dt)

@@ -92,7 +92,7 @@ local SCENES = {
     local ai = r.player.driver
     r.player.driver = { update = function(self, car, rc, dt)
       ai:update(car, rc, dt)
-      -- Keeps the power on, since braking for a corner would cancel the nitro.
+      -- Keeps the power on, since braking for a corner would cancel the boost.
       if rc.time > 7 then car.input.throttle, car.input.brake = 1, 0 end
       car.input.boost = rc.time > 7 and car.model.boostState ~= "active"
     end }

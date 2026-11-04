@@ -49,7 +49,7 @@ function playerDriver:revs()
 end
 
 -- Read at the lights too, so a press there is used up and can't fire at the go.
-function playerDriver:nitroButton()
+function playerDriver:boostButton()
   if session.paused then return false end
   local tapped = input.consume("boost")
   return tapped or input.isDown("boost")
@@ -406,7 +406,7 @@ function rm.syncCamera(blend)
   local targetZoom = base * framing.close * (1 - framing.pullBack * speedFade)
 
   -- The camera breathes with the car: it falls back under power and leans
-  -- in under braking, and nitro throws it back further.
+  -- in under braking, and boost throws it back further.
   local model = car.model
   local surge = math.max(-1, math.min(1, model.ax / 10))
   targetZoom = targetZoom * (1 - surge * 0.05)

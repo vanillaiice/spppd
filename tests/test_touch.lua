@@ -176,7 +176,7 @@ h.describe("touch", function()
     touch.reset()
   end)
 
-  h.it("a tap shorter than one frame still fires nitro", function()
+  h.it("a tap shorter than one frame still fires boost", function()
     fresh()
     local b = button("boost")
     touch.pressed(1, b.x, b.y, SW, SH)

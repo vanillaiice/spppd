@@ -543,7 +543,7 @@ h.describe("dynamics", function()
     h.assertTrue(s.vx < 26, "grass should scrub speed: " .. s.vx)
   end)
 
-  h.it("nitrous switches on and off with each press and saves what's left", function()
+  h.it("boost switches on and off with each press and saves what's left", function()
     local spec = garage[1]
     local s = sim(spec, "sport")
     s:step(input({ boost = true }))
@@ -556,7 +556,7 @@ h.describe("dynamics", function()
     h.assertBetween(s.c.boostTank, spec.boostTime - 0.6, spec.boostTime - 0.4, "tank kept")
   end)
 
-  h.it("an empty tank locks nitrous out until it has refilled a little", function()
+  h.it("an empty tank locks boost out until it has refilled a little", function()
     local spec = garage[1]
     local s = sim(spec, "sport")
     s:step(input({ boost = true }))
@@ -570,7 +570,7 @@ h.describe("dynamics", function()
     h.assertNear(s.c.boostTank, spec.boostTime, 0.001, "full tank")
   end)
 
-  h.it("braking shuts the nitrous off", function()
+  h.it("braking shuts the boost off", function()
     local s = sim(garage[1], "sport")
     s.vx = 30
     s:step(input({ boost = true }))
@@ -581,7 +581,7 @@ h.describe("dynamics", function()
   end)
 
   -- Speed gained in 1.5 s on full throttle, after settling into a gear.
-  h.it("nitro can't be lit at the lights, and a held button needs a fresh press", function()
+  h.it("boost can't be lit at the lights, and a held button needs a fresh press", function()
     local spec = garage[1]
     local s = sim(spec, "sport")
     s:step(input({ rev = 1, boost = true }))
@@ -604,7 +604,7 @@ h.describe("dynamics", function()
   end
 
   for _, spec in ipairs(garage) do
-    h.it(spec.name .. " feels nitrous in low gears and out of corners", function()
+    h.it(spec.name .. " feels boost in low gears and out of corners", function()
       for _, case in ipairs({ { 0, 0 }, { 12, 0 }, { 20, 0.5 } }) do
         local gain = pull(spec, case[1], case[2], true) - pull(spec, case[1], case[2], false)
         h.assertTrue(gain > 3, string.format("%d m/s, steer %.1f: only %.1f", case[1], case[2], gain))
@@ -612,7 +612,7 @@ h.describe("dynamics", function()
     end)
   end
 
-  h.it("nitrous actually accelerates the car harder", function()
+  h.it("boost actually accelerates the car harder", function()
     local spec = garage[2]
     local a, b = sim(spec, "sport"), sim(spec, "sport")
     while a.vx < 35 do a:step(input({ throttle = 1 })) end

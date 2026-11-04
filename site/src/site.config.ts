@@ -1,7 +1,7 @@
 export default {
   title: 'SPPPD',
   description:
-    'A free top-down racing game for Windows, Android and Linux. Race the AI, slide for nitro, build your own tracks, or race up to three friends online.',
+    'A free top-down racing game for Windows, Android and Linux. Race the AI, slide for boost, build your own tracks, or race up to three friends online.',
   contact: 'vanillaiice1@proton.me',
   repo: 'https://github.com/vanillaiice/spppd',
   // GitHub links go to the profile while the repo is private. Set back to repo once it's public.

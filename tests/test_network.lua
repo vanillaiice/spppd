@@ -129,12 +129,12 @@ h.describe("network", function()
     h.assertEq(s.rpm, 5000)
     h.assertEq(s.distance, 1234)
     h.assertEq(s.finish, 61.25)
-    h.assertTrue(not s.horn and not s.nitro and not s.reverse)
+    h.assertTrue(not s.horn and not s.boost and not s.reverse)
   end)
 
   h.it("flags carry what the rival's car is doing", function()
-    local s = network.unpackState(network.packState(stateOf({ horn = true, nitro = true, highBeam = true, slide = 0.75 })))
-    h.assertTrue(s.horn and s.nitro and s.highBeam)
+    local s = network.unpackState(network.packState(stateOf({ horn = true, boost = true, highBeam = true, slide = 0.75 })))
+    h.assertTrue(s.horn and s.boost and s.highBeam)
     h.assertTrue(not s.reverse and not s.lowBeam)
     h.assertEq(s.slide, 0.75)
     h.assertTrue(network.unpackState(network.packState(stateOf({ reverse = true, lowBeam = true }))).reverse)
@@ -147,7 +147,7 @@ h.describe("network", function()
 
   h.it("a rival wrecked on their screen is wrecked here too", function()
     local s = network.unpackState(network.packState(stateOf({ wreck = true, horn = true })))
-    h.assertTrue(s.wreck and s.horn and not s.nitro and not s.ghost)
+    h.assertTrue(s.wreck and s.horn and not s.boost and not s.ghost)
     h.assertTrue(not network.unpackState(network.packState(stateOf({}))).wreck)
   end)
 
@@ -382,13 +382,13 @@ h.describe("network", function()
   h.it("a remote car shows what its driver is doing", function()
     local track = Track.new(catalog.builtin()[1].def)
     local state = { x = 0, y = 0, a = 0, vx = 0, vy = 0, steer = 0, rpm = 4000, throttle = 1, brake = 0, gear = 2,
-      nitro = true, reverse = true, slide = 0.6, lowBeam = false, highBeam = true, horn = true }
+      boost = true, reverse = true, slide = 0.6, lowBeam = false, highBeam = true, horn = true }
     local race = Race.new({ mode = "race", track = track, laps = 2, seed = 1, startDelay = 0.01,
       online = { slot = 1, peers = { { slot = 2, spec = garage[2], state = function() return state, 0 end } } } })
     local peer = race.cars[2]
     state.x, state.y = peer.curX, peer.curY
     for _ = 1, 4 do race:step(1 / 120) end
-    h.assertEq(peer.model.boostState, "active", "nitro")
+    h.assertEq(peer.model.boostState, "active", "boost")
     h.assertTrue(peer.model.reverse, "reverse lamps")
     h.assertEq(peer.model.wheels[1].slide, 0.6, "tyre smoke")
     h.assertTrue(peer.highBeam and not peer.lowBeam, "their choice of headlights")
@@ -519,7 +519,7 @@ h.describe("network", function()
       return c[2].peers[1].state and c[3].peers[1].state and c[4].peers[1].state
     end), "a car should reach everyone")
     h.assertEq(c[4].peers[1].state.distance, 5000)
-    h.assertTrue(c[4].peers[1].state.nitro and c[4].peers[1].state.wreck, "flags and all")
+    h.assertTrue(c[4].peers[1].state.boost and c[4].peers[1].state.wreck, "flags and all")
     h.assertEq(c[4].peers[1].state.slide, 0.5)
 
     c[3].disconnect()

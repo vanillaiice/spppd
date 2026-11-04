@@ -83,7 +83,7 @@ barriers and the racing line.
 These aren't enforced by anything except tests and review:
 
 - `src/sim/dynamics.lua`, `src/sim/track.lua` and `src/config.lua` stay free of LÖVE.
-- Sliding is the only way to earn nitro.
+- Sliding is the only way to earn boost.
 - New cars go on the end of `garage`. New paints go on the end of `PAINTS`, which is
   part of the wire protocol.
 - Nothing that comes from another player runs as code or is trusted as a number.

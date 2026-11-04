@@ -59,14 +59,14 @@ end
 
 -- Packets -----------------------------------------------------------------
 
-local FLAG_HORN, FLAG_REVERSE, FLAG_NITRO, FLAG_LOW, FLAG_HIGH, FLAG_GHOST, FLAG_WRECK = 1, 2, 4, 8, 16, 32, 64
+local FLAG_HORN, FLAG_REVERSE, FLAG_BOOST, FLAG_LOW, FLAG_HIGH, FLAG_GHOST, FLAG_WRECK = 1, 2, 4, 8, 16, 32, 64
 
 local function flagged(flags, bit)
   return flags % (bit * 2) >= bit
 end
 
 function network.packState(s)
-  local flags = (s.horn and FLAG_HORN or 0) + (s.reverse and FLAG_REVERSE or 0) + (s.nitro and FLAG_NITRO or 0)
+  local flags = (s.horn and FLAG_HORN or 0) + (s.reverse and FLAG_REVERSE or 0) + (s.boost and FLAG_BOOST or 0)
     + (s.lowBeam and FLAG_LOW or 0) + (s.highBeam and FLAG_HIGH or 0) + (s.ghost and FLAG_GHOST or 0)
     + (s.wreck and FLAG_WRECK or 0)
   return string.format("sync|%d|%d|%.1f|%.1f|%.3f|%.1f|%.1f|%.3f|%d|%.2f|%.2f|%d|%d|%.2f|%.0f|%.3f",
@@ -99,7 +99,7 @@ function network.unpackState(str)
   clamp("brake", 0, 1)
   out.horn = flagged(out.flags, FLAG_HORN)
   out.reverse = flagged(out.flags, FLAG_REVERSE)
-  out.nitro = flagged(out.flags, FLAG_NITRO)
+  out.boost = flagged(out.flags, FLAG_BOOST)
   out.lowBeam = flagged(out.flags, FLAG_LOW)
   out.highBeam = flagged(out.flags, FLAG_HIGH)
   out.ghost = flagged(out.flags, FLAG_GHOST)
@@ -670,7 +670,7 @@ function network.sendCar(car)
     round = network.round, seq = network.seq,
     x = car.curX, y = car.curY, a = car.curA, vx = vx, vy = vy,
     steer = model.steer, rpm = model.rpm, throttle = model.throttle, brake = model.brake, gear = model.gear,
-    horn = car.horn, reverse = model.reverse, nitro = model.boostState == "active",
+    horn = car.horn, reverse = model.reverse, boost = model.boostState == "active",
     lowBeam = car.lowBeam, highBeam = car.highBeam, ghost = car.ghostTimer > 0, wreck = car.wreck ~= nil,
     slide = slide, distance = car.distance, finish = car.finishTime,
   }))
