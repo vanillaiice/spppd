@@ -107,7 +107,7 @@ h.describe("dynamics", function()
       print(string.format("        %-15s 0-100 %.1fs  top %3.0f km/h  100-0 %.1f m  %.0f kW",
         spec.name, t100, top * 3.6, dist, dynamics.peakPower(spec) / 1000))
       h.assertBetween(t100, 2.0, 8.5, "0-100 km/h")
-      h.assertBetween(top * 3.6, 185, 340, "top speed")
+      h.assertBetween(top * 3.6, 185, 385, "top speed")
       h.assertBetween(dist, 28, 52, "100-0 braking")
     end)
 

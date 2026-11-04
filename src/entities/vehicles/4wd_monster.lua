@@ -12,7 +12,7 @@ return base.define({
   grip = 1.29,
   looseGrip = 1.2,
   looseDrag = 0.65,
-  cylinders = 5,
+  cylinders = 4,
   turbos = 1,
   drive = "AWD",
   awdFront = 0.42,

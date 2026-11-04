@@ -22,7 +22,7 @@ return base.define({
   awdFront = 0.42,
   peakTorque = 1250,
   redline = 6400,
-  gears = { 2.7, 2.0, 1.55, 1.25, 1.02, 0.85, 0.69 },
+  gears = { 2.7, 2.0, 1.55, 1.25, 1.02, 0.8, 0.605 },
   finalDrive = 3.52,
   dragArea = 0.55,
   liftArea = 0.3,
