@@ -81,30 +81,32 @@ const notes = [
 
 <Base>
   <section class="hero" aria-labelledby="hero-title">
-    <Clip name="race" label="A red WEDGE chasing the pack through the bends of the Oasis desert circuit" eager class="hero-clip" />
-    <div class="hero-panel panel">
-      <h1 id="hero-title">SPPPD</h1>
-      <p class="pitch">
-        A top-down racing game. Race the AI, set time trials, slide around in freestyle, build your own tracks, or race
-        up to three friends online. Free.
-      </p>
-      <div class="actions">
-        <a
-          class="button"
-          href={win64.href}
-          download
-          data-umami-event="download"
-          data-umami-event-file="win64"
-        >
-          Windows <small>{megabytes(win64.bytes)}</small>
-        </a>
-        <a class="button" href={apk.href} download data-umami-event="download" data-umami-event-file="apk">
-          Android <small>{megabytes(apk.bytes)}</small>
-        </a>
+    <div class="hero-frame">
+      <Clip name="race" label="A red WEDGE chasing the pack through the bends of the Oasis desert circuit" eager class="hero-clip" />
+      <div class="hero-panel panel">
+        <h1 id="hero-title">SPPPD</h1>
+        <p class="pitch">
+          A top-down racing game. Race the AI, set time trials, slide around in freestyle, build your own tracks, or race
+          up to three friends online. Free.
+        </p>
+        <div class="actions">
+          <a
+            class="button"
+            href={win64.href}
+            download
+            data-umami-event="download"
+            data-umami-event-file="win64"
+          >
+            Windows <small>{megabytes(win64.bytes)}</small>
+          </a>
+          <a class="button" href={apk.href} download data-umami-event="download" data-umami-event-file="apk">
+            Android <small>{megabytes(apk.bytes)}</small>
+          </a>
+        </div>
+        <p class="version muted">
+          Version {version}. <a href="#download">Other downloads</a> · <a href={site.github}>GitHub</a>
+        </p>
       </div>
-      <p class="version muted">
-        Version {version}. <a href="#download">Other downloads</a> · <a href={site.github}>GitHub</a>
-      </p>
     </div>
   </section>
 
@@ -225,8 +227,14 @@ const notes = [
     background: #1d1c2a;
   }
 
-  .hero :global(.hero-clip) {
-    max-height: min(82svh, 56.25vw);
+  /* The whole 16:9 frame always shows. On a short, wide window the frame narrows to
+     keep within 82% of the height and sits centred, rather than cropping the clip's
+     standings board and HUD off its top and bottom. */
+  .hero-frame {
+    position: relative;
+    width: min(100%, 82svh * 16 / 9);
+    margin: 0 auto;
+    container-type: inline-size;
   }
 
   .hero-panel {
@@ -264,9 +272,9 @@ const notes = [
   @media (min-width: 60rem) {
     .hero-panel {
       position: absolute;
-      left: 1.25vw;
-      bottom: 1.25vw;
-      min-width: 16vw;
+      left: 1.25cqw;
+      bottom: 1.25cqw;
+      min-width: 16cqw;
       padding: 1.75rem 2rem;
     }
   }
