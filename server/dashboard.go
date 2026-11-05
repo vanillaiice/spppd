@@ -56,12 +56,19 @@ func formatBytes(n uint64) string {
 	return fmt.Sprintf("%.1f %s", size, units[unit])
 }
 
+// The page shows times in the viewer's own zone. These are what it shows
+// before its script runs, labelled, so they can't pass for local times.
 func formatClock(t time.Time) string {
-	return t.Format("15:04:05")
+	return t.UTC().Format("15:04:05") + " UTC"
 }
 
 func formatDate(t time.Time) string {
 	return t.UTC().Format("2006-01-02 15:04 UTC")
+}
+
+// formatInstant is the machine-readable time the page's script reads.
+func formatInstant(t time.Time) string {
+	return t.UTC().Format(time.RFC3339)
 }
 
 func isLoopbackHost(host string) bool {
@@ -189,7 +196,7 @@ func newDashboard(relay *Relay, store *Store, analyticsDays int) http.Handler {
 		now:     time.Now,
 	}
 	d.pages = template.Must(template.New("dashboard").Funcs(template.FuncMap{
-		"age": formatAge, "bytes": formatBytes, "clock": formatClock, "date": formatDate,
+		"age": formatAge, "bytes": formatBytes, "clock": formatClock, "date": formatDate, "instant": formatInstant,
 	}).Parse(dashboardHTML))
 
 	mux := http.NewServeMux()

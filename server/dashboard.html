@@ -109,6 +109,28 @@ a { color: var(--accent); }
     if (e.detail.requestConfig.verb === "get" && selecting()) e.detail.shouldSwap = false;
   });
 
+  // The relay keeps UTC. Show the viewer's own clock instead, and the day on anything
+  // not from today, or last night's lines read as later than this evening's.
+  const pad = (n) => String(n).padStart(2, "0");
+  const day = (d) => d.toLocaleDateString(undefined, { day: "numeric", month: "short" });
+  function localise(root) {
+    const today = new Date().toDateString();
+    for (const el of root.querySelectorAll("time[datetime]")) {
+      const d = new Date(el.dateTime);
+      if (isNaN(d)) continue;
+      const clock = `${pad(d.getHours())}:${pad(d.getMinutes())}`;
+      if (el.hasAttribute("data-date")) {
+        el.textContent = `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${clock}`;
+      } else {
+        const time = `${clock}:${pad(d.getSeconds())}`;
+        el.textContent = d.toDateString() === today ? time : `${day(d)} ${time}`;
+      }
+      el.title = d.toString();
+    }
+  }
+  localise(document);
+  document.body.addEventListener("htmx:afterSettle", (e) => localise(e.detail.elt));
+
   // The list only gains lines and loses the oldest. Swapping it whole would put the
   // scroll back at the top, every two seconds. Newest comes first, so the view moves
   // down by what was added and stays on the same lines.
@@ -121,6 +143,7 @@ a { color: var(--accent); }
     // A restarted relay counts from one again.
     if (rows.length && Number(rows[0].dataset.seq) < newest) {
       activity.replaceChildren(...rows);
+      localise(activity);
       return;
     }
     const added = rows.filter((row) => Number(row.dataset.seq) > newest);
@@ -128,6 +151,8 @@ a { color: var(--accent); }
     activity.prepend(...added);
     if (top > 0) activity.scrollTop = top + activity.scrollHeight - height;
     while (activity.children.length > rows.length) activity.lastElementChild.remove();
+    // All of it, not just what was added: at midnight today's lines become yesterday's.
+    localise(activity);
   });
 
   document.addEventListener("keydown", (e) => {
@@ -171,7 +196,7 @@ a { color: var(--accent); }
   <tr><th>IP</th><th>Since</th><th>By</th><th></th></tr>
   {{range .Banned}}<tr>
     <td class="mono">{{.IP}}</td>
-    <td>{{date .At}}</td>
+    <td><time data-date datetime="{{instant .At}}">{{date .At}}</time></td>
     <td>{{.By}}</td>
     <td><div class="actions">
       <form hx-post="/unban" hx-target="#live" hx-swap="innerHTML"><input type="hidden" name="ip" value="{{.IP}}"><button>Unban</button></form>
@@ -180,7 +205,7 @@ a { color: var(--accent); }
 </table></div>{{else}}<p class="empty">Nobody is banned.</p>{{end}}
 {{end}}
 
-{{define "activity"}}{{range .Events}}<div data-seq="{{.Seq}}"><time>{{clock .At}}</time> {{.Text}}</div>{{end}}{{end}}
+{{define "activity"}}{{range .Events}}<div data-seq="{{.Seq}}"><time datetime="{{instant .At}}">{{clock .At}}</time> {{.Text}}</div>{{end}}{{end}}
 
 {{define "room"}}<tr>
   <td class="mono">{{.Code}}</td>
@@ -221,7 +246,7 @@ a { color: var(--accent); }
   <tr><th>Name</th><th>Added</th><th></th></tr>
   {{$me := .Viewer.Name}}{{range .Users}}<tr>
     <td>{{.Name}}{{if eq .Name $me}} (you){{end}}</td>
-    <td>{{date .Created}}</td>
+    <td><time data-date datetime="{{instant .Created}}">{{date .Created}}</time></td>
     <td><div class="actions">{{if ne .Name $me}}
       <form hx-post="/users/delete" hx-target="#users" hx-confirm="Remove {{.Name}}?"><input type="hidden" name="name" value="{{.Name}}"><button>Remove</button></form>
     {{end}}</div></td>
