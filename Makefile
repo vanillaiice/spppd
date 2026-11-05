@@ -1,4 +1,4 @@
-.PHONY: run test test-visual test-server test-online test-online-visual listen sound-report server relay-linux deploy-relay site-downloads site site-dev deploy-site zip apk apk-perf win64 win32 all clean
+.PHONY: run test test-visual test-server test-online test-online-visual listen sound-report server relay-linux deploy-relay site-downloads site site-dev deploy-site itch release-files zip apk apk-perf win64 win32 all clean
 
 # src/config.lua holds the version.
 ver := $(shell sed -n 's/.*VERSION = "\(.*\)".*/\1/p' src/config.lua)
@@ -61,10 +61,12 @@ deploy-relay: test-server
 # with make zip win64 win32 apk.
 site_files := $(name)-$(ver)-win64.zip $(name)-$(ver)-win32.zip $(name)-$(ver)-android.apk $(name)-$(ver).love
 
-site-downloads:
+release-files:
 	@for f in $(site_files); do \
 	  [ -f dist/$$f ] || { echo "dist/$$f is missing: run make zip win64 win32 apk first"; exit 1; }; \
 	done
+
+site-downloads: release-files
 	rm -rf site/public/download
 	mkdir -p site/public/download
 	cd dist && cp $(site_files) ../site/public/download/
@@ -78,6 +80,16 @@ site-dev: site-downloads
 # Builds the site's image and deploys it behind kamal-proxy. See config/deploy.yml.
 deploy-site: site
 	./bin/site-deploy
+
+# Uploads this version's release builds to itch.io with butler. Run butler login once
+# first. The channel names tell itch which platform each build is for.
+itch_game := vanillaiice/spppd
+
+itch: release-files
+	butler push dist/$(name)-$(ver)-win64.zip $(itch_game):windows-64 --userversion $(ver)
+	butler push dist/$(name)-$(ver)-win32.zip $(itch_game):windows-32 --userversion $(ver)
+	butler push dist/$(name)-$(ver)-android.apk $(itch_game):android --userversion $(ver)
+	butler push dist/$(name)-$(ver).love $(itch_game):linux-mac --userversion $(ver)
 
 clean:
 	rm -rf dist/
