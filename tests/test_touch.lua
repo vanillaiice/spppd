@@ -12,6 +12,8 @@ local function fresh(mode)
   settings.touch = mode or "on"
   settings.autoGas = true
   settings.touchSteer = "stick"
+  settings.gearbox = "auto"
+  settings.touchSize = "medium"
   return { steer = 0, throttle = 0, brake = 0 }
 end
 
@@ -20,6 +22,14 @@ local function apply()
   input.applyTo(t)
   touch.applyTo(t)
   return t
+end
+
+local function mediumStick()
+  local before = settings.touchSize
+  settings.touchSize = "medium"
+  local r = touch.layout(SW, SH).radius
+  settings.touchSize = before
+  return r
 end
 
 local function button(action)
@@ -209,18 +219,31 @@ h.describe("touch", function()
   end)
 
   -- Every layout on desktop sizes and phones, 16:9 and 20:9, in LÖVE's units.
+  -- With every steering, gas, gearbox and TOUCH SIZE choice.
   local function eachLayout(fn)
     local sizes = { { 640, 480 }, { 800, 360 }, { 1280, 720 }, { 2400, 1080 }, { 640, 360, true }, { 853, 384, true } }
     for _, steer in ipairs({ "stick", "buttons" }) do
       for _, gas in ipairs({ true, false }) do
-        for _, size in ipairs(sizes) do
-          settings.touchSteer, settings.autoGas, ui.mobile = steer, gas, size[3] or false
-          fn(touch.layout(size[1], size[2]), size[1], size[2],
-            string.format("%s %s %dx%d", steer, gas and "auto gas" or "gas", size[1], size[2]))
+        for _, box in ipairs({ "auto", "manual" }) do
+          for _, grow in ipairs({ "small", "medium", "large" }) do
+            for _, size in ipairs(sizes) do
+              settings.touchSteer, settings.autoGas, ui.mobile = steer, gas, size[3] or false
+              settings.gearbox, settings.touchSize = box, grow
+              fn(touch.layout(size[1], size[2]), size[1], size[2],
+                string.format("%s %s %s %s %dx%d", steer, gas and "auto gas" or "gas", box, grow, size[1], size[2]))
+            end
+          end
         end
       end
     end
     settings.touchSteer, settings.autoGas, ui.mobile = "stick", true, false
+    settings.gearbox, settings.touchSize = "auto", "medium"
+  end
+
+  local function clearOf(b, x, y, w, h)
+    local nx = math.max(x, math.min(b.x, x + w))
+    local ny = math.max(y, math.min(b.y, y + h))
+    return (b.x - nx) ^ 2 + (b.y - ny) ^ 2 > b.r ^ 2
   end
 
   h.it("buttons don't overlap, even with their slop", function()
@@ -242,13 +265,39 @@ h.describe("touch", function()
       local dw, dh = 112 * s, 44 * s
       local dx, dy = (sw - dw) / 2, sh - dh - 8 * s
       for _, b in ipairs(layout.buttons) do
-        local nx = math.max(dx, math.min(b.x, dx + dw))
-        local ny = math.max(dy, math.min(b.y, dy + dh))
-        h.assertTrue((b.x - nx) ^ 2 + (b.y - ny) ^ 2 > b.r ^ 2, b.action .. " covers the dash on " .. name)
+        h.assertTrue(clearOf(b, dx, dy, dw, dh), b.action .. " covers the dash on " .. name)
         h.assertTrue(b.x - b.r >= 0 and b.x + b.r <= sw and b.y - b.r >= 0 and b.y + b.r <= sh,
           b.action .. " off the screen on " .. name)
       end
     end)
+  end)
+
+  -- The minimap moves up under the top row for touch, and the race tower holds
+  -- every car there can be offline.
+  h.it("buttons stay off the minimap and the race tower", function()
+    local config = require("src/config")
+    eachLayout(function(layout, sw, _, name)
+      local s = layout.s
+      local towerH = 11 * s * (config.OPPONENTS_MAX + 2)
+      for _, b in ipairs(layout.buttons) do
+        h.assertTrue(clearOf(b, sw - 100 * s, 46 * s, 92 * s, 92 * s), b.action .. " covers the minimap on " .. name)
+        h.assertTrue(clearOf(b, 8 * s, 8 * s, 118 * s, towerH), b.action .. " covers the tower on " .. name)
+      end
+    end)
+  end)
+
+  h.it("touch size makes the buttons bigger or smaller where they stand", function()
+    fresh()
+    local medium = button("boost")
+    settings.touchSize = "large"
+    local large = button("boost")
+    settings.touchSize = "small"
+    local small = button("boost")
+    h.assertTrue(large.r > medium.r and small.r < medium.r, "radius follows the size")
+    h.assertEq(large.x, medium.x)
+    h.assertEq(large.y, medium.y)
+    h.assertTrue(touch.layout(SW, SH).radius < mediumStick(), "the stick shrinks too")
+    settings.touchSize = "medium"
   end)
 
   h.it("with buttons, a thumb anywhere on the left steers to its side", function()
@@ -312,6 +361,28 @@ h.describe("touch", function()
     h.assertTrue(not input.isDown("steerLeft"), "reset lets go of steering")
   end)
 
+  h.it("without auto gas, gas and brake share the bottom row like pedals", function()
+    fresh()
+    settings.touchSteer, settings.autoGas = "buttons", false
+    local gas, brake, drift = button("throttle"), button("brake"), button("handbrake")
+    h.assertTrue(math.abs(gas.y - brake.y) < gas.r, "side by side")
+    h.assertTrue(drift.y < brake.y - brake.r, "drift goes up out of the way")
+    touch.pressed(1, gas.x, gas.y, SW, SH)
+    h.assertEq(apply().throttle, 1)
+    touch.moved(1, brake.x + 3, brake.y - 4)
+    local t = apply()
+    h.assertEq(t.brake, 1, "a thumb slides across to the brake")
+    h.assertEq(t.throttle, 0, "and lets go of the gas")
+    touch.moved(1, gas.x, gas.y)
+    t = apply()
+    h.assertEq(t.throttle, 1, "and back")
+    h.assertEq(t.brake, 0)
+    touch.released(1)
+    h.assertEq(apply().throttle, 0)
+    touch.reset()
+    settings.autoGas = true
+  end)
+
   h.it("without auto gas the buttons get a gas pedal", function()
     fresh()
     settings.touchSteer, settings.autoGas = "buttons", false
@@ -357,12 +428,95 @@ h.describe("touch", function()
     settings.touch = "auto"
   end)
 
-  h.it("forces the automatic box, as there are no shift buttons", function()
+  h.it("the automatic box has no shift buttons, and stays automatic", function()
     fresh()
+    h.assertEq(button("shiftUp"), nil)
+    h.assertEq(button("shiftDown"), nil)
     local t = { steer = 0, throttle = 0, brake = 0 }
-    input.applyTo(t, true)
+    input.applyTo(t, false)
     touch.applyTo(t)
     h.assertTrue(not t.manual)
-    settings.touch = "auto"
+  end)
+
+  h.it("the manual box gets DOWN on the left and UP on the right, a gear a tap", function()
+    for _, steer in ipairs({ "stick", "buttons" }) do
+      fresh()
+      settings.touchSteer, settings.gearbox = steer, "manual"
+      local up, down = button("shiftUp"), button("shiftDown")
+      h.assertTrue(down.x < SW / 2 and up.x > SW / 2, "paddles on " .. steer)
+      touch.pressed(1, down.x, down.y, SW, SH)
+      h.assertEq(touch.stick, nil, "DOWN isn't the stick on " .. steer)
+      touch.released(1)
+      local t = { steer = 0, throttle = 0, brake = 0 }
+      input.applyTo(t, true)
+      touch.applyTo(t)
+      h.assertTrue(t.manual, "the manual box stands on " .. steer)
+      h.assertTrue(t.shiftDown and not t.shiftUp, "one tap, one gear down on " .. steer)
+      h.assertEq(t.steer, 0, "and no steering")
+      touch.pressed(1, up.x, up.y, SW, SH)
+      touch.released(1)
+      input.applyTo(t, true)
+      touch.applyTo(t)
+      h.assertTrue(t.shiftUp and not t.shiftDown, "one tap, one gear up on " .. steer)
+      input.applyTo(t, true)
+      h.assertTrue(not t.shiftUp, "and only once")
+    end
+    settings.gearbox = "auto"
+  end)
+
+  -- A pad that only does stick and triggers, the way an Android one reads.
+  local function fakePad()
+    return {
+      isConnected = function() return true end,
+      isGamepad = function() return true end,
+      isVibrationSupported = function() return false end,
+      getGamepadAxis = function() return 0 end,
+    }
+  end
+
+  h.it("a pad's stick or trigger alone hands over from touch, and a touch takes back", function()
+    fresh("auto")
+    touch.active = true
+    local pad = fakePad()
+    touch.padAxis(pad, 0.1)
+    h.assertTrue(touch.shown(), "a resting stick's drift doesn't count")
+    touch.padAxis(pad, 0.8)
+    h.assertTrue(not touch.shown(), "a trigger hands over")
+    h.assertEq(input.gamepad, pad)
+    h.assertTrue(input.padConnected())
+    touch.active = true  -- what love.touchpressed does
+    h.assertTrue(touch.shown(), "a touch brings them back")
+    input.gamepad = nil
+    touch.active = false
+    settings.touch = "on"
+  end)
+
+  h.it("plugging a pad in hides touch, and pulling it out brings touch back on a phone", function()
+    fresh("auto")
+    local before = ui.mobile
+    ui.mobile = true
+    touch.active = true
+    local pad = fakePad()
+    touch.padAdded(pad)
+    h.assertTrue(not touch.shown(), "hidden for the pad")
+    h.assertTrue(touch.padRemoved(pad), "it was driving")
+    h.assertEq(input.gamepad, nil)
+    h.assertTrue(touch.shown(), "back without a touch")
+    ui.mobile = before
+    touch.active = false
+    settings.touch = "on"
+  end)
+
+  h.it("touch size and opacity are saved", function()
+    fresh()
+    settings.touchSize, settings.touchOpacity = "large", 0.5
+    settings.save()
+    settings.touchSize, settings.touchOpacity = "medium", 1
+    settings.load()
+    h.assertEq(settings.touchSize, "large")
+    h.assertEq(settings.touchOpacity, 0.5)
+    -- The visual tests read this file too, so it goes back to the defaults.
+    settings.touch, settings.touchSize, settings.touchOpacity = "auto", "medium", 1
+    settings.save()
   end)
 end)

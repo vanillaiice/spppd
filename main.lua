@@ -230,7 +230,7 @@ function love.wheelmoved(x, y)
 end
 
 function love.gamepadpressed(joystick, button)
-  touch.active = false
+  touch.padUsed(joystick)
   input.gamepadPress(joystick, button)
   ui.gamepadpressed(button)
 end
@@ -239,12 +239,21 @@ function love.gamepadreleased(joystick, button)
   input.gamepadRelease(joystick, button)
 end
 
-function love.joystickadded(joystick)
-  input.joystickAdded(joystick)
+function love.gamepadaxis(joystick, axis, value)
+  touch.padAxis(joystick, value)
 end
 
+function love.joystickadded(joystick)
+  touch.padAdded(joystick)
+end
+
+-- Losing the pad mid-race pauses, so the car isn't left driving itself.
 function love.joystickremoved(joystick)
-  input.joystickRemoved(joystick)
+  if not touch.padRemoved(joystick) then return end
+  if state.screen == "race" and rm.isRunning() and not rm.isFinished() and not rm.isPaused() then
+    rm.setPaused(true)
+    input.clear()
+  end
 end
 
 function love.filedropped(file)

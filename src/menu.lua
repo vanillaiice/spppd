@@ -18,6 +18,7 @@ local music = require("src/music")
 local network = require("src/network_manager")
 local dynamics = require("src/sim/dynamics")
 local cheats = require("src/cheats")
+local input = require("src/input")
 
 local menu = { screen = "main" }
 
@@ -332,8 +333,6 @@ local function settingsRows()
       { "chase", "fixed" }, { chase = "CHASE", fixed = "FIXED" }),
     stepper("ZOOM", function() return settings.zoom end, function(v) settings.zoom = v end,
       { "near", "mid", "far" }, { near = "NEAR", mid = "MID", far = "FAR" }),
-    stepper("GEARBOX", function() return settings.gearbox end, function(v) settings.gearbox = v end,
-      { "auto", "manual" }, { auto = "AUTO", manual = "MANUAL" }),
     stepper("UNITS", function() return settings.units end, function(v) settings.units = v end,
       { "kmh", "mph" }, { kmh = "KM/H", mph = "MPH" }),
     stepper("EFFECTS", function() return settings.quality end, function(v)
@@ -343,15 +342,9 @@ local function settingsRows()
     toggle("PACE NOTES", "paceNotes"),
     toggle("MINIMAP", "minimap"),
     toggle("SHOW FPS", "showFps"),
-    toggle("AUTO GAS", "autoGas"),
-    stepper("TOUCH STEERING", function() return settings.touchSteer end,
-      function(v) settings.touchSteer = v end, { "stick", "buttons" }, { stick = "STICK", buttons = "BUTTONS" }),
-    toggle("VIBRATION", "vibration"),
   }
-  -- A phone always has the touch controls and always fills the screen.
+  -- A phone always fills the screen.
   if not ui.mobile then
-    rows[#rows + 1] = stepper("TOUCH CONTROLS", function() return settings.touch end,
-      function(v) settings.touch = v end, { "auto", "on", "off" }, { auto = "AUTO", on = "ON", off = "OFF" })
     local flip = function()
       settings.fullscreen = not settings.fullscreen
       love.window.setFullscreen(settings.fullscreen, "desktop")
@@ -363,6 +356,32 @@ local function settingsRows()
   rows[#rows + 1] = codeRow()
   rows[#rows + 1] = { label = "BACK", activate = function() menu.go("main") end }
   return rows
+end
+
+-- How the car is driven, by every kind of hand. AUTO shows the touch controls
+-- after a touch, and hides them for a key or a pad.
+local TOUCH_SIZES = { "small", "medium", "large" }
+local TOUCH_SIZE_NAMES = { small = "SMALL", medium = "MEDIUM", large = "LARGE" }
+local OPACITIES = { 0.25, 0.5, 0.75, 1 }
+local OPACITY_NAMES = { [0.25] = "25%", [0.5] = "50%", [0.75] = "75%", [1] = "100%" }
+
+local function controlsRows()
+  return {
+    stepper("TOUCH CONTROLS", function() return settings.touch end,
+      function(v) settings.touch = v end, { "auto", "on", "off" }, { auto = "AUTO", on = "ON", off = "OFF" }),
+    stepper("TOUCH STEERING", function() return settings.touchSteer end,
+      function(v) settings.touchSteer = v end, { "stick", "buttons" }, { stick = "STICK", buttons = "BUTTONS" }),
+    toggle("AUTO GAS", "autoGas"),
+    stepper("GEARBOX", function() return settings.gearbox end, function(v) settings.gearbox = v end,
+      { "auto", "manual" }, { auto = "AUTO", manual = "MANUAL" }),
+    stepper("TOUCH SIZE", function() return settings.touchSize end,
+      function(v) settings.touchSize = v end, TOUCH_SIZES, TOUCH_SIZE_NAMES),
+    stepper("TOUCH OPACITY", function() return settings.touchOpacity end,
+      function(v) settings.touchOpacity = v end, OPACITIES, OPACITY_NAMES),
+    toggle("VIBRATION", "vibration"),
+    { label = "BUTTON LIST", activate = function() menu.go("buttons") end },
+    { label = "BACK", activate = function() menu.go("main") end },
+  }
 end
 
 -- Everyone picks their own car here. The race itself is the host's to set, on
@@ -459,6 +478,7 @@ local SCREENS = {
   main = { rows = mainRows },
   setup = { rows = setupRows },
   settings = { rows = settingsRows },
+  controls = { rows = controlsRows },
   online = { rows = onlineRows },
   host = { rows = hostRows },
 }
@@ -583,33 +603,59 @@ local function drawLobby(sw, sh, boardW, s)
   end
 end
 
-local function drawControls(sw, sh, s, w)
-  local rows = {
-    { "STEER", "A D / ARROWS" }, { "ACCELERATE", "W / UP" }, { "BRAKE, REVERSE", "S / DOWN" },
-    { "HANDBRAKE", "SHIFT" }, { "BOOST", "SPACE" }, { "LIGHTS", "F  G" },
-    { "RESET TO TRACK", "R" }, { "CAMERA", "C" }, { "SHIFT GEARS", "Q E" }, { "NEXT SONG", "N" },
-    { "HORN", "H" }, { "PAUSE", "ESC / P" },
-  }
-  if ui.mobile and settings.touchSteer == "buttons" then
+-- Whatever is in the player's hands: a pad when one is connected, on any
+-- platform, then touch on a phone, then the keyboard.
+local KEY_ROWS = {
+  { "STEER", "A D / ARROWS" }, { "ACCELERATE", "W / UP" }, { "BRAKE, REVERSE", "S / DOWN" },
+  { "HANDBRAKE", "SHIFT" }, { "BOOST", "SPACE" }, { "LIGHTS", "F  G" },
+  { "RESET TO TRACK", "R" }, { "CAMERA", "C" }, { "SHIFT GEARS", "Q E" }, { "NEXT SONG", "N" },
+  { "HORN", "H" }, { "PAUSE", "ESC / P" },
+}
+local PAD_ROWS = {
+  { "STEER", "LEFT STICK" }, { "ACCELERATE", "R2 / RT" }, { "BRAKE, REVERSE", "L2 / LT" },
+  { "HANDBRAKE", "R1 / RB" }, { "BOOST", "L1 / LB" }, { "SHIFT GEARS", "SQUARE CROSS / X A" },
+  { "RESET TO TRACK", "TRIANGLE / Y" }, { "CAMERA", "SHARE / BACK" }, { "NEXT SONG", "D-PAD RIGHT" },
+  { "HORN", "CIRCLE / B" }, { "PAUSE", "OPTIONS / START" },
+}
+
+local function touchRows()
+  local gas = settings.autoGas and "AUTO" or "HOLD GAS"
+  local rows
+  if settings.touchSteer == "buttons" then
     rows = {
-      { "STEER", "LEFT, RIGHT" }, { "ACCELERATE", settings.autoGas and "AUTO" or "HOLD GAS" },
-      { "BRAKE, REVERSE", "HOLD BRAKE" }, { "DRIFT", "HOLD DRIFT" }, { "BOOST", "TAP BOOST" },
-      { "HORN, RESET, PAUSE", "TOP RIGHT" },
+      { "STEER", "LEFT, RIGHT" }, { "ACCELERATE", gas }, { "BRAKE, REVERSE", "HOLD BRAKE" },
     }
-  elseif ui.mobile then
+  else
     rows = {
-      { "STEER", "STICK" }, { "ACCELERATE", "AUTO, OR STICK UP" }, { "BRAKE, REVERSE", "STICK DOWN" },
-      { "DRIFT", "HOLD DRIFT" }, { "BOOST", "TAP BOOST" }, { "HORN, RESET, PAUSE", "TOP RIGHT" },
+      { "STEER", "STICK" }, { "ACCELERATE", settings.autoGas and "AUTO" or "STICK UP" },
+      { "BRAKE, REVERSE", "STICK DOWN" },
     }
   end
+  rows[#rows + 1] = { "DRIFT", "HOLD DRIFT" }
+  rows[#rows + 1] = { "BOOST", "TAP BOOST" }
+  if settings.gearbox == "manual" then rows[#rows + 1] = { "SHIFT GEARS", "DOWN LEFT, UP RIGHT" } end
+  rows[#rows + 1] = { "HORN, RESET, PAUSE", "TOP RIGHT" }
+  return rows
+end
+
+function menu.buttonRows()
+  if input.padConnected() then return PAD_ROWS, "pad" end
+  if ui.mobile then return touchRows(), "touch" end
+  return KEY_ROWS, "keys"
+end
+
+local function drawButtonList(sw, sh, s, w)
+  local rows, kind = menu.buttonRows()
   local y = 72 * s
+  -- Clear of BACK, which sits 34 up from the bottom.
+  local step = math.min(13 * s, (sh - 38 * s - y) / (#rows + (kind ~= "pad" and 2 or 0)))
   for i, row in ipairs(rows) do
-    ui.text(row[1], 14 * s, y + (i - 1) * 13 * s, 6 * s, colors.paint)
-    ui.text(row[2], 0, y + (i - 1) * 13 * s, 6 * s, colors.marshal, "right", w - 14 * s)
+    ui.text(row[1], 14 * s, y + (i - 1) * step, 6 * s, colors.paint)
+    ui.text(row[2], 0, y + (i - 1) * step, 6 * s, colors.marshal, "right", w - 14 * s)
   end
-  if not ui.mobile then
-    ui.text("PAD: R2 GAS, L2 BRAKE, R1 HANDBRAKE, L1 BOOST, SQUARE CROSS GEARS, D-PAD RIGHT NEXT SONG, CIRCLE HORN",
-      14 * s, y + #rows * 13 * s + 4 * s, 6 * s, colors.muted, "left", w - 28 * s)
+  if kind ~= "pad" then
+    ui.text("CONNECT A PAD TO SEE ITS BUTTONS", 14 * s, y + #rows * step + 4 * s, 6 * s, colors.muted, "left",
+      w - 28 * s)
   end
 end
 
@@ -637,7 +683,7 @@ function menu.draw(sw, sh)
 
   local titles = {
     setup = MODES[settings.mode], settings = "SETTINGS", online = "ONLINE", host = "HOST A ROOM",
-    controls = "CONTROLS", credits = "CREDITS",
+    controls = "CONTROLS", buttons = "BUTTON LIST", credits = "CREDITS",
   }
   -- A failure takes over the title, because the full list leaves no room below it.
   local failed = menu.screen == "online" and network.status == "error"
@@ -652,7 +698,8 @@ function menu.draw(sw, sh)
       -- nothing to go back to
     else
       if menu.screen == "online" then network.disconnect() end
-      menu.go(menu.screen == "host" and "online" or "main")
+      local up = { host = "online", buttons = "controls" }
+      menu.go(up[menu.screen] or "main")
     end
   end
 
@@ -679,8 +726,9 @@ function menu.draw(sw, sh)
       ui.text(network.statusText(), 14 * s, y + #rows * rowH + 8 * s, 6 * s, colors.marshal, "left", w - 28 * s)
     end
   else
-    local rows = { { label = "BACK", activate = function() menu.go("main") end } }
-    if menu.screen == "controls" then drawControls(sw, sh, s, w)
+    local back = menu.screen == "buttons" and "controls" or "main"
+    local rows = { { label = "BACK", activate = function() menu.go(back) end } }
+    if menu.screen == "buttons" then drawButtonList(sw, sh, s, w)
     else drawCredits(sw, sh, s, w) end
     ui.list(menu.screen, rows, x, sh - 34 * s, listW, 15 * s, size, s)
   end

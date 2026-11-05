@@ -26,9 +26,14 @@ local function autopilot()
 end
 
 -- Lay the game out as a phone would. Pair with SPPPD_SIZE=800x360.
+-- SPPPD_GEARBOX=manual adds the shift buttons, and SPPPD_TOUCHSIZE (small, large)
+-- and SPPPD_OPACITY (0.25 to 1) set the touch controls' size and opacity.
 local function phone()
   ui.mobile = true
   settings.touch = "auto"
+  settings.gearbox = os.getenv("SPPPD_GEARBOX") or "auto"
+  settings.touchSize = os.getenv("SPPPD_TOUCHSIZE") or "medium"
+  settings.touchOpacity = tonumber(os.getenv("SPPPD_OPACITY")) or 1
   require("src/touch").active = true
 end
 
@@ -148,6 +153,8 @@ local SCENES = {
   phonesettings = function() phone() menu.enter() menu.go("settings") end,
   controls = function() menu.enter() menu.go("controls") end,
   phonecontrols = function() phone() menu.enter() menu.go("controls") end,
+  buttons = function() menu.enter() menu.go("buttons") end,
+  phonebuttons = function() phone() menu.enter() menu.go("buttons") end,
   phoneonline = function() phone() menu.enter() settings.mode = "race" menu.go("online") end,
   phonehost = function() phone() menu.enter() settings.mode = "race" menu.go("host") end,
   pause = function() race({ track = "mirage", time = "day" }) autopilot() end,

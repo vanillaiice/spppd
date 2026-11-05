@@ -78,6 +78,11 @@ function input.joystickRemoved(joystick)
   if input.gamepad == joystick then input.gamepad = nil end
 end
 
+function input.padConnected()
+  local pad = input.gamepad
+  return pad ~= nil and pad:isConnected()
+end
+
 function input.isDown(action)
   for _, key in ipairs(input.binds[action] or {}) do
     if input.held[key] then return true end

@@ -33,7 +33,17 @@ At the start lights, hold the revs on the white bar for a good launch.
 
 **Touch** controls appear on phones and tablets: a stick under your left thumb, DRIFT
 and BOOST on the right, and horn, reset and pause at the top right. The car accelerates
-by itself unless you turn Auto Gas off.
+by itself unless you turn Auto Gas off. With buttons steering and Auto Gas off, GAS and
+BRAKE sit side by side and one thumb slides between them. The manual gearbox puts DOWN
+on the left and UP on the right, like paddles.
+
+**A pad works on a phone too.** Press anything on it, even just the stick, and the touch
+controls get out of the way. Touch the screen to bring them back. If the pad drops out
+mid-race, the race pauses.
+
+**CONTROLS** in the main menu holds all of this: touch controls on, off or automatic,
+stick or buttons steering, Auto Gas, the gearbox, the size and opacity of the touch
+controls, and vibration. BUTTON LIST shows the buttons for whatever you're holding.
 
 ## Good to know
 
@@ -88,11 +98,11 @@ desktops online. What differs:
 | Track editor | Yes | No |
 | Your own tracks | Make and race them | Race them online, from the host |
 | Freestyle radio, your own music | Yes | No |
-| Controls | Keyboard, pad, or touch on a touchscreen | Touch stick or buttons |
+| Controls | Keyboard, pad, or touch on a touchscreen | Touch stick or buttons, or a pad |
 | Auto gas | With touch controls | On by default, can be turned off |
-| Manual gearbox | Yes | No, automatic only |
+| Manual gearbox | Yes | Yes, with UP and DOWN buttons |
 | Headlights | Low or high beam | High beam only |
-| Camera | Switch while driving | In SETTINGS |
+| Camera | Switch while driving | In SETTINGS, or Share on a pad |
 | Vibration | Pad rumble, road and hits | Phone buzz on hits |
 | Fullscreen | Optional | Always |
 
