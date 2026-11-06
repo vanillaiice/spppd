@@ -86,12 +86,25 @@ function Car:getSpeed()
   return math.sqrt(vx * vx + vy * vy) / M
 end
 
-function Car:wheelWorldPosition(wheel)
+-- A point in metres in the car's own frame, in the world in px, and back.
+function Car:toWorld(lx, ly)
   local x, y = self.body:getPosition()
   local a = self.body:getAngle()
   local ca, sa = math.cos(a), math.sin(a)
-  local wx, wy = wheel.x * M, wheel.y * M
-  return x + wx * ca - wy * sa, y + wx * sa + wy * ca
+  lx, ly = lx * M, ly * M
+  return x + lx * ca - ly * sa, y + lx * sa + ly * ca
+end
+
+function Car:toLocal(wx, wy)
+  local x, y = self.body:getPosition()
+  local a = self.body:getAngle()
+  local ca, sa = math.cos(a), math.sin(a)
+  local dx, dy = wx - x, wy - y
+  return (dx * ca + dy * sa) / M, (-dx * sa + dy * ca) / M
+end
+
+function Car:wheelWorldPosition(wheel)
+  return self:toWorld(wheel.x, wheel.y)
 end
 
 function Car:updateSurfaces(track)

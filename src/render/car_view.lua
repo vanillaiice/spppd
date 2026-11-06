@@ -56,22 +56,6 @@ local function neonColor(car)
   return push(c[1]), push(c[2]), push(c[3])
 end
 
--- A point in the world, in metres in the car's own frame.
-local function toLocal(car, wx, wy)
-  local x, y = car.body:getPosition()
-  local a = car.body:getAngle()
-  local ca, sa = math.cos(a), math.sin(a)
-  local dx, dy = wx - x, wy - y
-  return (dx * ca + dy * sa) / M, (-dx * sa + dy * ca) / M
-end
-
-local function toWorld(car, lx, ly)
-  local x, y = car.body:getPosition()
-  local a = car.body:getAngle()
-  local ca, sa = math.cos(a), math.sin(a)
-  return x + (lx * ca - ly * sa) * M, y + (lx * sa + ly * ca) * M
-end
-
 -- Wrecked, here or, for a rival online, on their own screen.
 local function wrecked(car)
   return car.wreck ~= nil or car.remoteWreck == true
@@ -80,7 +64,7 @@ end
 -- Bits flying off the car at a point on it, out away from its middle. A wall
 -- throws them back the way they came instead, fanned out along it.
 local function shatter(car, lx, ly, count, offWall)
-  local wx, wy = toWorld(car, lx, ly)
+  local wx, wy = car:toWorld(lx, ly)
   local x, y = car.body:getPosition()
   local nx, ny = wx - x, wy - y
   local len = math.sqrt(nx * nx + ny * ny)
@@ -95,7 +79,7 @@ end
 -- also what a wreck is put down to.
 function view.hit(car, wx, wy, strength, wall)
   local fx = fxOf(car)
-  local lx, ly = toLocal(car, wx, wy)
+  local lx, ly = car:toLocal(wx, wy)
   local last = fx.lastHit
   if not last or fx.clock - last.at > HIT_MEMORY or strength >= last.strength then
     fx.lastHit = { x = lx, y = ly, strength = strength, at = fx.clock }
@@ -123,7 +107,7 @@ local function startWreck(car, fx)
   fx.dents = {}
   damage.dent(fx.dents, lx, ly, damage.wreckDepth(car.fenceHit))
   fx.dentsChanged = true
-  local wx, wy = toWorld(car, lx * 0.6, ly * 0.6)
+  local wx, wy = car:toWorld(lx * 0.6, ly * 0.6)
   local vx, vy = car.body:getLinearVelocity()
   vfx.smokeBurst(wx, wy, vx * 0.3, vy * 0.3, 14)
   shatter(car, lx, ly, WRECK_DEBRIS, true)
@@ -220,7 +204,7 @@ function view.updateFx(car, dt)
     fx.sootCarry = fx.sootCarry - count
     if count > 0 then
       local d = fx.dents[1]
-      local wx, wy = toWorld(car, d.x * 0.6, d.y * 0.6)
+      local wx, wy = car:toWorld(d.x * 0.6, d.y * 0.6)
       local vx, vy = car.body:getLinearVelocity()
       vfx.smokeBurst(wx, wy, vx * 0.3 + (love.math.random() - 0.5) * 30, vy * 0.3 + (love.math.random() - 0.5) * 30, count)
     end

@@ -491,6 +491,19 @@ function renderer.load(track, timeName)
   return setmetatable(self, { __index = renderer })
 end
 
+-- The ground under everything, painted by its shader for the theme.
+local function drawGroundPlane(self)
+  local shader = self.groundShader
+  shader:send("noise", textures.noise)
+  shader:send("colorA", self.theme.groundA)
+  shader:send("colorB", self.theme.groundB)
+  shader:send("pattern", self.theme.pattern)
+  love.graphics.setShader(shader)
+  love.graphics.setColor(1, 1, 1)
+  love.graphics.draw(self.ground)
+  love.graphics.setShader()
+end
+
 -- The playground's containers, baked like the quay's: shadow, ink, then paint.
 local LOT_COLORS = { { 0.93, 0.2, 0.2 }, { 0.1, 0.5, 0.92 }, { 0.98, 0.72, 0.1 }, { 0.12, 0.72, 0.5 }, { 0.95, 0.95, 0.97 } }
 
@@ -592,15 +605,7 @@ function renderer.loadApron(timeName)
   end
 
   function self:drawGround()
-    local shader = self.groundShader
-    shader:send("noise", textures.noise)
-    shader:send("colorA", self.theme.groundA)
-    shader:send("colorB", self.theme.groundB)
-    shader:send("pattern", self.theme.pattern)
-    love.graphics.setShader(shader)
-    love.graphics.setColor(1, 1, 1)
-    love.graphics.draw(self.ground)
-    love.graphics.setShader()
+    drawGroundPlane(self)
 
     -- Painted bays around wherever the camera is looking.
     local vw, vh = viewSize()
@@ -660,15 +665,7 @@ end
 
 -- Everything under the cars.
 function renderer:drawGround()
-  local shader = self.groundShader
-  shader:send("noise", textures.noise)
-  shader:send("colorA", self.theme.groundA)
-  shader:send("colorB", self.theme.groundB)
-  shader:send("pattern", self.theme.pattern)
-  love.graphics.setShader(shader)
-  love.graphics.setColor(1, 1, 1)
-  love.graphics.draw(self.ground)
-  love.graphics.setShader()
+  drawGroundPlane(self)
 
   if self.gravel then
     love.graphics.setShader(self.gravelShader)
