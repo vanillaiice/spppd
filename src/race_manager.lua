@@ -825,28 +825,41 @@ local function lightsState()
   return nil, true
 end
 
+-- How far from the middle of a view, in world px, anything can be and still
+-- show: half its diagonal, plus the shake, at the camera's zoom.
+local function viewReach(cam, sw, sh)
+  return (math.sqrt(sw * sw + sh * sh) / 2 + math.abs(cam.shakeX) + math.abs(cam.shakeY)) / cam.zoom
+end
+
+-- Cars too far from the camera to show aren't drawn. A car reaches this far
+-- from its middle, with the boost warp trailing behind it; its beams far more.
+local BODY_REACH = 20 * M
+local BEAM_REACH = 125 * M
+
+local function inView(car, cam, reach)
+  local dx, dy = car.drawX - cam.x, car.drawY - cam.y
+  return dx * dx + dy * dy < reach * reach
+end
+
 local function drawWorld(sw, sh, cam)
   local race, env, scene = session.race, session.env, session.scene
-  local alpha = session.alpha
+  local reach = viewReach(cam, sw, sh) + BODY_REACH
   withCamera(sw, sh, function()
     scene:drawGround()
     skids.draw()
     if race.cones then scene:drawCones(race.cones) end
     drawGhost(env)
     for _, car in ipairs(race.cars) do
-      local x, y, a = car:interpolated(alpha)
-      car_view.drawShadow(car, x, y, a, env)
+      if inView(car, cam, reach) then car_view.drawShadow(car, car.drawX, car.drawY, car.drawA, env) end
     end
     for _, car in ipairs(race.cars) do
-      local x, y, a = car:interpolated(alpha)
-      car_view.draw(car, x, y, a)
+      if inView(car, cam, reach) then car_view.draw(car, car.drawX, car.drawY, car.drawA) end
     end
     vfx.draw()
     vfx.drawEmissive()
     love.graphics.setBlendMode("add")
     for _, car in ipairs(race.cars) do
-      local x, y, a = car:interpolated(alpha)
-      car_view.drawLamps(car, x, y, a)
+      if inView(car, cam, reach) then car_view.drawLamps(car, car.drawX, car.drawY, car.drawA) end
     end
     love.graphics.setBlendMode("alpha")
     local on, out = lightsState()
@@ -858,8 +871,8 @@ end
 -- driver, or each driver's half.
 local function drawView(view, x, y, sw, sh)
   local race, env, scene = session.race, session.env, session.scene
-  local alpha = session.alpha
   local car, cam = view.car, view.cam
+  local reach = viewReach(cam, sw, sh)
   local boosting = car.model.boostState == "active"
 
   post.begin(sw, sh)
@@ -870,8 +883,9 @@ local function drawView(view, x, y, sw, sh)
       withCamera(sw, sh, function()
         scene:drawLights()
         for _, car in ipairs(race.cars) do
-          local x, y, a = car:interpolated(alpha)
-          car_view.drawBeams(car, x, y, a, env.beams)
+          if inView(car, cam, reach + BEAM_REACH) then
+            car_view.drawBeams(car, car.drawX, car.drawY, car.drawA, env.beams)
+          end
         end
       end, cam)
     end)
@@ -882,8 +896,7 @@ local function drawView(view, x, y, sw, sh)
       vfx.drawEmissive()
       love.graphics.setBlendMode("add")
       for _, car in ipairs(race.cars) do
-        local x, y, a = car:interpolated(alpha)
-        car_view.drawLamps(car, x, y, a)
+        if inView(car, cam, reach + BODY_REACH) then car_view.drawLamps(car, car.drawX, car.drawY, car.drawA) end
       end
       local on, out = lightsState()
       scene:drawGlow(on, out)
@@ -905,6 +918,10 @@ local function drawView(view, x, y, sw, sh)
 end
 
 function rm.drawScene(sw, sh)
+  -- Each car's pose for this frame, between the last two physics steps.
+  for _, car in ipairs(session.race.cars) do
+    car.drawX, car.drawY, car.drawA = car:interpolated(session.alpha)
+  end
   for i, view in ipairs(session.views) do
     local x, y, w, h = viewRect(i, sw, sh)
     drawView(view, x, y, w, h)
@@ -920,8 +937,7 @@ local function markDrivers(view, sw, sh)
   local c, sn = math.cos(cam.rot), math.sin(cam.rot)
   view.marks = view.marks or {}
   for i, other in ipairs(session.views) do
-    local x, y = other.car:interpolated(session.alpha)
-    local dx, dy = x - cam.x, y - cam.y
+    local dx, dy = other.car.drawX - cam.x, other.car.drawY - cam.y
     view.marks[i] = {
       car = other.car,
       x = sw / 2 + cam.shakeX + (dx * c - dy * sn) * cam.zoom,
