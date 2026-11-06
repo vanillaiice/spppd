@@ -12,6 +12,12 @@ Ideas that are agreed in principle but not built yet.
 - **Cop chases:** an AI pursuit mode with roadblocks and a heat level. It would be
   the game's signature feature, and it's the most work here, because cop AI needs
   a lot of tuning.
+- **Matchmaking with strangers:** a button that puts you in a room with other
+  players, with no code to share. The relay would fill open rooms on the same
+  version and start them after a short wait, on a built-in track. It fits v3 as a
+  new relay event and a `FEATURES` step. Strangers can't be trusted the way
+  friends can, so it needs a kick or vote-out, and cheating stays possible until
+  ranked play brings a server that checks results.
 - **Ranked play and profiles:** accounts, ranked races and persistent profiles.
   These need a server that checks results, because clients are trusted today.
 - **Freestyle drift counter:** a combo multiplier for chaining slides, a saved
