@@ -275,24 +275,6 @@ local function opacity()
   return settings.touchOpacity or 1
 end
 
-local function drawStick(layout)
-  local stick = touch.stick
-  local s, r = layout.s, layout.radius
-  local x = stick and stick.baseX or layout.rest.x
-  local y = stick and stick.baseY or layout.rest.y
-  local alpha = stick and 0.75 * math.max(opacity(), HELD_FLOOR) or 0.4 * opacity()
-  local panel = colors.asphaltDeep
-  love.graphics.setColor(panel[1], panel[2], panel[3], alpha * 0.6)
-  love.graphics.rectangle("fill", x - r, y - r, r * 2, r * 2, 10 * s)
-  love.graphics.setColor(1, 1, 1, alpha)
-  love.graphics.setLineWidth(2 * s)
-  love.graphics.rectangle("line", x - r, y - r, r * 2, r * 2, 10 * s)
-  local c = colors.marshal
-  love.graphics.setColor(c[1], c[2], c[3], math.min(1, alpha + 0.2))
-  local knob = 15 * r / STICK_RADIUS
-  love.graphics.circle("fill", x + (stick and stick.x or 0) * r, y - (stick and stick.y or 0) * r, knob)
-end
-
 local function buttonColor(action, car)
   if action == "boost" then
     local state = car.model.boostState
@@ -316,7 +298,7 @@ local function drawArrow(b, x, y, c)
 end
 
 -- One button with its middle at x, y.
-local function paintButton(b, x, y, c, held, a, s)
+local function paintButton(x, y, b, c, held, a, s)
   local panel = colors.asphaltDeep
   if held then
     love.graphics.setColor(fade(c, a))
@@ -336,32 +318,58 @@ local function paintButton(b, x, y, c, held, a, s)
   end
 end
 
--- A button looks the same frame after frame until it's pressed, and its circles
--- cost a slow phone more than the rest of the HUD. So each look is drawn once
--- into a canvas, keyed by everything that changes it, and kept.
+-- The controls look the same frame after frame until they're pressed, and their
+-- circles and rounded corners cost a slow phone more than the rest of the HUD. So
+-- each look is drawn once into a canvas, keyed by everything that changes it, and
+-- kept. paint(x, y, ...) draws it with its middle at x, y.
 local looks, lookCount = {}, 0
 local MAX_LOOKS = 64
 
-local function look(b, c, held, a, s)
-  local key = string.format("%s|%s|%.2f|%.2f|%s|%s|%.3f|%.2f", b.action, b.label or b.shape,
-    b.r, b.size or 0, tostring(c), tostring(held), a, s)
-  local found = looks[key]
-  if found then return found end
-  if lookCount >= MAX_LOOKS then looks, lookCount = {}, 0 end
-  local half = math.ceil(b.r + 2 * s + 2)
-  local canvas = love.graphics.newCanvas(half * 2, half * 2)
-  canvas:setFilter("nearest", "nearest")
-  love.graphics.push("all")
-  love.graphics.origin()
-  love.graphics.setScissor()
-  love.graphics.setCanvas(canvas)
-  love.graphics.clear(0, 0, 0, 0)
-  paintButton(b, half, half, c, held, a, s)
-  love.graphics.pop()
-  found = { canvas = canvas, half = half }
-  looks[key] = found
-  lookCount = lookCount + 1
-  return found
+local function drawLook(key, half, x, y, paint, ...)
+  local canvas = looks[key]
+  if not canvas then
+    if lookCount >= MAX_LOOKS then looks, lookCount = {}, 0 end
+    canvas = love.graphics.newCanvas(half * 2, half * 2)
+    canvas:setFilter("nearest", "nearest")
+    love.graphics.push("all")
+    love.graphics.origin()
+    love.graphics.setScissor()
+    love.graphics.setCanvas(canvas)
+    love.graphics.clear(0, 0, 0, 0)
+    paint(half, half, ...)
+    love.graphics.pop()
+    looks[key] = canvas
+    lookCount = lookCount + 1
+  end
+  -- On a whole pixel, so the canvas lands on the screen's pixels as drawn.
+  local dpi = love.graphics.getDPIScale()
+  love.graphics.setColor(1, 1, 1, 1)
+  love.graphics.setBlendMode("alpha", "premultiplied")
+  love.graphics.draw(canvas, math.floor((x - half) * dpi + 0.5) / dpi, math.floor((y - half) * dpi + 0.5) / dpi)
+  love.graphics.setBlendMode("alpha")
+end
+
+local function paintStickBase(x, y, r, s, alpha)
+  local panel = colors.asphaltDeep
+  love.graphics.setColor(panel[1], panel[2], panel[3], alpha * 0.6)
+  love.graphics.rectangle("fill", x - r, y - r, r * 2, r * 2, 10 * s)
+  love.graphics.setColor(1, 1, 1, alpha)
+  love.graphics.setLineWidth(2 * s)
+  love.graphics.rectangle("line", x - r, y - r, r * 2, r * 2, 10 * s)
+end
+
+local function drawStick(layout)
+  local stick = touch.stick
+  local s, r = layout.s, layout.radius
+  local x = stick and stick.baseX or layout.rest.x
+  local y = stick and stick.baseY or layout.rest.y
+  local alpha = stick and 0.75 * math.max(opacity(), HELD_FLOOR) or 0.4 * opacity()
+  drawLook(string.format("stick|%.2f|%.2f|%.3f", r, s, alpha), math.ceil(r + 2 * s + 2), x, y,
+    paintStickBase, r, s, alpha)
+  local c = colors.marshal
+  love.graphics.setColor(c[1], c[2], c[3], math.min(1, alpha + 0.2))
+  local knob = 15 * r / STICK_RADIUS
+  love.graphics.circle("fill", x + (stick and stick.x or 0) * r, y - (stick and stick.y or 0) * r, knob)
 end
 
 local function drawButton(b, car, s)
@@ -369,15 +377,9 @@ local function drawButton(b, car, s)
   -- Boost stays lit for as long as it's on, not just while it's pressed.
   local held = input.isDown(b.action) or (b.action == "boost" and car.model.boostState == "active")
   local a = held and math.max(opacity(), HELD_FLOOR) or opacity()
-  local l = look(b, c, held, a, s)
-  -- On a whole pixel, so the canvas lands on the screen's pixels as drawn.
-  local dpi = love.graphics.getDPIScale()
-  local x = math.floor((b.x - l.half) * dpi + 0.5) / dpi
-  local y = math.floor((b.y - l.half) * dpi + 0.5) / dpi
-  love.graphics.setColor(1, 1, 1, 1)
-  love.graphics.setBlendMode("alpha", "premultiplied")
-  love.graphics.draw(l.canvas, x, y)
-  love.graphics.setBlendMode("alpha")
+  local key = string.format("%s|%s|%.2f|%.2f|%s|%s|%.3f|%.2f", b.action, b.label or b.shape,
+    b.r, b.size or 0, tostring(c), tostring(held), a, s)
+  drawLook(key, math.ceil(b.r + 2 * s + 2), b.x, b.y, paintButton, b, c, held, a, s)
 end
 
 function touch.draw(sw, sh, car)
