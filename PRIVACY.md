@@ -26,13 +26,13 @@ Questions, or a request to see or delete what's held about you:
 
 | What | Why | Kept |
 | --- | --- | --- |
-| Your IP address and port | To pass your packets to the others in your room, and theirs to you | In memory while you're connected |
+| Your IP address and port | To pass your packets to the others in your room, and theirs to you | While you're connected. Rooms of games that can get back into a race are also written to the server's disk every 2 seconds, so a server restart doesn't end your race, and are read back only within 35 seconds |
 | Game packets: your car, paint, position, inputs, and the track if you host | To pass them to the others in your room | Not at all. The server passes them on without reading them |
-| The room code | To put you in the right room | In memory until the room empties |
-| A random token for your seat, which only your game is told | To let you back into your seat if your connection drops | In memory until you leave the room |
+| The room code | To put you in the right room | Until the room empties, kept like your address |
+| A random token for your seat, which only your game is told | To let you back into your seat if your connection drops, or the server restarts | Until you leave the room, kept like your address |
 | A cookie worked out from your IP address and port, which only your game is told | To check that packets asking for a seat really come from your address | Not at all. It's worked out again when it's checked |
 | Log lines: host, join, leave, away, back and time-out events, with IP address, port and room code | To run the server, fix problems and deal with abuse | In the server's log, about 10 MB of it, until newer lines overwrite them or the server is updated, whichever comes first |
-| Recent activity on the admin dashboard: the same events, plus refused connections | Same as the log | The last 200 events, in memory, until the server restarts |
+| Recent activity on the admin dashboard: the same events, plus refused connections | Same as the log | The last 200 events, on the server's disk so they outlast a restart, and none older than 7 days |
 | A banned IP address, when it was banned, and which admin banned it | To keep out someone who abused the server | Until the ban is lifted |
 
 The status page shows how many drivers are online and races running. Those are
@@ -44,7 +44,8 @@ from the internet, and it needs an admin login.
 The server's database (bans, admin logins and the statistics below) is backed up
 to rented storage, so it survives the server failing. The backup holds copies from
 the last 7 days, so anything deleted from the server is gone from the backup 7 days
-later. The key that IP hashes are made with isn't backed up.
+later. The key that IP hashes are made with isn't backed up, and nor are the rooms
+and the dashboard's recent activity.
 
 ## Statistics
 

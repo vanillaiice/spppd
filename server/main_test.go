@@ -374,7 +374,7 @@ func TestRoomsHaveACeiling(t *testing.T) {
 func TestShutdownTellsEveryone(t *testing.T) {
 	relay, sent, _ := setup()
 	pair(relay)
-	relay.Shutdown()
+	relay.Shutdown(false)
 	for _, port := range []int{1, 2} {
 		got := sentTo(sent, port)
 		if got[len(got)-1] != "event|closed|The server is restarting" {

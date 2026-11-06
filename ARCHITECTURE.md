@@ -1624,8 +1624,10 @@ token, so the relay drops them after 5 s, as before.
   shows.
 - A driver who quit mid-race takes their car off the road, or it would sit there as a
   wall. They stay in the standings as LEFT THE RACE, behind everyone else.
-- A closed room or a restart arrives as `event|closed|` with its reason, and the toast
-  says that, not that someone left.
+- A closed room arrives as `event|closed|` with its reason, and the toast says that,
+  not that someone left. So does a relay restart for games before protocol 5. Later
+  ones aren't told: the relay keeps their rooms through it (see The temporary store),
+  and they get back in as after any lost connection.
 - 6 s of hearing nothing at all means a game before protocol 5 has lost the relay.
   Later ones try to get back in first.
 
@@ -1740,6 +1742,34 @@ per day.
 
 Nothing touches the disk while the relay holds `mu`. `Ban` changes the map under the
 lock and saves after it; `AttachStore` loads the bans at startup.
+
+### The temporary store
+
+`server/temp.go`. The rooms and the dashboard's recent activity outlast a restart in a
+second SQLite file, `-temp-db` (`relay-temp.db` on the official server; empty for
+none). It's apart from `relay.db` because it holds addresses and seat tokens that
+aren't worth backing up, and the backup only copies `relay.db`.
+
+| Table | Holds |
+| --- | --- |
+| `events` | Seq, time and text of each activity line. Clean-up keeps the newest 200, none older than 7 days |
+| `rooms` | One row: the rooms from protocol 5 on, as JSON (code, protocol, times, locked, racers, and each seat's slot, address and token), and when they were saved |
+
+The relay never waits on it. `record` hands each line to a channel of 1024 without
+blocking, and counts a line it can't hand over in `tempLost` rather than wait. One
+goroutine, `persist`, does all the writing: lines in a batch every second, the rooms
+every 2 s (copied under `mu` by `saveRooms`, written after; unchanged rooms only move
+the time on), and the clean-up every minute.
+
+On SIGTERM, `Shutdown(true)` closes only the rooms before protocol 5, with "The server
+is restarting", then `persist` writes the last lines and rooms. On start, `LoadTemp`
+brings back the lines, numbering new ones after them so an open dashboard adds to its
+list, and the rooms if they were saved within `-race-timeout` plus `-away-timeout`
+(35 s), which is how long a game tries to get back in. Each driver is seated at the
+address they had and seen just then. A game whose socket survived carries on; one
+that has started getting back in sends `back` from its new socket, with the token it
+already holds. The usual timeouts drop anyone who doesn't come back. A crash keeps the
+rooms as they were up to 2 s before.
 
 ### Analytics
 

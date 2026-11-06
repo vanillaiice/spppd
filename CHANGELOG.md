@@ -26,6 +26,8 @@
 - Protocol 5. Everyone in a room needs this version, and from now on later 3.x
   versions keep racing it: they add to what's sent without changing it.
 - The online server is harder to flood with forged traffic.
+- Restarting the online server no longer ends races. Your game gets back in on its
+  own, as after a lost connection.
 - The website has a server status page, <https://spppd.xyz/status/>: whether the
   online server is up, and how many drivers are on it.
 

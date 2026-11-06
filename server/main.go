@@ -155,6 +155,9 @@ type Relay struct {
 	finished     []*Tally // earlier days not yet written
 	analyticsKey []byte
 	flushMu      sync.Mutex
+
+	tempEvents chan<- Event // to the temporary file's writer, nil when there's none
+	tempLost   uint64       // events left unwritten because it was behind
 }
 
 func NewRelay(send Sender) *Relay {
@@ -204,6 +207,15 @@ func (r *Relay) record(text string) {
 	r.events = append(r.events, Event{Seq: r.eventSeq, At: r.now(), Text: text})
 	if len(r.events) > maxEvents {
 		r.events = r.events[1:]
+	}
+	if r.tempEvents != nil {
+		// Never wait for the disk: a line it's too busy for is only lost from
+		// what a restart brings back.
+		select {
+		case r.tempEvents <- r.events[len(r.events)-1]:
+		default:
+			r.tempLost++
+		}
 	}
 }
 
@@ -771,13 +783,17 @@ func (r *Relay) Unban(ip string) {
 	}
 }
 
-// Shutdown tells everyone the relay is going away.
-func (r *Relay) Shutdown() {
+// Shutdown tells everyone the relay is going away. With keep, rooms from protocol
+// 5 on are told nothing: they're saved, and their games get back in when the relay
+// is up again, as they would after losing the connection.
+func (r *Relay) Shutdown(keep bool) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
 	for _, room := range r.rooms {
-		r.closeRoom(room, "The server is restarting")
+		if !keep || !comesBack(room) {
+			r.closeRoom(room, "The server is restarting")
+		}
 	}
 }
 
@@ -866,6 +882,7 @@ func main() {
 	dashboard := flag.String("dashboard", "", "HTTP address for the dashboard (off if empty)")
 	statusAddr := flag.String("status", "", "HTTP address for the public status at /api/status (off if empty)")
 	dbPath := flag.String("db", "spppd-relay.db", "SQLite file for bans, dashboard users and analytics; empty keeps them in memory")
+	tempPath := flag.String("temp-db", "spppd-relay-temp.db", "SQLite file for rooms and recent activity, so a restart doesn't end races; empty for none")
 	analytics := flag.Bool("analytics", false, "count unique IPs (as keyed hashes), rooms, races and traffic")
 	analyticsDays := flag.Int("analytics-days", 30, "days to keep the hashed IPs behind the unique counts; daily totals are kept")
 	adminUser := flag.String("admin-user", envOr("SPPPD_ADMIN_USER", "admin"), "dashboard user made from SPPPD_ADMIN_PASSWORD when there are no users yet")
@@ -922,6 +939,22 @@ func main() {
 	relay.maxRooms = *rooms
 	if err := relay.AttachStore(store); err != nil {
 		log.Fatalf("Failed to load bans: %v", err)
+	}
+	stopTemp := func() {}
+	if *tempPath != "" {
+		temp, err := OpenTempStore(*tempPath)
+		if err != nil {
+			log.Fatalf("Failed to open the temporary database: %v", err)
+		}
+		defer temp.Close()
+		rooms, drivers, err := relay.LoadTemp(temp, *racing+*away)
+		if err != nil {
+			log.Printf("[TEMP] %v", err)
+		}
+		stopTemp = relay.KeepTemp(temp)
+		if rooms > 0 {
+			relay.Note("[RESTORED] %d rooms with %d drivers from before the restart", rooms, drivers)
+		}
 	}
 	if *analytics {
 		key, err := store.AnalyticsKey()
@@ -982,7 +1015,8 @@ func main() {
 	stop, _ := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	go func() {
 		<-stop.Done()
-		relay.Shutdown()
+		relay.Shutdown(*tempPath != "")
+		stopTemp()
 		relay.FlushAnalytics()
 		store.Close()
 		log.Print("Relay server stopped")

@@ -35,14 +35,14 @@ test-server:
 # Two clients racing through a real relay on this machine.
 test-online:
 	cd server && go build -o ../dist/relay .
-	./dist/relay -addr 127.0.0.1:18080 -db= & pid=$$!; sleep 0.5; \
+	./dist/relay -addr 127.0.0.1:18080 -db= -temp-db= & pid=$$!; sleep 0.5; \
 	SPPPD_RELAY=127.0.0.1:18080 love . --test network; code=$$?; kill $$pid; exit $$code
 
 # The real game online, through its real input handlers, against three bots and a
 # real relay. Needs a display.
 test-online-visual:
 	cd server && go build -o ../dist/relay .
-	./dist/relay -addr 127.0.0.1:18080 -db= & pid=$$!; sleep 0.5; \
+	./dist/relay -addr 127.0.0.1:18080 -db= -temp-db= & pid=$$!; sleep 0.5; \
 	SPPPD_RELAY=127.0.0.1:18080 love . --visual online; code=$$?; kill $$pid; exit $$code
 
 server:
