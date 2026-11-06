@@ -29,7 +29,9 @@ Questions, or a request to see or delete what's held about you:
 | Your IP address and port | To pass your packets to the others in your room, and theirs to you | In memory while you're connected |
 | Game packets: your car, paint, position, inputs, and the track if you host | To pass them to the others in your room | Not at all. The server passes them on without reading them |
 | The room code | To put you in the right room | In memory until the room empties |
-| Log lines: host, join, leave and time-out events, with IP address, port and room code | To run the server, fix problems and deal with abuse | In the server's log, about 10 MB of it, until newer lines overwrite them or the server is updated, whichever comes first |
+| A random token for your seat, which only your game is told | To let you back into your seat if your connection drops | In memory until you leave the room |
+| A cookie worked out from your IP address and port, which only your game is told | To check that packets asking for a seat really come from your address | Not at all. It's worked out again when it's checked |
+| Log lines: host, join, leave, away, back and time-out events, with IP address, port and room code | To run the server, fix problems and deal with abuse | In the server's log, about 10 MB of it, until newer lines overwrite them or the server is updated, whichever comes first |
 | Recent activity on the admin dashboard: the same events, plus refused connections | Same as the log | The last 200 events, in memory, until the server restarts |
 | A banned IP address, when it was banned, and which admin banned it | To keep out someone who abused the server | Until the ban is lifted |
 
@@ -46,7 +48,8 @@ The official server runs with statistics turned on. It keeps:
   address. Hashes are deleted after 30 days. What stays is how many different
   addresses played that day.
 - **Daily totals:** rooms hosted, joins, races started, drivers in them, refused
-  connections, the most players at once, and traffic in and out.
+  connections, seats taken back after a lost connection, the most players at once,
+  and traffic in and out.
 - **Races:** when each room started racing and when it emptied, how many drivers it
   had, and the game's protocol version. No addresses, room codes or names.
 

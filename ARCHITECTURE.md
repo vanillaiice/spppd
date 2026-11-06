@@ -1368,7 +1368,7 @@ There's no shared simulation and no referee. A client could lie about its finish
 which is fine between friends and is why ranked play needs more (see `REVIEW.md`).
 
 `menu.ONLINE_NOTES` tells players this on the ONLINE screen, along with the other limits
-they can run into: no way back after 5 s away, late cars on a slow connection, and that
+they can run into: no way back after about 30 s away, late cars on a slow connection, and that
 the server sees their IP address. Other drivers don't, because everything goes through
 the relay. Keep those notes true when any of this changes. The pause menu's title says
 RACE STILL RUNNING online, since nothing stops.
@@ -1398,15 +1398,17 @@ forwards with the sender's seat, as `2|sync|...`, so a client can't pose as anot
 
 | Packet | Direction | Purpose |
 | --- | --- | --- |
-| `event\|host\|proto\|CODE` | Client to relay | Create a room. Repeated until answered |
-| `event\|join\|proto\|CODE` | Client to relay | Join a room. Repeated until answered |
+| `event\|host\|5\|CODE\|cookie\|\|padding` | Client to relay | Create a room. Repeated until answered. Padded to 64 bytes |
+| `event\|join\|5\|CODE\|cookie\|\|padding` | Client to relay | Join a room. The same |
+| `event\|back\|5\|CODE\|cookie\|token\|padding` | Client to relay | Take my own seat back, from whatever address I have now |
 | `event\|lock\|` | Client to relay | The race has started, so take nobody new |
 | `event\|leave\|` | Client to relay | Leaving |
-| `event\|room\|seat\|CODE\|seats\|locked` | Relay to client | Your seat and who's here. On any change, and every second |
-| `event\|error\|reason` | Relay to client | Refused entry |
+| `event\|cookie\|cookie` | Relay to client | Ask again with this. The answer to a request without a good cookie |
+| `event\|room\|seat\|CODE\|seats\|locked\|token\|away` | Relay to client | Your seat, who's here, your token, and which seats are away. On any change, and every second |
+| `event\|error\|reason` | Relay to client | Refused entry, or refused a seat back |
 | `event\|closed\|reason` | Relay to client | Removed: a closed room, a ban, a restart |
-| `hello\|car\|paint\|have\|ready\|vote` | Everyone | Who I am, whether I hold the track, the round I'm ready for and the round I've asked for |
-| `setup\|round\|hash\|chunks\|laps\|time\|startAt\|title` | Leader | The race, and when it starts |
+| `hello\|car\|paint\|have\|ready\|vote\|features` | Everyone | Who I am, whether I hold the track, the round I'm ready for, the round I've asked for, and my `FEATURES` |
+| `setup\|round\|hash\|chunks\|laps\|time\|startAt\|title\|needs` | Leader | The race, when it starts, and the `FEATURES` it needs |
 | `ping\|t`, `pong\|seat\|t\|leaderTime` | Clients and leader | Finding the leader's clock |
 | `need\|hash\|1,2,3`, `chunk\|hash\|n\|text` | Clients and leader | Fetching a track |
 | `sync\|round\|seq\|x\|y\|a\|vx\|vy\|steer\|rpm\|throttle\|brake\|gear\|flags\|slide\|distance\|finish` | Everyone | Car state, about 100 bytes, 20 Hz |
@@ -1414,25 +1416,49 @@ forwards with the sender's seat, as `2|sync|...`, so a client can't pose as anot
 `paint` is an index into `PAINTS` in `menu.lua`, so that list's order is part of the
 protocol. `flags` holds the horn, reverse, boost, the two beams and whether the car is a ghost.
 
-### Versions
+### Versions and compatibility
 
-`network.PROTOCOL` goes in `host` and `join`. The relay doesn't interpret it, so it
-doesn't need updating when the game's protocol changes. It keeps the host's number with
-the room and refuses a joiner with a different one, with a message saying so. A client
-from before protocol 2 sends no number and is told to update. **Change `PROTOCOL` when
-any packet between clients changes.**
+`network.PROTOCOL` goes in `host`, `join` and `back`. The relay keeps the host's number
+with the room and refuses a joiner with a different one, with a message saying so.
+Otherwise it only reads it to tell protocol 5 and later, which earn their seats with a
+cookie, from older games, which don't. A client from before protocol 2 sends no number
+and is told to update, and `-min-proto` tells older ones the same.
+
+All of 3.x is protocol 5, and stays that way. 3.x releases add to the protocol without
+changing `PROTOCOL`, by these rules:
+
+- **Fields only go on the end of a packet.** A field's meaning never changes, and
+  none is ever taken away. `chunk` is the exception: its text runs to the end, so it
+  can't take more fields.
+- **Readers take the fields they know and ignore the rest.** `head(str, n)` gives the
+  first `n` fields for an anchored pattern, so a packet with more still matches. A
+  packet missing a field the reader needs is refused.
+- **Unknown packets and events are ignored**, by games and by the relay.
+- **Behaviour older 3.x games can't follow is gated by `network.FEATURES`.** A
+  release that adds such a thing raises it by one. Each `hello` carries it, so
+  `network.roomFeatures()` is the most everyone in the room can do, and the host offers
+  only what that allows. A race that needs more sets `needs` in its setup: the host
+  can't start it until every driver's `FEATURES` reaches it, and an older game that
+  hears it fails with "The host's race needs a newer version of the game".
+
+**Change `PROTOCOL` only for a break those rules can't cover**, which is a new major
+version.
 
 ### Connecting
 
 ```
  Host                       Relay                      Joiner
-  │  event|host|2|ABC234      │                           │
+  │  event|host|5|ABC234||    │                           │
   │──────────────────────────▶│                           │
-  │  event|room|1|ABC234|1|0  │                           │
+  │  event|cookie|Q3xa…       │                           │
+  │◀──────────────────────────│                           │
+  │  event|host|5|ABC234|Q3xa…|                           │
+  │──────────────────────────▶│                           │
+  │  event|room|1|ABC234|1|0|token|                       │
   │◀──────────────────────────│                           │  status: lobby
-  │                           │     event|join|2|ABC234   │
-  │                           │◀──────────────────────────│
-  │  event|room|1|...|1,2|0   │    event|room|2|...|1,2|0 │
+  │                           │   join, cookie, join      │
+  │                           │◀─────────────────────────▶│
+  │  event|room|1|…|1,2|0|…   │   event|room|2|…|1,2|0|…  │
   │◀──────────────────────────│──────────────────────────▶│  status: lobby
   │                           │                           │
   │  setup, hello  ───────────┼─────────────────────────▶ │  has it, or fetches it
@@ -1549,16 +1575,47 @@ has asked, the leader starts it, using the same room, track and cars. Each clien
 down the old race and builds the new one, and the start works as it did the first time.
 It needs at least one other driver left.
 
+### Getting back in
+
+A phone that changes networks gets a new address, and one that goes to the background
+stops sending. Both used to cost the race. Now:
+
+1. Each seat has a **token**, 16 random bytes that the relay tells only that seat's
+   game, in its `room` events.
+2. A game that hears nothing for 2.5 s in a room starts **getting back in**: it drops
+   its socket without sending `leave`, opens a new one to the relay's address, and
+   sends `back` with its token. It opens a fresh socket every 2 s while it tries, in
+   case the network changed again, and it uses the address it resolved when it first
+   connected, so it never waits on a name lookup. The race goes on meanwhile, and a
+   toast says CONNECTION LOST, then BACK ONLINE.
+3. The relay marks a driver in a shared room **away** after 5 s of silence. Their seat
+   stays theirs, but nothing is forwarded to them. The others see their car as a
+   ghost, because `RemoteDriver` ghosts any car silent for over 1 s, and a toast says
+   they lost their connection.
+4. A `back` with the right token takes the seat at the new address, and the room goes
+   on as before: same seat, same leader, same round. A packet from the old address
+   also ends being away, with no token needed.
+5. After 30 more seconds (`-away-timeout`) the seat is gone, and the others see the
+   driver leave. A `back` after that gets "Your place in that room has gone", and the
+   game finishes the race alone. It gives up by itself after 35 s.
+
+A host who is away from a lobby holds it open for those 35 s rather than closing it,
+and the host can't start a race while anyone is away. Games before protocol 5 have no
+token, so the relay drops them after 5 s, as before.
+
 ### Leaving
 
-- `event|leave|`, or 5 s of silence at the relay, makes it send everyone the new room.
+- `event|leave|` makes the relay send everyone the new room at once. Silence does too,
+  after 5 s for games before protocol 5, and after 35 s for later ones, which are
+  away in between.
 - A driver who'd already finished only went home, so their car goes to AI and no toast
   shows.
 - A driver who quit mid-race takes their car off the road, or it would sit there as a
   wall. They stay in the standings as LEFT THE RACE, behind everyone else.
 - A closed room or a restart arrives as `event|closed|` with its reason, and the toast
   says that, not that someone left.
-- 6 s of hearing nothing at all means the client has lost the relay.
+- 6 s of hearing nothing at all means a game before protocol 5 has lost the relay.
+  Later ones try to get back in first.
 
 ### The relay
 
@@ -1566,7 +1623,7 @@ It needs at least one other driver left.
 
 | Field | Meaning |
 | --- | --- |
-| `clients` | Everyone, keyed by `ip:port` |
+| `clients` | Everyone, keyed by `ip:port`, with their seat's token and whether they're away |
 | `rooms` | Rooms by code, with their seats. A code is taken until the room empties |
 | `banned` | IPs ignored until restart |
 | `perIP` | Connections from each IP |
@@ -1580,13 +1637,30 @@ It needs at least one other driver left.
  count it
  banned?               ignore
  too big, over rate?   drop and count
- refresh LastSeen
- not an event?         stamp with the seat and forward to the rest of the room
- unknown client?       register if it's host or join, otherwise ignore
+ refresh LastSeen, and if it was away, it's back: tell the room
+ not an event?         stamp with the seat and forward to the rest of the room,
+                       except anyone away
+ unknown client?       register if it's host, join or back, otherwise ignore
  event|leave           remove the client and tell the room
  event|lock            lock the room
- event|host or join    resend the room (the answer may have been lost)
+ event|host/join/back  resend the room (the answer may have been lost)
 ```
+
+**`register`** checks a request from an unknown address. From protocol 5:
+
+```
+ under 64 bytes?       ignore: an answer mustn't be bigger than the request
+ no good cookie?       answer event|cookie|… and nothing more
+ older than -min-proto, bad code, too many from this IP?   refuse
+ back                  give the seat whose token matches its new address, or refuse
+ host or join          as before, with a new token for the seat
+```
+
+The cookie is HMAC-SHA-256 of the address and port and the current 30 s window, cut
+to 16 bytes, with a key made at startup. It works for one to two windows. It costs the
+relay no memory, and only someone who receives packets at that address can repeat it,
+so a forged source can't take a seat, and gets one answer no bigger than what it sent.
+Games before protocol 5 skip all of it and register as they always did.
 
 Forwarding doesn't parse anything, which keeps the relay independent of the game
 protocol. `event|` packets are never forwarded, so a client can't fake one from the
@@ -1594,9 +1668,10 @@ relay. `refuse` stays out of the log, because anyone can send those as fast as t
 like. It counts them, and the sweep writes one dashboard line a second that sums them
 up, so a flood can't push everything else off the activity list.
 
-**`Sweep`** runs once a second: it computes traffic rates, drops clients silent for over
-5 s if they share a room or 60 s if alone, repeats each room to the clients heard from
-in the last 2 s, sums up the refusals, and clears old rate buckets. A game sends at
+**`Sweep`** runs once a second: it computes traffic rates, marks clients in a shared
+room away after 5 s of silence and drops them 30 s later (games before protocol 5 go at
+5 s), drops anyone alone in a room after 60 s, repeats each room to the clients heard
+from in the last 2 s, sums up the refusals, and clears old rate buckets. A game sends at
 least four times a second, so only an address that has stopped sending, or never
 was, misses the repeat.
 
@@ -1617,6 +1692,8 @@ The relay is public, so it limits what any one address can cost:
 | Rooms open, waiting or racing | No limit by default (`-max-rooms`) | Hosting is refused; joining an open room still works |
 | Rate buckets | 65536, cleared after 10 s idle | A random entry is forgotten to make room, so forged sources can neither grow memory nor shut newcomers out |
 | Room codes | 1 to 16 letters and numbers | Refused |
+| Seats, from protocol 5 | Only for a request that repeats the cookie sent to its address | Forged sources can't hold seats at all |
+| Game versions | `-min-proto`, 2 by default | Older games are told to update. Set it to 5 once games before 3.0 are gone, and every seat needs a cookie |
 
 Four players on one connection use about 130 packets a second. Room codes from the game
 are 6 characters from 32, so about a billion, and the rate limit puts guessing one out
@@ -1640,7 +1717,7 @@ mode, with temporary data in memory, because the container's root is read-only.
 | `users` | Name, bcrypt hash, when added |
 | `sessions` | SHA-256 of each login token, its user, expiry (7 days) |
 | `meta` | The analytics key |
-| `daily` | One row of totals per UTC day |
+| `daily` | One row of totals per UTC day, `backs` included since the relay that added getting back in. `migrate` adds the column to an older database |
 | `visitors` | Day and keyed IP hash, deleted after `-analytics-days` |
 | `races` | Start, end, drivers and protocol of each room that raced |
 
@@ -1657,6 +1734,7 @@ memory, and the relay's hot paths only bump integers:
 | Visitor | `register`, for any host or join, as HMAC-SHA-256 of the IP with a random key from `meta` |
 | Room, join | `register`, once seated |
 | Refusal | `refuse` |
+| Seat taken back | `rejoin` |
 | Race, racers | `lock`, the first time a room locks |
 | Finished race | `dropRoom`, when a locked room empties or closes |
 | Peak players | `seat` and `Sweep` |

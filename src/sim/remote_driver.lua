@@ -7,6 +7,9 @@ local MAX_EXTRAPOLATION = 0.25
 local SNAP_DISTANCE = 300
 local FOLLOW_RATE = 12
 local GHOST_HOLD = 0.2  -- seconds, so it outlasts the gap between packets
+-- Silent this long, the driver has lost their connection, and their car would
+-- sit on the road as a wall. It's a ghost until they're back or gone.
+local GONE_GHOST = 1
 
 -- `source()` returns the latest state and its age in seconds, or nil.
 function RemoteDriver.new(source)
@@ -45,7 +48,7 @@ function RemoteDriver:update(car, race, dt)
   car.horn = state.horn or false
   -- Their game put them back on the road, so they're a ghost there. Solid here,
   -- they'd be a stopped car on the racing line that only this driver can hit.
-  if state.ghost and not stale then car:ghost(GHOST_HOLD) end
+  if state.ghost and not stale or age > GONE_GHOST then car:ghost(GHOST_HOLD) end
   -- Wrecked on their screen: only for the smoke and the dent, as their game
   -- judges the wreck itself.
   car.remoteWreck = state.wreck and not stale or false

@@ -6,6 +6,11 @@ package main
 import (
 	"bytes"
 	"context"
+	"crypto/hmac"
+	"crypto/rand"
+	"crypto/sha256"
+	"crypto/subtle"
+	"encoding/base64"
 	"flag"
 	"fmt"
 	"log"
@@ -31,7 +36,19 @@ const (
 	// A client that has said nothing for this long isn't listening, so the sweep
 	// stops repeating its room to it. Games send four times a second at least.
 	announceWindow = 2 * time.Second
+
+	// From protocol 5 a client earns its seat. Its first host, join or back gets a
+	// cookie, a keyed hash of its address that only that address sees, and only a
+	// request that repeats it is seated. So a forged source can't hold a seat, and
+	// gets one answer no bigger than what it sent.
+	cookieProto      = 5
+	minRegisterBytes = 64 // games pad their requests to this, so the cookie is never bigger
+	cookieWindow     = 30 // seconds; a cookie works for one to two windows
+	cookieBytes      = 16
+	tokenBytes       = 16
 )
+
+const outOfDate = "This game is out of date. Update it to play online"
 
 var eventPrefix = []byte("event|")
 
@@ -43,6 +60,12 @@ type Client struct {
 	LastSeen time.Time
 	Room     *Room
 	Slot     int // 1 to maxRoomPlayers
+	// Token lets the seat be taken back from a new address. Only this client is
+	// told it. Clients from before protocol 5 have none, and can't come back.
+	Token string
+	// Away is a driver gone quiet in a shared room. The seat waits for them, and
+	// nothing is forwarded to them, until they come back or run out of time.
+	Away bool
 }
 
 // Room is a group of up to four drivers. Seat 1 is the host. A locked room has
@@ -110,7 +133,10 @@ type Relay struct {
 	banned     map[string]Ban
 	perIP      map[string]int
 	buckets    map[string]*rateBucket
-	rate       float64 // packets a second per IP, 0 for no limit
+	rate       float64       // packets a second per IP, 0 for no limit
+	minProto   int           // older games are told to update
+	away       time.Duration // how long a seat waits for its driver, past the race timeout
+	cookieKey  []byte
 	maxPlayers int
 	maxRooms   int // 0 for no limit beyond maxPlayers
 	events     []Event
@@ -132,7 +158,13 @@ type Relay struct {
 }
 
 func NewRelay(send Sender) *Relay {
+	key := make([]byte, 32)
+	if _, err := rand.Read(key); err != nil {
+		panic(err)
+	}
 	r := &Relay{
+		cookieKey:  key,
+		away:       30 * time.Second,
 		clients:    make(map[string]*Client),
 		rooms:      make(map[string]*Room),
 		banned:     make(map[string]Ban),
@@ -270,6 +302,11 @@ func (r *Relay) Handle(data []byte, addr *net.UDPAddr) {
 	client := r.clients[addr.String()]
 	if client != nil {
 		client.LastSeen = r.now()
+		if client.Away {
+			client.Away = false
+			r.event("[BACK] %v in room %q", client.Addr, client.Room.Code)
+			r.announce(client.Room)
+		}
 	}
 	if !bytes.HasPrefix(data, eventPrefix) {
 		if client != nil {
@@ -278,9 +315,9 @@ func (r *Relay) Handle(data []byte, addr *net.UDPAddr) {
 		return
 	}
 
-	parts := strings.SplitN(string(data), "|", 4)
+	parts := strings.SplitN(string(data), "|", 8)
 	if client == nil {
-		r.register(parts, addr)
+		r.register(parts, len(data), addr)
 		return
 	}
 	switch parts[1] {
@@ -289,7 +326,7 @@ func (r *Relay) Handle(data []byte, addr *net.UDPAddr) {
 		r.remove(client)
 	case "lock":
 		r.lock(client.Room)
-	case "host", "join":
+	case "host", "join", "back":
 		// The answer may have been lost, so repeat it.
 		r.tell(client)
 	}
@@ -327,25 +364,35 @@ func (r *Relay) forward(from *Client, data []byte) {
 	out = append(out, '|')
 	out = append(out, data...)
 	for _, client := range from.Room.Seats {
-		if client != nil && client != from {
+		if client != nil && client != from && !client.Away {
 			r.send(out, client.Addr)
 		}
 	}
 }
 
 // tell sends one client the room as it stands: its own seat, the room's code,
-// the seats taken, and whether it has locked.
+// the seats taken, and whether it has locked. From protocol 5 it adds the
+// client's own token and the seats that are away. Fields are only ever added
+// at the end, and games ignore any they don't know.
 func (r *Relay) tell(client *Client) {
 	room := client.Room
 	seats := make([]string, 0, maxRoomPlayers)
+	away := make([]string, 0, maxRoomPlayers)
 	for _, member := range room.members() {
 		seats = append(seats, strconv.Itoa(member.Slot))
+		if member.Away {
+			away = append(away, strconv.Itoa(member.Slot))
+		}
 	}
 	locked := 0
 	if room.Locked {
 		locked = 1
 	}
-	r.send([]byte(fmt.Sprintf("event|room|%d|%s|%s|%d", client.Slot, room.Code, strings.Join(seats, ","), locked)), client.Addr)
+	text := fmt.Sprintf("event|room|%d|%s|%s|%d", client.Slot, room.Code, strings.Join(seats, ","), locked)
+	if client.Token != "" {
+		text += "|" + client.Token + "|" + strings.Join(away, ",")
+	}
+	r.send([]byte(text), client.Addr)
 }
 
 func (r *Relay) announce(room *Room) {
@@ -374,46 +421,133 @@ func validProto(proto string) bool {
 	return err == nil
 }
 
-// seat adds a client to a room. Callers have checked there's a free seat.
-func (r *Relay) seat(room *Room, slot int, addr *net.UDPAddr) *Client {
-	client := &Client{Addr: addr, LastSeen: r.now(), Room: room, Slot: slot}
-	room.Seats[slot-1] = client
-	r.clients[addr.String()] = client
-	r.perIP[addr.IP.String()]++
+// bind files a client under its address. unbind takes it out again, leaving its seat.
+func (r *Relay) bind(client *Client) {
+	r.clients[client.Addr.String()] = client
+	r.perIP[client.Addr.IP.String()]++
 	if r.tally != nil {
 		r.tally.Peak = max(r.tally.Peak, len(r.clients))
 	}
+}
+
+func (r *Relay) unbind(client *Client) bool {
+	key := client.Addr.String()
+	if r.clients[key] != client {
+		return false
+	}
+	delete(r.clients, key)
+	ip := client.Addr.IP.String()
+	if r.perIP[ip]--; r.perIP[ip] <= 0 {
+		delete(r.perIP, ip)
+	}
+	return true
+}
+
+// seat adds a client to a room. Callers have checked there's a free seat.
+func (r *Relay) seat(room *Room, slot int, addr *net.UDPAddr, token string) *Client {
+	client := &Client{Addr: addr, LastSeen: r.now(), Room: room, Slot: slot, Token: token}
+	room.Seats[slot-1] = client
+	r.bind(client)
 	return client
 }
 
-// register handles a host or join from an unknown address. Stragglers from a
-// race that just ended aren't asking for a room, and get no answer.
-func (r *Relay) register(parts []string, addr *net.UDPAddr) {
-	if len(parts) < 3 || (parts[1] != "host" && parts[1] != "join") {
+func newToken() string {
+	raw := make([]byte, tokenBytes)
+	if _, err := rand.Read(raw); err != nil {
+		panic(err)
+	}
+	return base64.RawURLEncoding.EncodeToString(raw)
+}
+
+func (r *Relay) cookieAt(addr *net.UDPAddr, window int64) string {
+	mac := hmac.New(sha256.New, r.cookieKey)
+	fmt.Fprintf(mac, "%s|%d", addr.String(), window)
+	return base64.RawURLEncoding.EncodeToString(mac.Sum(nil)[:cookieBytes])
+}
+
+func (r *Relay) cookie(addr *net.UDPAddr) string {
+	return r.cookieAt(addr, r.now().Unix()/cookieWindow)
+}
+
+func (r *Relay) validCookie(cookie string, addr *net.UDPAddr) bool {
+	if cookie == "" {
+		return false
+	}
+	window := r.now().Unix() / cookieWindow
+	return hmac.Equal([]byte(cookie), []byte(r.cookieAt(addr, window))) ||
+		hmac.Equal([]byte(cookie), []byte(r.cookieAt(addr, window-1)))
+}
+
+// register handles a host, join or back from an unknown address. Stragglers from
+// a race that just ended aren't asking for a room, and get no answer.
+//
+// From protocol 5 the request is event|INTENT|PROTO|CODE|COOKIE|TOKEN|padding,
+// and anything after TOKEN is ignored, so later games can add to it.
+func (r *Relay) register(parts []string, size int, addr *net.UDPAddr) {
+	if len(parts) < 3 {
+		return
+	}
+	intent := parts[1]
+	if intent != "host" && intent != "join" && intent != "back" {
 		return
 	}
 	// Clients from before protocol 2 send event|host|CODE, and show this.
 	if len(parts) == 3 {
-		r.visit(addr.IP.String())
-		r.refuse("This game is out of date. Update it to play online", addr)
+		if intent != "back" {
+			r.visit(addr.IP.String())
+			r.refuse(outOfDate, addr)
+		}
 		return
 	}
-	r.visit(addr.IP.String())
-	intent, proto, code := parts[1], parts[2], parts[3]
+	proto := parts[2]
 	if !validProto(proto) {
 		return
 	}
+	version, _ := strconv.Atoi(proto)
+	given := "" // the token of a seat being taken back
+	if version >= cookieProto {
+		if size < minRegisterBytes || len(parts) < 6 {
+			return
+		}
+		if !r.validCookie(parts[4], addr) {
+			r.send([]byte("event|cookie|"+r.cookie(addr)), addr)
+			return
+		}
+		given = parts[5]
+	} else if intent == "back" {
+		return
+	}
+	// Past here the address has shown it's real, from protocol 5 on.
+	r.visit(addr.IP.String())
+	if version < r.minProto {
+		r.refuse(outOfDate, addr)
+		return
+	}
+	code := parts[3]
+	if version < cookieProto {
+		// Older games end the request with the code, so a | is part of it.
+		code = strings.Join(parts[3:], "|")
+	}
 	if !validCode(code) {
 		r.refuse("Room codes are 1 to 16 letters or numbers", addr)
+		return
+	}
+	if r.perIP[addr.IP.String()] >= maxPerIP {
+		r.refuse("Too many connections from your address", addr)
+		return
+	}
+	// Coming back takes nobody's place, so a full server still lets it in.
+	if intent == "back" {
+		r.rejoin(code, given, addr)
 		return
 	}
 	if len(r.clients) >= r.maxPlayers {
 		r.refuse("The server is full", addr)
 		return
 	}
-	if r.perIP[addr.IP.String()] >= maxPerIP {
-		r.refuse("Too many connections from your address", addr)
-		return
+	token := ""
+	if version >= cookieProto {
+		token = newToken()
 	}
 
 	switch intent {
@@ -428,7 +562,7 @@ func (r *Relay) register(parts []string, addr *net.UDPAddr) {
 		}
 		room := &Room{Code: code, Proto: proto, Since: r.now()}
 		r.rooms[code] = room
-		r.tell(r.seat(room, 1, addr))
+		r.tell(r.seat(room, 1, addr, token))
 		if r.tally != nil {
 			r.tally.Rooms++
 		}
@@ -449,7 +583,7 @@ func (r *Relay) register(parts []string, addr *net.UDPAddr) {
 		}
 		for slot := 1; slot <= maxRoomPlayers; slot++ {
 			if room.Seats[slot-1] == nil {
-				r.seat(room, slot, addr)
+				r.seat(room, slot, addr, token)
 				if r.tally != nil {
 					r.tally.Joins++
 				}
@@ -462,17 +596,37 @@ func (r *Relay) register(parts []string, addr *net.UDPAddr) {
 	}
 }
 
-func (r *Relay) forget(client *Client) {
-	key := client.Addr.String()
-	if r.clients[key] != client {
+// rejoin gives a seat back to its driver at a new address: a phone that changed
+// networks, or came back from the background. The token proves whose seat it is.
+// A locked room takes them back too, because it's their own seat.
+func (r *Relay) rejoin(code, token string, addr *net.UDPAddr) {
+	var client *Client
+	if room := r.rooms[code]; room != nil && token != "" {
+		for _, member := range room.members() {
+			if member.Token != "" && subtle.ConstantTimeCompare([]byte(member.Token), []byte(token)) == 1 {
+				client = member
+			}
+		}
+	}
+	if client == nil {
+		r.refuse("Your place in that room has gone", addr)
 		return
 	}
-	delete(r.clients, key)
-	ip := client.Addr.IP.String()
-	if r.perIP[ip]--; r.perIP[ip] <= 0 {
-		delete(r.perIP, ip)
+	old := client.Addr
+	r.unbind(client)
+	client.Addr, client.LastSeen, client.Away = addr, r.now(), false
+	r.bind(client)
+	if r.tally != nil {
+		r.tally.Backs++
 	}
-	client.Room.Seats[client.Slot-1] = nil
+	r.event("[BACK] %v took seat %d in room %q back from %v", addr, client.Slot, code, old)
+	r.announce(client.Room)
+}
+
+func (r *Relay) forget(client *Client) {
+	if r.unbind(client) {
+		client.Room.Seats[client.Slot-1] = nil
+	}
 }
 
 // closeRoom empties a room, telling everyone in it why.
@@ -519,13 +673,20 @@ func (r *Relay) Sweep(racing, waiting time.Duration) {
 
 	now := r.now()
 	for _, client := range r.clients {
-		limit := waiting
-		if len(client.Room.members()) > 1 {
-			limit = racing
-		}
-		if now.Sub(client.LastSeen) > limit {
+		silent := now.Sub(client.LastSeen)
+		switch {
+		case len(client.Room.members()) == 1:
+			if silent > waiting {
+				r.event("[TIMEOUT] %v", client.Addr)
+				r.remove(client)
+			}
+		case client.Token == "" && silent > racing, silent > racing+r.away:
 			r.event("[TIMEOUT] %v", client.Addr)
 			r.remove(client)
+		case client.Token != "" && silent > racing && !client.Away:
+			// The others hear it from the repeat below.
+			client.Away = true
+			r.event("[AWAY] %v in room %q", client.Addr, client.Room.Code)
 		}
 	}
 	if r.tally != nil {
@@ -625,6 +786,7 @@ type Driver struct {
 	Slot int
 	Addr string
 	IP   string
+	Away bool
 }
 
 // RoomView is a room as the dashboard shows it.
@@ -669,7 +831,7 @@ func (r *Relay) Snapshot() Snapshot {
 	for code, room := range r.rooms {
 		view := RoomView{Code: code, Age: now.Sub(room.Since)}
 		for _, member := range room.members() {
-			view.Drivers = append(view.Drivers, Driver{Slot: member.Slot, Addr: member.Addr.String(), IP: member.Addr.IP.String()})
+			view.Drivers = append(view.Drivers, Driver{Slot: member.Slot, Addr: member.Addr.String(), IP: member.Addr.IP.String(), Away: member.Away})
 		}
 		if len(view.Drivers) > 0 {
 			view.First = view.Drivers[0].Addr
@@ -697,6 +859,8 @@ func main() {
 	racing := flag.Duration("race-timeout", 5*time.Second, "drop a driver in a shared room after this long without packets")
 	waiting := flag.Duration("wait-timeout", 60*time.Second, "drop someone alone in a room after this long without packets")
 	rate := flag.Float64("rate", 300, "packets a second allowed from one IP, 0 for no limit")
+	away := flag.Duration("away-timeout", 30*time.Second, "past -race-timeout, how long a seat waits for its driver to come back (protocol 5 on)")
+	minProto := flag.Int("min-proto", 2, "tell games older than this protocol to update; 5 turns away everything without cookies")
 	players := flag.Int("max-players", 2000, "players the relay takes at once")
 	rooms := flag.Int("max-rooms", 0, "rooms open at once, waiting or racing; 0 for no limit beyond -max-players")
 	dashboard := flag.String("dashboard", "", "HTTP address for the dashboard (off if empty)")
@@ -751,6 +915,8 @@ func main() {
 		}
 	})
 	relay.rate = *rate
+	relay.away = *away
+	relay.minProto = *minProto
 	relay.maxPlayers = *players
 	relay.maxRooms = *rooms
 	if err := relay.AttachStore(store); err != nil {

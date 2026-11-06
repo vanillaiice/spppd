@@ -46,9 +46,12 @@ The ONLINE screen warns players about the ones they can run into (`menu.ONLINE_N
 finish time, so a modified client can cheat. That's fine between friends with a room
 code, and it's why ranked play needs what's described below.
 
-**No reconnecting.** A phone that goes to the background for more than 5 s is dropped
-by the relay. It can finish the race alone, but it can't get back in, and nor can
-anyone who loses signal.
+**Getting back in has a limit.** Since protocol 5 a game that loses the relay, through
+a network change, lost signal or a trip to the background, takes its seat back from
+a new address (`ARCHITECTURE.md` section 16, Getting back in). Away for over 35 s,
+it's out, and finishes the race alone. Its own car stood still while it was in the
+background, so it's well behind. This has been tested on loopback, not on a phone
+switching from Wi-Fi to mobile data.
 
 **The clock assumes a symmetric link.** Half a ping is a guess at one way's delay. If
 one direction is much slower than the other, starts differ by half that difference.
@@ -59,8 +62,9 @@ under Test results ran on loopback or a LAN.
 server still see each other late. Extrapolation covers at most 0.25 s, so collisions
 at high ping will look wrong.
 
-**A blocking load.** `rm.start` stops the loop, so a phone that takes over 5 s to load
-gets dropped by the relay. The A04 hasn't been measured since the world got heavier.
+**A blocking load.** `rm.start` stops the loop. Since protocol 5 a phone that takes
+over 5 s to load is only away, and back as soon as it sends again, unless the load
+takes over 35 s. The A04 hasn't been measured since the world got heavier.
 
 **A hostile track is bounded, not cheap.** The limits stop a hang, but a 20 km track
 still takes seconds to build on a phone. Only someone you've shared a room code with

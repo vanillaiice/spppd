@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"database/sql"
 	"net"
 	"os"
 	"path/filepath"
@@ -329,5 +330,39 @@ func TestUserCommands(t *testing.T) {
 	}
 	if err := run("", "nonsense"); err == nil {
 		t.Fatal("ran nonsense")
+	}
+}
+
+// A database from before the backs column gets it, and keeps what it had.
+func TestAnOlderDatabaseIsBroughtUpToDate(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "old.db")
+	db, err := sql.Open("sqlite", "file:"+path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.Exec(`CREATE TABLE daily (day TEXT PRIMARY KEY,
+		unique_ips INTEGER NOT NULL DEFAULT 0, rooms INTEGER NOT NULL DEFAULT 0,
+		joins INTEGER NOT NULL DEFAULT 0, races INTEGER NOT NULL DEFAULT 0,
+		racers INTEGER NOT NULL DEFAULT 0, refused INTEGER NOT NULL DEFAULT 0,
+		peak_players INTEGER NOT NULL DEFAULT 0,
+		bytes_in INTEGER NOT NULL DEFAULT 0, bytes_out INTEGER NOT NULL DEFAULT 0);
+		INSERT INTO daily (day, rooms) VALUES ('2026-11-01', 7);
+		PRAGMA user_version = 1;`); err != nil {
+		t.Fatal(err)
+	}
+	db.Close()
+	for range 2 {
+		store, err := OpenStore(path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := store.WriteTally(&Tally{Day: "2026-11-01", Backs: 2}); err != nil {
+			t.Fatal(err)
+		}
+		days, err := store.Days(5)
+		store.Close()
+		if err != nil || len(days) != 1 || days[0].Rooms != 7 || days[0].Backs == 0 {
+			t.Fatalf("days %+v err %v", days, err)
+		}
 	}
 }

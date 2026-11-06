@@ -458,7 +458,7 @@ func TestEventsStayWithinTheLimit(t *testing.T) {
 	relay, _, _ := setup()
 	relay.rate = 0
 	for i := 0; i < maxEvents+25; i++ {
-		relay.Handle([]byte(fmt.Sprintf("event|host|2|R%d", i)), addrAt(fmt.Sprintf("198.51.100.%d", i%250+1), 1000+i))
+		relay.Handle(fmt.Appendf(nil, "event|host|2|R%d", i), addrAt(fmt.Sprintf("198.51.100.%d", i%250+1), 1000+i))
 	}
 	events := relay.Snapshot().Events
 	if len(events) != maxEvents {

@@ -5,6 +5,10 @@
 -- Nothing here waits for an answer. Everyone repeats their state four times a
 -- second until it stops mattering, so a lost packet costs a quarter of a second
 -- and there are no acknowledgements to track.
+--
+-- Packets only ever grow at the end. Every reader takes the fields it knows and
+-- ignores any after them, and ignores packets it doesn't know, so a later 3.x game
+-- can add to the protocol without leaving earlier ones behind. See FEATURES.
 local socket = require("socket")
 local config = require("src/config")
 local catalog = require("src/tracks/catalog")
@@ -24,7 +28,13 @@ local network = {
   vote = 0,         -- the round this player asked for from the results
 }
 
-network.PROTOCOL = 4
+-- Changes only for a break, which the relay refuses to mix in one room. All of
+-- 3.x is protocol 5.
+network.PROTOCOL = 5
+-- What this game can do on top of protocol 5. A 3.x release that adds something
+-- older 3.x games can't follow raises it, and a race that needs it says so in
+-- the setup's `needs`, so the host only starts it when everyone can.
+network.FEATURES = 0
 network.MAX_PLAYERS = 4
 
 local RESEND = 0.25
@@ -36,6 +46,10 @@ local CLOCK_SAMPLES = 8
 local CLOCK_NEEDED = 3      -- pings answered before a clock is trusted
 local START_LEAD = 1        -- from calling the start to the first light
 local LOAD_LIMIT = 20       -- nobody waits longer than this for a slow loader
+local REGISTER_BYTES = 64   -- what the relay asks for before it answers at all
+local RETRY_AFTER = 2.5     -- silence in a room before trying to get back in
+local RESOCKET = 2          -- a fresh socket this often while trying, in case the network changed
+local BACK_LIMIT = 35       -- the relay keeps a seat for 5 + 30 s
 
 -- What a real car can send. Anything past these is someone's own client, and it
 -- mustn't reach Box2D or a sound's pitch.
@@ -59,6 +73,21 @@ end
 
 -- Packets -----------------------------------------------------------------
 
+-- Splits on |, keeping empty fields.
+local function split(str)
+  local out = {}
+  for field in (str .. "|"):gmatch("([^|]*)|") do out[#out + 1] = field end
+  return out
+end
+
+-- The first n fields of a packet, or nil if it has fewer. A pattern can be
+-- anchored at both ends of this and still let a later game add fields after it.
+local function head(str, n)
+  local parts = split(str)
+  if #parts < n then return nil end
+  return table.concat(parts, "|", 1, n)
+end
+
 local FLAG_HORN, FLAG_REVERSE, FLAG_BOOST, FLAG_LOW, FLAG_HIGH, FLAG_GHOST, FLAG_WRECK = 1, 2, 4, 8, 16, 32, 64
 
 local function flagged(flags, bit)
@@ -78,9 +107,8 @@ local STATE_FIELDS = { "round", "seq", "x", "y", "a", "vx", "vy", "steer", "rpm"
   "flags", "slide", "distance", "finish" }
 
 function network.unpackState(str)
-  local parts = {}
-  for chunk in str:gmatch("[^|]+") do parts[#parts + 1] = chunk end
-  if parts[1] ~= "sync" or #parts ~= #STATE_FIELDS + 1 then return nil end
+  local parts = split(str)
+  if parts[1] ~= "sync" or #parts < #STATE_FIELDS + 1 then return nil end
   local out = {}
   for i, name in ipairs(STATE_FIELDS) do
     local value = tonumber(parts[i + 1])
@@ -117,35 +145,46 @@ function network.packLook(l)
 end
 
 function network.unpackLook(str)
-  local round, neon, tune, flames, left = str:match("^look|(%d+)|([01])|([01])|(%d+)|([%d%.]+)$")
+  local known = head(str, 6)
+  if not known then return nil end
+  local round, neon, tune, flames, left = known:match("^look|(%d+)|([01])|([01])|(%d+)|([%d%.]+)$")
   if not round then return nil end
   return { round = tonumber(round), neon = neon == "1", tune = tune == "1", flames = tonumber(flames),
     flameLeft = math.min(5, tonumber(left) or 0) }
 end
 
 -- Who I am, what I've got and what I want: car, paint, whether I hold the track,
--- the round I'm ready to start, and the round I've asked for.
+-- the round I'm ready to start, the round I've asked for, and what I can do.
 function network.packHello(h)
-  return string.format("hello|%s|%d|%d|%d|%d", h.car, h.paint, h.have and 1 or 0, h.ready or 0, h.vote or 0)
+  return string.format("hello|%s|%d|%d|%d|%d|%d", h.car, h.paint, h.have and 1 or 0, h.ready or 0, h.vote or 0,
+    h.features or 0)
 end
 
 function network.unpackHello(str)
-  local car, paint, have, ready, vote = str:match("^hello|([%w_%-]+)|(%d+)|([01])|(%d+)|(%d+)$")
+  local known = head(str, 7)
+  if not known then return nil end
+  local car, paint, have, ready, vote, features = known:match("^hello|([%w_%-]+)|(%d+)|([01])|(%d+)|(%d+)|(%d+)$")
   if not car then return nil end
-  return { car = car, paint = tonumber(paint), have = have == "1", ready = tonumber(ready), vote = tonumber(vote) }
+  return { car = car, paint = tonumber(paint), have = have == "1", ready = tonumber(ready), vote = tonumber(vote),
+    features = tonumber(features) }
 end
 
+-- The race, when it starts, and the FEATURES level it needs from everyone.
 function network.packSetup(s)
-  return string.format("setup|%d|%s|%d|%d|%s|%.3f|%s", s.round, s.hash, s.chunks, s.laps, s.time, s.startAt or 0, s.title)
+  return string.format("setup|%d|%s|%d|%d|%s|%.3f|%s|%d", s.round, s.hash, s.chunks, s.laps, s.time, s.startAt or 0,
+    s.title, s.needs or 0)
 end
 
 function network.unpackSetup(str)
-  local round, hash, chunks, laps, time, startAt, title = str:match("^setup|(%d+)|(%x+)|(%d+)|(%d+)|(%a+)|([%d%.]+)|([^|]*)$")
+  local known = head(str, 9)
+  if not known then return nil end
+  local round, hash, chunks, laps, time, startAt, title, needs =
+    known:match("^setup|(%d+)|(%x+)|(%d+)|(%d+)|(%a+)|([%d%.]+)|([^|]*)|(%d+)$")
   if not round then return nil end
   return {
     round = tonumber(round), hash = hash, chunks = tonumber(chunks),
     laps = math.max(config.LAPS_MIN, math.min(config.LAPS_MAX, tonumber(laps))),
-    time = time, startAt = tonumber(startAt) or 0, title = wire.cleanTitle(title),
+    time = time, startAt = tonumber(startAt) or 0, title = wire.cleanTitle(title), needs = tonumber(needs),
   }
 end
 
@@ -160,15 +199,25 @@ local function myHello()
   return {
     car = me.car, paint = me.paint, have = network.def ~= nil,
     ready = network.loaded and network.clockReady() and network.round or 0,
-    vote = network.vote,
+    vote = network.vote, features = network.FEATURES,
   }
+end
+
+-- Asks the relay for a seat: a new one to host or join, or my own one back. The
+-- relay answers the first ask with a cookie, and seats whoever repeats it.
+local function register(intent)
+  local text = string.format("event|%s|%d|%s|%s|%s|", intent, network.PROTOCOL, network.roomCode,
+    network.cookie or "", network.token or "")
+  -- Padded, so the relay's answer to someone who isn't listening is never bigger
+  -- than what was sent to it.
+  send(text .. string.rep(".", REGISTER_BYTES - #text))
 end
 
 local function publish()
   local setup = network.setup
   send(network.packSetup({
     round = network.round, hash = setup.hash, chunks = setup.chunks, laps = setup.laps,
-    time = setup.time, startAt = network.startLocal, title = setup.title,
+    time = setup.time, startAt = network.startLocal, title = setup.title, needs = setup.needs,
   }))
 end
 
@@ -223,6 +272,7 @@ network.peerList = peerList
 
 function network.statusText()
   if network.status == "connecting" then return "Connecting..." end
+  if network.backSince then return "Lost the server. Getting back in..." end
   if network.status == "lobby" then
     if network.download then
       return string.format("Getting the track: %d%%", 100 * network.download.got / network.download.count)
@@ -238,11 +288,20 @@ function network.statusText()
   return ""
 end
 
--- Everyone needs to be known and holding the track before the host can start.
+-- The FEATURES level everyone in the room has, as far as their hellos say.
+function network.roomFeatures()
+  local level = network.FEATURES
+  for _, peer in pairs(network.peers) do level = math.min(level, peer.features or 0) end
+  return level
+end
+
+-- Everyone needs to be known, here, holding the track and able to run the race
+-- before the host can start.
 function network.canStart()
   if network.status ~= "lobby" or not network.isLeader() or not next(network.peers) then return false end
+  local needs = network.setup and network.setup.needs or 0
   for _, peer in pairs(network.peers) do
-    if not peer.have then return false end
+    if not peer.have or peer.away or (peer.features or 0) < needs then return false end
   end
   return true
 end
@@ -312,19 +371,40 @@ function network.takeDepartures()
   return out
 end
 
+-- What the race should tell the player about connections since this was last
+-- asked: { kind = "away" | "back" } for this game, and { kind = "peerAway" |
+-- "peerBack", slot } for the others.
+function network.takeNotices()
+  local out = network.notices
+  network.notices = {}
+  return out
+end
+
+local function notice(kind, slot)
+  network.notices[#network.notices + 1] = { kind = kind, slot = slot }
+end
+
 -- Connecting --------------------------------------------------------------
 
-local function closeSocket()
+-- Lets go of the socket without telling the relay, which keeps the seat.
+local function dropSocket()
   if network.udp then
-    network.udp:send("event|leave|")
     network.udp:close()
     network.udp = nil
   end
 end
 
+local function closeSocket()
+  if network.udp then network.udp:send("event|leave|") end
+  dropSocket()
+end
+
 local function reset()
   network.peers = {}
   network.departures = {}
+  network.notices = {}
+  network.cookie, network.token = nil, nil
+  network.backSince, network.resocketAt = nil, nil
   network.slot, network.leader = nil, nil
   network.setup, network.def, network.download = nil, nil, nil
   network.clock = {}
@@ -356,7 +436,7 @@ function network.connect(host, port, role, code, me, race)
     network.def = race.def
     network.setup = {
       hash = hash, chunks = math.ceil(#text / CHUNK_BYTES), laps = race.laps,
-      time = race.time, title = wire.cleanTitle(race.title),
+      time = race.time, title = wire.cleanTitle(race.title), needs = race.needs or 0,
     }
   end
 
@@ -368,13 +448,15 @@ function network.connect(host, port, role, code, me, race)
     return
   end
   network.udp = udp
+  -- Kept as a number, so getting back in never waits on a name lookup.
+  network.address = { (udp:getpeername()) or host, port }
   network.role = role
   network.roomCode = code
   network.me = me
   network.status = "connecting"
   network.lastHeard = now()
   network.resendTimer = 0
-  send(string.format("event|%s|%d|%s", role, network.PROTOCOL, code))
+  register(role)
 end
 
 function network.disconnect()
@@ -392,15 +474,49 @@ local function connectionLost(reason)
     network.peers = {}
     closeSocket()
     network.vote = 0
+    -- And there's no getting back in.
+    network.backSince, network.token = nil, nil
   else
     network.fail(reason)
   end
 end
 
+-- Starts trying to get back into the room from a fresh socket. The race goes on
+-- meanwhile, and the others see this car as a ghost until it's back.
+local function startBack()
+  network.backSince = now()
+  network.resocketAt = now()
+  notice("away")
+end
+
+local function resocket()
+  network.resocketAt = now() + RESOCKET
+  dropSocket()
+  local udp = socket.udp()
+  udp:settimeout(0)
+  if not udp:setpeername(network.address[1], network.address[2]) then
+    udp:close()
+    return
+  end
+  network.udp = udp
+  -- A cookie belongs to an address, and this is a new one.
+  network.cookie = nil
+  register("back")
+end
+
 local function onRoom(rest)
-  local slot, seats = rest:match("^(%d+)|[^|]*|([%d,]*)|[01]$")
-  if not slot then return end
+  local fields = split(rest)
+  local slot, seats = (fields[1] or ""):match("^%d+$"), (fields[3] or ""):match("^[%d,]*$")
+  if not slot or not seats or not (fields[4] or ""):match("^[01]$") then return end
   network.slot = tonumber(slot)
+  if fields[5] and fields[5]:match("^[%w_%-]+$") then network.token = fields[5] end
+  if network.backSince then
+    network.backSince = nil
+    notice("back")
+  end
+
+  local away = {}
+  for seat in (fields[6] or ""):gmatch("%d+") do away[tonumber(seat)] = true end
 
   local present, leader = {}, nil
   for seat in seats:gmatch("%d+") do
@@ -417,6 +533,11 @@ local function onRoom(rest)
   for seat in pairs(present) do
     if seat ~= network.slot and not network.peers[seat] then network.peers[seat] = {} end
   end
+  for seat, peer in pairs(network.peers) do
+    if away[seat] and not peer.away then notice("peerAway", seat) end
+    if peer.away and not away[seat] then notice("peerBack", seat) end
+    peer.away = away[seat] or nil
+  end
   if network.leader and network.leader ~= leader then network.clock = {} end
   network.leader = leader
 
@@ -427,8 +548,18 @@ local function handleEvent(data)
   local kind, rest = data:match("^event|([^|]+)|?(.*)$")
   if kind == "room" then
     onRoom(rest)
+  elseif kind == "cookie" then
+    local cookie = rest:match("^[%w_%-]+")
+    if not cookie then return end
+    network.cookie = cookie
+    if network.status == "connecting" then
+      register(network.role)
+    elseif network.backSince then
+      register("back")
+    end
   elseif kind == "error" then
-    network.fail(rest ~= "" and rest or "The server refused the connection")
+    -- Refused a seat, or my own seat back. A race goes on alone either way.
+    connectionLost(rest ~= "" and rest or "The server refused the connection")
   elseif kind == "closed" then
     connectionLost(rest ~= "" and rest or "The server closed the room")
   end
@@ -437,6 +568,10 @@ end
 -- Sharing the track ---------------------------------------------------------
 
 local function adoptSetup(setup)
+  if (setup.needs or 0) > network.FEATURES then
+    network.fail("The host's race needs a newer version of the game")
+    return false
+  end
   local current = network.setup
   if not current or current.hash ~= setup.hash then
     local entry = catalog.findByHash(setup.hash)
@@ -468,7 +603,7 @@ end
 
 local function onNeed(rest)
   local setup = network.setup
-  local hash, list = rest:match("^(%x+)|([%d,]+)$")
+  local hash, list = (head(rest, 2) or ""):match("^(%x+)|([%d,]+)$")
   if not hash or not network.isLeader() or not setup or setup.hash ~= hash or not network.def then return end
   -- From the track itself, because the leader may have inherited the job.
   local text = catalog.fingerprint(network.def)
@@ -525,7 +660,7 @@ local function handlePeer(from, data)
     local hello = network.unpackHello(data)
     if hello then
       peer.car, peer.paint, peer.have = hello.car, hello.paint, hello.have
-      peer.ready, peer.vote = hello.ready, hello.vote
+      peer.ready, peer.vote, peer.features = hello.ready, hello.vote, hello.features
     end
   elseif kind == "setup" then
     if from ~= network.leader then return end
@@ -539,7 +674,7 @@ local function handlePeer(from, data)
   elseif kind == "ping" then
     if network.isLeader() then send(string.format("pong|%d|%s|%.4f", from, rest, now())) end
   elseif kind == "pong" then
-    local slot, sentAt, leaderTime = rest:match("^(%d+)|([%d%.]+)|([%d%.]+)$")
+    local slot, sentAt, leaderTime = (head(rest, 3) or ""):match("^(%d+)|([%d%.]+)|([%d%.]+)$")
     if tonumber(slot) == network.slot and from == network.leader then
       onPong(tonumber(sentAt), tonumber(leaderTime))
     end
@@ -599,7 +734,12 @@ end
 
 local function tick()
   if network.status == "connecting" then
-    send(string.format("event|%s|%d|%s", network.role, network.PROTOCOL, network.roomCode))
+    register(network.role)
+    return
+  end
+  -- Nothing else reaches the others until the relay knows this address.
+  if network.backSince then
+    register("back")
     return
   end
   send(network.packHello(myHello()))
@@ -612,9 +752,10 @@ local function tick()
 end
 
 function network.update(dt)
-  if not network.udp then return end
+  -- Between sockets while getting back in, there may be none for a moment.
+  if not network.udp and not network.backSince then return end
   receive()
-  if not network.udp then return end
+  if not network.udp and not network.backSince then return end
 
   if network.isLeader() then lead() end
   if network.pending and network.def and allKnown() then
@@ -628,13 +769,28 @@ function network.update(dt)
     tick()
   end
 
-  if now() - network.lastHeard > TIMEOUT then
-    if network.status == "connecting" then
-      network.fail("No answer from the server. Check the address.")
-    else
-      connectionLost("Lost the connection to the server")
+  local silent = now() - network.lastHeard
+  if network.status == "connecting" then
+    if silent > TIMEOUT then network.fail("No answer from the server. Check the address.") end
+  elseif network.token then
+    -- The relay keeps the seat a while, so try to get back into it: the phone
+    -- may have changed networks, or been in the background.
+    if not network.backSince and silent > RETRY_AFTER then startBack() end
+    if network.backSince then
+      if now() - network.backSince > BACK_LIMIT then
+        connectionLost("Lost the connection to the server")
+      elseif now() >= network.resocketAt then
+        resocket()
+      end
     end
+  elseif silent > TIMEOUT then
+    connectionLost("Lost the connection to the server")
   end
+end
+
+-- Whether this game is trying to get back into its room.
+function network.reconnecting()
+  return network.backSince ~= nil
 end
 
 function network.sendLook(look)

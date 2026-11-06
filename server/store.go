@@ -44,14 +44,30 @@ CREATE TABLE IF NOT EXISTS daily (
 	joins INTEGER NOT NULL DEFAULT 0, races INTEGER NOT NULL DEFAULT 0,
 	racers INTEGER NOT NULL DEFAULT 0, refused INTEGER NOT NULL DEFAULT 0,
 	peak_players INTEGER NOT NULL DEFAULT 0,
-	bytes_in INTEGER NOT NULL DEFAULT 0, bytes_out INTEGER NOT NULL DEFAULT 0);
+	bytes_in INTEGER NOT NULL DEFAULT 0, bytes_out INTEGER NOT NULL DEFAULT 0,
+	backs INTEGER NOT NULL DEFAULT 0);
 CREATE TABLE IF NOT EXISTS visitors (
 	day TEXT NOT NULL, ip_hash BLOB NOT NULL, PRIMARY KEY (day, ip_hash)) WITHOUT ROWID;
 CREATE TABLE IF NOT EXISTS races (
 	id INTEGER PRIMARY KEY, started INTEGER NOT NULL, ended INTEGER NOT NULL,
 	players INTEGER NOT NULL, proto TEXT NOT NULL);
-PRAGMA user_version = 1;
 `
+
+// migrate brings a database from an older relay up to date. Each step checks
+// for itself, so running it twice does nothing.
+func migrate(db *sql.DB) error {
+	var backs int
+	if err := db.QueryRow(`SELECT COUNT(*) FROM pragma_table_info('daily') WHERE name = 'backs'`).Scan(&backs); err != nil {
+		return err
+	}
+	if backs == 0 {
+		if _, err := db.Exec(`ALTER TABLE daily ADD COLUMN backs INTEGER NOT NULL DEFAULT 0`); err != nil {
+			return err
+		}
+	}
+	_, err := db.Exec(`PRAGMA user_version = 2`)
+	return err
+}
 
 // Store keeps what has to outlive a restart: bans, dashboard users and their
 // logins, and analytics when they're on. It's one SQLite file, or memory.
@@ -80,6 +96,10 @@ func OpenStore(path string) (*Store, error) {
 	if _, err := db.Exec(schema); err != nil {
 		db.Close()
 		return nil, fmt.Errorf("setting up %s: %w", path, err)
+	}
+	if err := migrate(db); err != nil {
+		db.Close()
+		return nil, fmt.Errorf("updating %s: %w", path, err)
 	}
 	s := &Store{db: db, cost: bcrypt.DefaultCost}
 	s.dummy, _ = bcrypt.GenerateFromPassword([]byte("not a real password"), s.cost)
@@ -310,9 +330,9 @@ func (s *Store) WriteTally(t *Tally) error {
 	}
 	_, err = tx.Exec(`UPDATE daily SET unique_ips = unique_ips + ?, rooms = rooms + ?, joins = joins + ?,
 		races = races + ?, racers = racers + ?, refused = refused + ?,
-		peak_players = MAX(peak_players, ?), bytes_in = bytes_in + ?, bytes_out = bytes_out + ?
+		peak_players = MAX(peak_players, ?), bytes_in = bytes_in + ?, bytes_out = bytes_out + ?, backs = backs + ?
 		WHERE day = ?`,
-		fresh, t.Rooms, t.Joins, t.Races, t.Racers, t.Refused, t.Peak, int64(t.BytesIn), int64(t.BytesOut), t.Day)
+		fresh, t.Rooms, t.Joins, t.Races, t.Racers, t.Refused, t.Peak, int64(t.BytesIn), int64(t.BytesOut), t.Backs, t.Day)
 	if err != nil {
 		return err
 	}
@@ -339,16 +359,16 @@ func (s *Store) Prune(before string, now time.Time) error {
 type Day struct {
 	Day                                    string
 	UniqueIPs, Rooms, Joins, Races, Racers int
-	Refused, PeakPlayers                   int
+	Refused, PeakPlayers, Backs            int
 	BytesIn, BytesOut                      uint64
 }
 
-const dailyColumns = `day, unique_ips, rooms, joins, races, racers, refused, peak_players, bytes_in, bytes_out`
+const dailyColumns = `day, unique_ips, rooms, joins, races, racers, refused, peak_players, bytes_in, bytes_out, backs`
 
 func scanDay(rows *sql.Rows) (Day, error) {
 	var d Day
 	var in, out int64
-	err := rows.Scan(&d.Day, &d.UniqueIPs, &d.Rooms, &d.Joins, &d.Races, &d.Racers, &d.Refused, &d.PeakPlayers, &in, &out)
+	err := rows.Scan(&d.Day, &d.UniqueIPs, &d.Rooms, &d.Joins, &d.Races, &d.Racers, &d.Refused, &d.PeakPlayers, &in, &out, &d.Backs)
 	d.BytesIn, d.BytesOut = uint64(in), uint64(out)
 	return d, err
 }
@@ -387,7 +407,7 @@ func (s *Store) ExportDaily(w io.Writer) error {
 	}
 	defer rows.Close()
 	out := csv.NewWriter(w)
-	_ = out.Write([]string{"day", "unique_ips", "rooms", "joins", "races", "racers", "refused", "peak_players", "bytes_in", "bytes_out"})
+	_ = out.Write([]string{"day", "unique_ips", "rooms", "joins", "races", "racers", "refused", "peak_players", "bytes_in", "bytes_out", "backs"})
 	for rows.Next() {
 		d, err := scanDay(rows)
 		if err != nil {
@@ -395,7 +415,7 @@ func (s *Store) ExportDaily(w io.Writer) error {
 		}
 		_ = out.Write([]string{d.Day, strconv.Itoa(d.UniqueIPs), strconv.Itoa(d.Rooms), strconv.Itoa(d.Joins),
 			strconv.Itoa(d.Races), strconv.Itoa(d.Racers), strconv.Itoa(d.Refused), strconv.Itoa(d.PeakPlayers),
-			strconv.FormatUint(d.BytesIn, 10), strconv.FormatUint(d.BytesOut, 10)})
+			strconv.FormatUint(d.BytesIn, 10), strconv.FormatUint(d.BytesOut, 10), strconv.Itoa(d.Backs)})
 	}
 	out.Flush()
 	if err := rows.Err(); err != nil {

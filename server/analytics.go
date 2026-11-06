@@ -25,6 +25,7 @@ type Tally struct {
 	Day                                  string
 	Visitors                             map[[32]byte]struct{} // keyed hashes of IPs, never the IPs
 	Rooms, Joins, Races, Racers, Refused int
+	Backs                                int // seats taken back from a new address
 	Peak                                 int
 	BytesIn, BytesOut                    uint64
 	Finished                             []RaceRecord

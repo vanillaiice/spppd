@@ -664,6 +664,19 @@ local function updateOnline(dt)
       rm.setToast(car.name .. " LEFT THE RACE", colors.kerb, 4)
     end
   end
+  -- Connections that dropped and came back. The race goes on through all of it.
+  for _, n in ipairs(network.takeNotices()) do
+    if n.kind == "away" then
+      rm.setToast("CONNECTION LOST  GETTING BACK IN", colors.marshal, 4)
+    elseif n.kind == "back" then
+      rm.setToast("BACK ONLINE", colors.marshal, 3)
+    else
+      local car = carInSeat(race, n.slot)
+      if car and not car.finished then
+        rm.setToast(car.name .. (n.kind == "peerAway" and " LOST CONNECTION" or " IS BACK"), colors.marshal, 3)
+      end
+    end
+  end
   -- Why the others vanished, which isn't that they all left.
   if network.lost and not session.lostShown then
     session.lostShown = true

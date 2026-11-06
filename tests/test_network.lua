@@ -193,7 +193,24 @@ h.describe("network", function()
     h.assertEq(setup.time, "dusk")
     h.assertNear(setup.startAt, 123.456, 0.001)
     h.assertEq(setup.title, "HARBOUR")
-    h.assertEq(network.unpackSetup("setup|1|ab|1|999|day|0|X").laps, 20, "laps stay in range")
+    h.assertEq(network.unpackSetup("setup|1|ab|1|999|day|0|X|0").laps, 20, "laps stay in range")
+    h.assertEq(setup.needs, 0, "and it needs nothing past this version")
+  end)
+
+  -- The rule that lets 3.x games add to the protocol without leaving older 3.x
+  -- games behind: fields only ever go on the end, and readers ignore extra ones.
+  h.it("fields a later game adds don't trip this one", function()
+    local later = "|7|something new"
+    local s = network.unpackState(network.packState(stateOf({ round = 2, seq = 9, horn = true })) .. later)
+    h.assertTrue(s and s.seq == 9 and s.horn, "sync")
+    local hello = network.unpackHello(network.packHello({ car = "rocket", paint = 1, have = true, ready = 0, vote = 0 }) .. later)
+    h.assertTrue(hello and hello.car == "rocket" and hello.features == 0, "hello")
+    local setup = network.unpackSetup(network.packSetup({ round = 1, hash = "ab", chunks = 1, laps = 3, time = "day",
+      title = "X", needs = 0 }) .. later)
+    h.assertTrue(setup and setup.laps == 3, "setup")
+    local look = network.unpackLook(network.packLook({ round = 1, neon = true, flames = 2, flameLeft = 1 }) .. later)
+    h.assertTrue(look and look.neon and look.flames == 2, "look")
+    h.assertEq(network.unpackHello("hello|rocket|1|1|0|0"), nil, "but a field this game needs can't be missing")
   end)
 
   h.it("room codes are readable", function()
@@ -393,6 +410,25 @@ h.describe("network", function()
     h.assertEq(peer.model.wheels[1].slide, 0.6, "tyre smoke")
     h.assertTrue(peer.highBeam and not peer.lowBeam, "their choice of headlights")
     h.assertTrue(peer.horn)
+    race:destroy()
+  end)
+
+  h.it("a driver who loses their connection is a ghost, not a wall", function()
+    local track = Track.new(catalog.builtin()[1].def)
+    local state = { x = 0, y = 0, a = 0, vx = 0, vy = 0, steer = 0, rpm = 4000, throttle = 0, brake = 0, gear = 1 }
+    local age = 0
+    local race = Race.new({ mode = "race", track = track, laps = 2, seed = 1, startDelay = 0.01,
+      online = { slot = 1, peers = { { slot = 2, spec = garage[2], state = function() return state, age end } } } })
+    local peer = race.cars[2]
+    state.x, state.y = peer.curX, peer.curY
+    for _ = 1, 4 do race:step(1 / 120) end
+    h.assertEq(peer.ghostTimer, 0, "solid while it's sending")
+    age = 0.5
+    race:step(1 / 120)
+    h.assertEq(peer.ghostTimer, 0, "and through a short gap")
+    age = 1.5
+    race:step(1 / 120)
+    h.assertTrue(peer.ghostTimer > 0, "a ghost once it has gone quiet")
     race:destroy()
   end)
 
@@ -635,21 +671,114 @@ h.describe("network", function()
     a.disconnect()
   end)
 
-  h.it("a client that has been forgotten finds out", function()
+  -- Cuts a client off as a dead network would: nothing in or out, and the
+  -- relay's last news of it a while ago.
+  local function cutOff(client, seconds)
+    client.udp:close()
+    client.udp = { send = function() end, receive = function() return nil end, close = function() end }
+    client.lastHeard = love.timer.getTime() - seconds
+  end
+
+  h.it("asks for a seat the way the relay wants", function()
+    local host, port = relayAddress()
+    if not host then return end
+    local c = fillRoom(host, port, 2)
+    h.assertTrue(c[1].cookie and c[2].cookie, "each got a cookie first")
+    h.assertTrue(c[1].token and c[2].token and c[1].token ~= c[2].token, "and a token of its own")
+    c[1].disconnect()
+    c[2].disconnect()
+  end)
+
+  h.it("a driver who loses the connection gets back into the race", function()
+    local host, port = relayAddress()
+    if not host then return end
+    local c = fillRoom(host, port, 3)
+    c[1].startRace()
+    local loaded = loadWhenReady(c)
+    h.assertTrue(pump(c, 5, function() return c[1].startIn() and c[2].startIn() and c[3].startIn() end, loaded), "race")
+    local seat = c[2].slot
+    cutOff(c[2], 3)
+    c[2].update(0.02)
+    h.assertTrue(c[2].reconnecting(), "it should start getting back in")
+    h.assertTrue(c[2].statusText():find("back in"), c[2].statusText())
+    h.assertEq(c[2].takeNotices()[1].kind, "away", "and say so")
+
+    h.assertTrue(pump(c, 5, function() return not c[2].reconnecting() end), "and get back in")
+    h.assertEq(c[2].slot, seat, "in its own seat")
+    h.assertEq(c[2].takeNotices()[1].kind, "back")
+    h.assertEq(c[2].status, "racing", "with the race still on")
+    h.assertTrue(c[2].lost == nil and c[2].peers[1] and c[2].peers[3], "and everyone still there")
+
+    local car = fakeCar(4321)
+    h.assertTrue(pump(c, 2, function()
+      c[2].sendCar(car)
+      c[1].sendCar(fakeCar(1234))
+      local mine, theirs = c[1].peers[seat].state, c[2].peers[1].state
+      return mine and mine.distance == 4321 and theirs and theirs.distance == 1234
+    end), "cars should reach it and come from it again")
+    for _, client in ipairs(c) do client.disconnect() end
+  end)
+
+  h.it("a driver whose seat has gone finds out", function()
     local host, port = relayAddress()
     if not host then return end
     local c = fillRoom(host, port, 2)
     c[1].startRace()
     local loaded = loadWhenReady(c)
     h.assertTrue(pump(c, 5, function() return c[2].startIn() end, loaded), "race")
-    c[2].lastHeard = love.timer.getTime() - 7
-    c[2].udp:close()
-    c[2].udp = { send = function() end, receive = function() return nil end, close = function() end }
-    c[2].update(0.02)
-    h.assertTrue(c[2].lost and c[2].lost:find("Lost"), tostring(c[2].lost))
+    cutOff(c[2], 3)
+    c[2].token = "not" .. c[2].token
+    h.assertTrue(pump(c, 3, function() return c[2].lost ~= nil end), "should be told")
+    h.assertTrue(c[2].lost:find("gone"), c[2].lost)
+    h.assertTrue(not c[2].reconnecting(), "and stop trying")
     h.assertEq(next(c[2].peers), nil, "the others are gone")
     h.assertEq(#c[2].takeDepartures(), 1, "and the race is told")
     h.assertTrue(not c[2].canRematch(), "and there's nobody to rematch")
+    c[1].disconnect()
+    c[2].disconnect()
+  end)
+
+  h.it("a driver gives up once the relay would have", function()
+    local host, port = relayAddress()
+    if not host then return end
+    local c = fillRoom(host, port, 2)
+    c[1].startRace()
+    local loaded = loadWhenReady(c)
+    h.assertTrue(pump(c, 5, function() return c[2].startIn() end, loaded), "race")
+    cutOff(c[2], 3)
+    c[2].address = { "127.0.0.1", 9 }  -- the network still down
+    c[2].update(0.02)
+    h.assertTrue(c[2].reconnecting())
+    c[2].backSince = love.timer.getTime() - 36
+    c[2].update(0.02)
+    h.assertTrue(c[2].lost and c[2].lost:find("Lost"), tostring(c[2].lost))
+    h.assertTrue(not c[2].reconnecting() and c[2].udp == nil, "and stops")
+    c[1].disconnect()
+    c[2].disconnect()
+  end)
+
+  h.it("a race that needs a newer game says so", function()
+    local host, port = relayAddress()
+    if not host then return end
+    local race = hostRace()
+    race.needs = network.FEATURES + 1
+    local a, b = freshClient(), freshClient()
+    local code = codeFor("N")
+    a.FEATURES = network.FEATURES + 1
+    a.connect(host, port, "host", code, { car = "rocket", paint = 1 }, race)
+    b.connect(host, port, "join", code, { car = "rocket", paint = 2 }, nil)
+    h.assertTrue(pump({ a, b }, 4, function() return b.status == "error" end), "the older game should be told")
+    h.assertTrue(b.message:find("newer version"), b.message)
+    a.disconnect()
+
+    -- And the host can't start it with someone who couldn't follow.
+    local c = fillRoom(host, port, 2)
+    c[1].setup.needs = 1
+    c[2].peers[1].features = 0
+    c[1].peers[2].features = 0
+    h.assertTrue(not c[1].canStart(), "not with an older game in the room")
+    c[1].peers[2].features = 1
+    h.assertTrue(c[1].canStart(), "fine once everyone can")
     c[1].disconnect()
     c[2].disconnect()
   end)

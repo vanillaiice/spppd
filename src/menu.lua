@@ -62,7 +62,7 @@ local MUSIC_HINT = "Drop MP3, OGG, FLAC, WAV here, or press to open the folder."
 -- What a player should know before going online. ARCHITECTURE.md explains why.
 menu.ONLINE_NOTES = {
   "Online is new, so expect rough edges.",
-  "Stay in the game. Away for 5 seconds and you're out of the race, with no way back in.",
+  "Lose the connection, or leave the game for a moment, and it gets you back in. Away for over 30 seconds, there's no way back in.",
   "Nobody checks results, so a changed game can cheat. Race people you trust.",
   "A slow connection makes cars look late, and contact can look wrong.",
   "Everyone in a room needs the same version of the game.",
