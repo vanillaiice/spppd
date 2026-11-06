@@ -37,7 +37,7 @@ const about: Record<Download['id'], { name: string; how: string }> = {
             <h3>{about[f.id].name}</h3>
             <p>{about[f.id].how}</p>
           </div>
-          <a class="button" href={f.href} download data-umami-event="download" data-umami-event-file={f.id}>
+          <a class="button drive" href={f.href} download data-umami-event="download" data-umami-event-file={f.id}>
             Download <small>{megabytes(f.bytes)}</small>
           </a>
         </li>

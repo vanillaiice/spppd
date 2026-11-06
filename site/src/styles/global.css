@@ -204,6 +204,73 @@ p {
   background: rgb(242 239 230 / 0.1);
 }
 
+/* A download button is a short stretch of track: a car does a lap along the
+   chequered strip at its foot when the page opens, and keeps lapping while the
+   button is hovered or focused. It sits in the button's bottom padding, under the
+   label. */
+.button.drive {
+  position: relative;
+  overflow: hidden;
+}
+
+.button.drive::before {
+  content: '';
+  position: absolute;
+  inset: auto 0 0;
+  height: 4px;
+  background: repeating-conic-gradient(#1d1c2a 0 25%, #f2efe6 0 50%) 0 0 / 4px 4px;
+  opacity: 0;
+  transition: opacity 0.15s;
+}
+
+.button.drive::after {
+  content: '';
+  position: absolute;
+  bottom: 3px;
+  left: -24px;
+  width: 24px;
+  height: 12px;
+  background: url('/drive-car.svg') center / contain no-repeat;
+  image-rendering: pixelated;
+}
+
+.button.drive:hover::before,
+.button.drive:focus-visible::before {
+  opacity: 1;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .button.drive::after {
+    animation: drive-lap 1.2s cubic-bezier(0.45, 0, 0.55, 1) 0.8s 1 both;
+  }
+
+  .button.drive:hover::after,
+  .button.drive:focus-visible::after {
+    animation: drive-lap 0.9s linear infinite;
+  }
+
+  .button.drive:hover::before,
+  .button.drive:focus-visible::before {
+    animation: drive-kerb 0.3s linear infinite;
+  }
+}
+
+@keyframes drive-lap {
+  from {
+    left: -24px;
+  }
+  to {
+    left: 100%;
+  }
+}
+
+/* The strip slides back as the car goes forward, so it reads as speed. */
+@keyframes drive-kerb {
+  to {
+    background-position: -8px 0;
+  }
+}
+
 .button small {
   font-family: var(--text);
   font-size: 0.9375rem;

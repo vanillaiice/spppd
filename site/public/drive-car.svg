@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 8" shape-rendering="crispEdges">
+  <!-- The favicon's car, turned to drive to the right. -->
+  <rect x="3" y="0" width="3" height="1" fill="#1d1c2a"/>
+  <rect x="10" y="0" width="3" height="1" fill="#1d1c2a"/>
+  <rect x="3" y="7" width="3" height="1" fill="#1d1c2a"/>
+  <rect x="10" y="7" width="3" height="1" fill="#1d1c2a"/>
+  <rect x="1" y="1" width="14" height="6" fill="#d8262c"/>
+  <rect x="4" y="2" width="2" height="4" fill="#1d1c2a"/>
+  <rect x="9" y="2" width="3" height="4" fill="#1d1c2a"/>
+</svg>
