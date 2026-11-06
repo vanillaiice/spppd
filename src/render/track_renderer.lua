@@ -748,21 +748,31 @@ function renderer:drawGlow(lightsOn, lightsOut)
   end
 end
 
-function renderer:drawLights()
+-- The lamps never move, so the first night frame bakes them into one batch:
+-- floodlights on a floodlit circuit, pools of light on an unlit one.
+local function lampBatch(self)
+  if self.lamps then return self.lamps end
   local blob = textures.blob
-  if not self.env.floodlit then
+  local floodlit = self.env.floodlit
+  local list = floodlit and self.floods or self.pools
+  local batch = love.graphics.newSpriteBatch(blob, math.max(1, #list), "static")
+  if floodlit then
+    local scale = 62 * M / blob:getWidth()
+    batch:setColor(0.78, 0.74, 0.62, 1)
+    for _, f in ipairs(list) do batch:add(f.x + f.nx * 12 * M, f.y + f.ny * 12 * M, 0, scale, scale, 32, 32) end
+  else
     local scale = POOL_SIZE * M / blob:getWidth()
-    love.graphics.setColor(0.62, 0.6, 0.52, 1)
-    for _, p in ipairs(self.pools) do love.graphics.draw(blob, p.x, p.y, 0, scale, scale, 32, 32) end
-    love.graphics.setColor(1, 1, 1, 1)
-    if self.studs then love.graphics.draw(self.studs) end
-    return
+    batch:setColor(0.62, 0.6, 0.52, 1)
+    for _, p in ipairs(list) do batch:add(p.x, p.y, 0, scale, scale, 32, 32) end
   end
-  local scale = 62 * M / blob:getWidth()
-  love.graphics.setColor(0.78, 0.74, 0.62, 1)
-  for _, f in ipairs(self.floods) do
-    love.graphics.draw(blob, f.x + f.nx * 12 * M, f.y + f.ny * 12 * M, 0, scale, scale, 32, 32)
-  end
+  self.lamps = batch
+  return batch
+end
+
+function renderer:drawLights()
+  love.graphics.setColor(1, 1, 1, 1)
+  love.graphics.draw(lampBatch(self))
+  if not self.env.floodlit and self.studs then love.graphics.draw(self.studs) end
 end
 
 return renderer
