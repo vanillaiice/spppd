@@ -5,21 +5,24 @@ local skids = {}
 local MAX_QUADS = 6000
 local WIDTH = 2.6
 
+-- The mesh is made once and kept for every race. "dynamic", not "stream": LÖVE
+-- sends a stream mesh's whole buffer (480 kB) on any change, and a dynamic one
+-- just the quads that changed.
 function skids.load()
-  local vertices = {}
-  for i = 1, MAX_QUADS * 4 do vertices[i] = { 0, 0, 0, 0, 0, 0, 0, 0 } end
-  skids.mesh = love.graphics.newMesh(vertices, "triangles", "stream")
-  local map = {}
-  for q = 0, MAX_QUADS - 1 do
-    local b = q * 4
-    map[#map + 1] = b + 1
-    map[#map + 1] = b + 2
-    map[#map + 1] = b + 3
-    map[#map + 1] = b + 1
-    map[#map + 1] = b + 3
-    map[#map + 1] = b + 4
+  if not skids.mesh then
+    skids.mesh = love.graphics.newMesh(MAX_QUADS * 4, "triangles", "dynamic")
+    local map = {}
+    for q = 0, MAX_QUADS - 1 do
+      local b = q * 4
+      map[#map + 1] = b + 1
+      map[#map + 1] = b + 2
+      map[#map + 1] = b + 3
+      map[#map + 1] = b + 1
+      map[#map + 1] = b + 3
+      map[#map + 1] = b + 4
+    end
+    skids.mesh:setVertexMap(map)
   end
-  skids.mesh:setVertexMap(map)
   skids.head = 0
   skids.count = 0
 end
@@ -53,6 +56,9 @@ end
 
 function skids.draw()
   if skids.count == 0 then return end
+  -- A new race starts writing at the first quad, so the last race's marks,
+  -- still in the buffer, sit past the range drawn.
+  skids.mesh:setDrawRange(1, skids.count * 6)
   love.graphics.setColor(1, 1, 1, 1)
   love.graphics.draw(skids.mesh)
 end
