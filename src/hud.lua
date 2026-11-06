@@ -16,7 +16,10 @@ hud.FINISH_HOLD = 3
 local BANNER_IN, BANNER_OUT = 0.35, 0.25
 
 -- The dash moves out from under the right thumb when touch controls are up.
-local function dashX(sw, s)
+-- With two at a screen, each dash sits at the outside edge of its own half, away
+-- from the map on the seam.
+local function dashX(sw, s, left)
+  if left then return 8 * s end
   if touch.shown() then return (sw - DASH_W * s) / 2 end
   return sw - DASH_W * s - 8 * s
 end
@@ -34,21 +37,26 @@ local function speedText(car)
   return math.floor(v * 3.6 + 0.5), "KM/H"
 end
 
-local function drawTower(race, s)
+hud.TOWER_W = 118
+
+-- The lap and its time are the focus car's: the player's, or with two at a
+-- screen, whoever of them is ahead.
+local function drawTower(race, s, x, y, focus)
   local order = race.order
-  local x, y = 8 * s, 8 * s
+  x, y = x or 8 * s, y or 8 * s
+  focus = focus or race.player
   local rowH, size = 11 * s, 6 * s
-  local w = 118 * s
+  local w = hud.TOWER_W * s
   ui.panel(x, y, w, rowH * (#order + 1), 0.8)
-  local lap = race:currentLap(race.player)
+  local lap = race:currentLap(focus)
   ui.text("LAP " .. lap .. "/" .. race.laps, x + 4 * s, y + 3 * s, size, colors.marshal)
-  ui.text(hud.formatTime(race.time - race.player.lapStart):sub(1, 7), x, y + 3 * s, size, colors.paint, "right", w - 4 * s)
+  ui.text(hud.formatTime(race.time - focus.lapStart):sub(1, 7), x, y + 3 * s, size, colors.paint, "right", w - 4 * s)
   y = y + rowH
 
   local leader = order[1]
   for i, car in ipairs(order) do
     local ry = y + (i - 1) * rowH
-    if car == race.player then
+    if car.isPlayer then
       love.graphics.setColor(colors.marshal[1], colors.marshal[2], colors.marshal[3], 0.2)
       love.graphics.rectangle("fill", x, ry, w, rowH)
     end
@@ -67,7 +75,7 @@ local function drawTower(race, s)
       local pace = math.max(12, car:getSpeed() * 12)
       gap = string.format("+%.1f", behind / pace)
     end
-    ui.text(i .. " " .. car.name, x + 7 * s, ry + 3 * s, size, car == race.player and colors.marshal or colors.paint)
+    ui.text(i .. " " .. car.name, x + 7 * s, ry + 3 * s, size, car.isPlayer and colors.marshal or colors.paint)
     ui.text(gap, x, ry + 3 * s, size, colors.muted, "right", w - 4 * s)
   end
 end
@@ -89,8 +97,8 @@ local function drawTrialPanel(race, ctx, s)
   ui.text(hud.formatTime(ctx.bestLap), x, y + rowH * 2 + 3 * s, size, colors.sectorPurple, "right", w - 4 * s)
 end
 
-local function drawDrift(ctx, sw, s)
-  local drift = ctx.drift
+local function drawDrift(view, sw, s)
+  local drift = view.drift
   if not drift then return end
   local y = 8 * s
   ui.text(string.format("%d", math.floor(drift.total)), 0, y, 14 * s, colors.paint, "center", sw)
@@ -100,11 +108,11 @@ local function drawDrift(ctx, sw, s)
   end
 end
 
-local function drawDash(car, sw, sh, s)
+local function drawDash(car, sw, sh, s, left)
   local model = car.model
   local spec = car.spec
   local w, h = DASH_W * s, DASH_H * s
-  local x, y = dashX(sw, s), sh - h - 8 * s
+  local x, y = dashX(sw, s, left), sh - h - 8 * s
   ui.panel(x, y, w, h, 0.8)
 
   -- Rev lights, the way a real wheel shows them
@@ -159,11 +167,11 @@ local function drawDash(car, sw, sh, s)
 end
 
 -- Sits on top of the dash while the car is being towed.
-local function drawSlipstream(car, sw, sh, s)
+local function drawSlipstream(car, sw, sh, s, left)
   local amount = car.model.slipstream
   if amount < 0.03 then return end
   local w, h = DASH_W * s, 12 * s
-  local x, y = dashX(sw, s), sh - DASH_H * s - 8 * s - h - 2 * s
+  local x, y = dashX(sw, s, left), sh - DASH_H * s - 8 * s - h - 2 * s
   local alpha = math.min(1, amount * 4)
   local panel = colors.asphaltDeep
   love.graphics.setColor(panel[1], panel[2], panel[3], 0.8 * alpha)
@@ -206,8 +214,8 @@ function hud.lightsOn(race)
   return math.max(0, math.min(5, math.floor(race.timer / (race.startDelay / 6))))
 end
 
-local function drawPaceNote(ctx, sw, s)
-  local pace = ctx.pace
+local function drawPaceNote(view, sw, s)
+  local pace = view.pace
   if not pace then return end
   local w, h = 58 * s, 26 * s
   local x, y = (sw - w) / 2, 8 * s
@@ -236,8 +244,8 @@ local function drawPaceNote(ctx, sw, s)
   ui.text(pace.brake and "BRAKE" or "LIFT", x + 27 * s, y + 16 * s, 5 * s, c)
 end
 
-local function drawToast(ctx, sw, sh, s)
-  local t = ctx.toast
+local function drawToast(view, sw, sh, s)
+  local t = view.toast
   if not t or t.time <= 0 then return end
   local alpha = math.min(1, t.time * 3)
   local c = t.color or colors.paint
@@ -259,6 +267,17 @@ function hud.finishHeading(place, timedOut)
   return "FINISHED " .. (ORDINALS[place] or place), colors.paint
 end
 
+-- The results' heading with two at a screen: whichever of them came home ahead.
+function hud.splitHeading(players)
+  local best
+  for _, car in ipairs(players) do
+    if not car.timedOut and (not best or car.place < best.place) then best = car end
+  end
+  if not best then return "DID NOT FINISH", colors.kerb end
+  if best.place == 1 then return best.name .. " WINS", colors.marshal end
+  return best.name .. " FINISHES AHEAD", colors.paint
+end
+
 -- Two rows of chequers across the width, drifting along like a waved flag.
 local function drawChequers(x, y, width, size, drift)
   local c = colors.paint
@@ -276,7 +295,7 @@ local function drawChequers(x, y, width, size, drift)
 end
 
 -- A band of chequered flag sweeps in from both sides as the car crosses.
-local function drawFinishBanner(race, clock, sw, sh, s)
+local function drawFinishBanner(car, clock, sw, sh, s)
   if clock >= hud.FINISH_HOLD then return end
   local enter = 1 - (1 - math.min(1, clock / BANNER_IN)) ^ 3
   local open = math.min((hud.FINISH_HOLD - clock) / BANNER_OUT, 1)
@@ -287,29 +306,38 @@ local function drawFinishBanner(race, clock, sw, sh, s)
   local bodyH = bandH * open
   local top = y + (bandH - bodyH) / 2
 
-  love.graphics.setScissor(0, top - square * 2, sw, bodyH + square * 4)
+  -- A scissor is in screen space, and with two at a screen this half may sit to
+  -- the right of the window's left edge inside a scissor of its own.
+  local ox, oy = love.graphics.transformPoint(0, 0)
+  local kx, ky, kw, kh = love.graphics.getScissor()
+  love.graphics.intersectScissor(ox, oy + top - square * 2, sw, bodyH + square * 4)
   ui.panel(sw - reach, top - square * 2, reach, bodyH + square * 4, 0.9)
   drawChequers(0, top - square * 2, reach, square, clock * 40 * s)
   drawChequers(sw - reach, top + bodyH, reach, square, -clock * 40 * s)
-  love.graphics.setScissor()
+  love.graphics.setScissor(kx, ky, kw, kh)
 
   local alpha = math.max(0, math.min(1, (clock - BANNER_IN * 0.5) / BANNER_IN)) * open
-  local car = race.player
   local heading, c = hud.finishHeading(car.place, car.timedOut)
   ui.text(heading, 0, y + 6 * s, 20 * s, { c[1], c[2], c[3], alpha }, "center", sw)
   local m = colors.muted
   ui.text(hud.formatTime(car.finishTime), 0, y + 30 * s, 8 * s, { m[1], m[2], m[3], alpha }, "center", sw)
 end
 
-local function drawDriving(sw, sh, race, ctx, s)
-  local car = race.player
+local function drawWrongWay(car, sw, sh, s)
+  if not car.wrongWay then return end
+  local pulse = math.sin(love.timer.getTime() * 8) > 0
+  if pulse then ui.text("WRONG WAY", 0, sh * 0.34, 12 * s, colors.kerb, "center", sw) end
+end
+
+local function drawDriving(sw, sh, race, ctx, view, s)
+  local car = view.car
 
   if race.mode == "race" then
     drawTower(race, s)
   elseif race.mode == "trial" then
     drawTrialPanel(race, ctx, s)
   else
-    drawDrift(ctx, sw, s)
+    drawDrift(view, sw, s)
   end
 
   if settings.minimap and race.track then
@@ -323,30 +351,142 @@ local function drawDriving(sw, sh, race, ctx, s)
 
   drawDash(car, sw, sh, s)
   drawSlipstream(car, sw, sh, s)
-  drawPaceNote(ctx, sw, s)
+  drawPaceNote(view, sw, s)
   drawStartLights(race, sw, sh, s)
-  drawToast(ctx, sw, sh, s)
-
-  if car.wrongWay then
-    local pulse = math.sin(love.timer.getTime() * 8) > 0
-    if pulse then ui.text("WRONG WAY", 0, sh * 0.34, 12 * s, colors.kerb, "center", sw) end
-  end
+  drawToast(view, sw, sh, s)
+  drawWrongWay(car, sw, sh, s)
 
   if not ctx.paused then touch.draw(sw, sh, car) end
 end
 
-function hud.draw(sw, sh, race, ctx)
+-- ctx is the session, view the player's own part of it.
+function hud.draw(sw, sh, race, ctx, view)
   local s = ui.scale(sw, sh)
   -- Past the line there's nothing left to drive, so the road gets the screen.
-  if ctx.finishClock then
-    drawFinishBanner(race, ctx.finishClock, sw, sh, s)
+  if view.finishClock then
+    drawFinishBanner(view.car, view.finishClock, sw, sh, s)
   else
-    drawDriving(sw, sh, race, ctx, s)
+    drawDriving(sw, sh, race, ctx, view, s)
   end
 
   if settings.showFps then
     local x = touch.shown() and sw - 158 * s or sw - 72 * s
     ui.text(love.timer.getFPS() .. " FPS", x, 8 * s, 6 * s, colors.muted, "right", 64 * s)
+  end
+end
+
+-- Two at a screen ---------------------------------------------------------------
+
+-- A half is half as wide, so the HUD comes down a size from the window's.
+function hud.splitScale(sw, sh)
+  return math.max(1, math.floor(ui.scale(sw, sh) * 0.75 * 2) / 2)
+end
+
+local function ordinal(place)
+  return ORDINALS[place] or tostring(place)
+end
+
+-- Whose half this is, top outside corner: name, place, lap.
+local function drawPlayerTag(race, view, sw, s)
+  local car = view.car
+  local w, h = 64 * s, race.mode == "race" and 30 * s or 14 * s
+  local left = view.index == 1
+  local x, y = left and 8 * s or sw - w - 8 * s, 8 * s
+  ui.panel(x, y, w, h, 0.8)
+  love.graphics.setColor(car.color)
+  love.graphics.rectangle("fill", x + 2 * s, y + 2 * s, 2 * s, h - 4 * s)
+  ui.text(car.name, x + 7 * s, y + 4 * s, 7 * s, colors.marshal)
+  if race.mode == "race" then
+    ui.text(ordinal(car.place), x, y + 4 * s, 7 * s, colors.paint, "right", w - 4 * s)
+    ui.text("LAP " .. race:currentLap(car) .. "/" .. race.laps, x + 7 * s, y + 18 * s, 5 * s, colors.muted)
+  end
+end
+
+-- After the banner a driver home first waits on the other, with their result up.
+local function drawWaiting(race, view, sw, sh, s)
+  local car = view.car
+  local heading, c = hud.finishHeading(car.place, car.timedOut)
+  if race.mode ~= "race" then heading, c = "FINISHED", colors.paint end
+  local y = sh * 0.3
+  ui.panel(0, y - 8 * s, sw, 40 * s, 0.75)
+  ui.text(heading, 0, y, 12 * s, c, "center", sw)
+  ui.text("WAITING FOR THE OTHER DRIVER", 0, y + 18 * s, 5 * s, colors.muted, "center", sw)
+end
+
+-- A small chip over each driver's car, so each can tell P1 from P2 at a glance,
+-- in their own half and the other's. Faint, and drawn under the rest of the HUD.
+local MARK_ALPHA = 0.75
+
+local function drawMarks(view, s)
+  for _, mark in ipairs(view.marks or {}) do
+    local car = mark.car
+    local size = 5 * s
+    local w, h = ui.font(size):getWidth(car.name) + 7 * s, size + 4 * s
+    local x, y = mark.x - w / 2, mark.y - mark.reach - h - 3 * s
+    local panel = colors.asphaltDeep
+    love.graphics.setColor(panel[1], panel[2], panel[3], 0.6 * MARK_ALPHA)
+    love.graphics.rectangle("fill", x, y, w, h)
+    local paint = car.color
+    love.graphics.setColor(paint[1], paint[2], paint[3], MARK_ALPHA)
+    love.graphics.rectangle("fill", x + s, y + s, 2 * s, h - 2 * s)
+    local c = colors.paint
+    ui.text(car.name, x + 4.5 * s, y + 2 * s, size, { c[1], c[2], c[3], MARK_ALPHA })
+  end
+end
+
+-- One driver's half, drawn at 0, 0 in its own space. fullW, fullH are the
+-- window's, which set the scale.
+function hud.drawView(sw, sh, race, ctx, view, fullW, fullH)
+  local s = hud.splitScale(fullW, fullH)
+  local car = view.car
+  if view.finishClock then
+    if view.finishClock < hud.FINISH_HOLD then
+      drawFinishBanner(car, view.finishClock, sw, sh, s)
+    elseif not ctx.finishClock then
+      drawWaiting(race, view, sw, sh, s)
+    end
+    return
+  end
+  local left = view.index == 1
+  drawMarks(view, s)
+  drawPlayerTag(race, view, sw, s)
+  if race.mode == "freestyle" then drawDrift(view, sw, s) end
+  drawDash(car, sw, sh, s, left)
+  drawSlipstream(car, sw, sh, s, left)
+  -- The drift score has the top middle in freestyle.
+  if race.mode ~= "freestyle" then drawPaceNote(view, sw, s) end
+  drawStartLights(race, sw, sh, s)
+  drawToast(view, sw, sh, s)
+  drawWrongWay(car, sw, sh, s)
+end
+
+-- What both drivers share, over the seam: the line between the halves, the
+-- timing tower and the map.
+function hud.drawShared(sw, sh, race, ctx)
+  local s = hud.splitScale(sw, sh)
+  local mid = math.floor(sw / 2)
+  love.graphics.setColor(colors.asphaltDeep)
+  love.graphics.rectangle("fill", mid - s, 0, 2 * s, sh)
+
+  local results = ctx.finishClock and ctx.finishClock >= hud.FINISH_HOLD
+  if race.mode == "race" and not results then
+    -- The lap counter follows whichever of the two is ahead.
+    local focus = race.player
+    for _, car in ipairs(race.players) do
+      if car.place < focus.place then focus = car end
+    end
+    drawTower(race, s, mid - hud.TOWER_W * s / 2, 8 * s, focus)
+  end
+
+  if settings.minimap and race.track and not results then
+    local size = 84 * s
+    local x, y = mid - (size + 8 * s) / 2, sh - size - 16 * s
+    ui.panel(x, y, size + 8 * s, size + 8 * s, 0.55)
+    minimap.draw(x + 4 * s, y + 4 * s, size, race.cars, race.players)
+  end
+
+  if settings.showFps then
+    ui.text(love.timer.getFPS() .. " FPS", mid - 32 * s, sh - 10 * s, 5 * s, colors.muted, "center", 64 * s)
   end
 end
 

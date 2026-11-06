@@ -81,7 +81,7 @@ each thing at a time:
 | Singleton | Holds |
 | --- | --- |
 | `state.screen` | `splash`, `menu`, `race` or `editor` |
-| `race_manager` (private `session`) | The running race, or the demo race behind the menus |
+| `race_manager` (private `session`) | The running race, or the demo race behind the menus, with one view per driver at the screen |
 | `world` | The one Box2D world. `Race.new` replaces it, so two `Race` objects can't exist at once |
 | `network` | The one connection |
 | `input`, `touch`, `ui` | Current controls and menu state |
@@ -752,9 +752,9 @@ A player who takes the flag gets an AI driver with `skill = 0.7` for the cool-do
 
 | Mode | Track | Laps | Grid | Ends |
 | --- | --- | --- | --- | --- |
-| `race` | Yes | 1 to 20 | Player last, up to 5 AI | At the flag |
+| `race` | Yes | 1 to 20 | Player last, up to 5 AI. Two at a screen take the last two slots, P1 first | At the flag |
 | `trial` | Yes | 9999 | Alone, slot 1 | Never |
-| `freestyle` | THE LOT (a concrete apron with a playground), or any track | 9999 | Alone | Never |
+| `freestyle` | THE LOT (a concrete apron with a playground), or any track | 9999 | Alone, or two: slots 1 and 2 on a track, 3 m either side of the start box on the lot | Never |
 | Online | Yes | Host's choice | Two to four drivers, in seat order | 25 s after the first car home |
 
 Difficulty sets AI skill:
@@ -824,11 +824,20 @@ When the player finishes, `finishGrace` starts at 25 s and the player's car goes
 control. The phase becomes `finished` when that runs out or every car has finished or
 retired. Cars still running then show DID NOT FINISH.
 
+`Race.new` takes `player2` (spec, colour, name) for a second driver at the same screen,
+never online, with its own `assist` tier and `manualGearbox`. The AI's grip still goes
+by P1's tier. `race.players` lists everyone driven from this machine, P1 first, and
+`race.player` stays P1. Both are `isPlayer`. The first of them home starts the 25 s,
+and one still out when it runs out gets `timedOut` and the AI. Knocked cones go back
+only when neither can see them, and on the lot each resets to their own start spot.
+
 An online race ends differently, so that every screen agrees: 25 s after the first
 finish time anyone sends, on the shared clock, whether or not that was this player. A
 player still racing then gets `timedOut`, the DID NOT FINISH heading and the AI.
 
-The finish is shown in three stages, driven by `session.finishClock`:
+The finish is shown in three stages. Each driver's view has a `finishClock` from their
+own line, which drives their banner, and `session.finishClock` starts when the last
+of them is home, which drives the results:
 
 | Time after the line | What happens |
 | --- | --- |
@@ -853,8 +862,9 @@ sound or vibration.
 4. Build the scene with `track_renderer.load` (or `loadApron` for freestyle), the
    minimap, particle systems and the skid mesh.
 5. Set each car's lights from the time of day, and generate sprites.
-6. Attach the driver: `playerDriver`, or an AI for the demo. Time trial loads its best
-   lap and ghost.
+6. Make a view per driver at the screen (see below) and attach their drivers:
+   `playerDriver`, a reader's driver for each of two, or an AI for the demo. Time trial
+   loads its best lap and ghost.
 7. Clear input, reset touch, snap the camera, tune the radio.
 
 All of this runs in one blocking call.
@@ -869,20 +879,34 @@ These were measured on this desktop, for a two-car race, when `rm.start` always 
 the track, so they include a `Track.new`. A phone will be slower, and the Galaxy A04
 hasn't been measured.
 
+### Views
+
+Everything that belongs to one driver lives in a view: their car, their hands, the
+camera, toast, pace note, drift score, last gear and finish clock. One driver has one
+view, whose hands are the merged keyboard, pad and touch. Two at a screen
+(`session.split`) have one each, whose hands are `input.reader`s: one pad goes to P2
+and the keyboard to P1, and with two pads P1 has the keyboard and the first. Two can't
+start without a pad for the second.
+
+`rm.setToast(text, ...)` shows on every view unless it's given one. Lap times,
+starts, crashes and finishes go to their own driver's; the radio and cheat codes to
+both. The camera and radio buttons are shared, and either driver can pause. Pulling out
+either driver's pad pauses (`rm.usesPad`).
+
 ### `rm.update(dt)`
 
 1. Return if paused, unless online. An online race can't stop for one player, so it
    runs on behind the menu with the car coasting: `playerDriver` ignores the keys,
    which are working the menu.
-2. `handleControls`: horn, lights, camera, reset, next song.
+2. `handleControls` per view: horn, lights, camera, reset, next song.
 3. Fixed-step loop: `race:step`, impacts, start-light beeps, launch toast.
 4. Online: pull the race clock up to the shared one, send the car at most every
    1/20 s, and react to drivers leaving or the connection going.
-5. `updateFinish`, the freestyle drift counter, ghost recording, pace note, camera,
-   per-car effects, particles.
+5. `updateFinish`, then per view the freestyle drift counter, pace note and camera,
+   then ghost recording, per-car effects, particles.
 6. Radio announcement and toast timer.
-7. Unless it's the demo: audio mix (or fade-out behind results), vibration, shift
-   sound.
+7. Unless it's the demo, per view: audio mix (or fade-out behind results),
+   vibration, shift sound.
 
 ### Camera
 
@@ -895,6 +919,10 @@ The camera eases towards a target at a rate of 4/s:
 - **Shake** adds up crash trauma, kerb buzz, high-speed buffet and boost.
 
 The FIXED camera stays north-up and leads by velocity instead.
+
+With two at a screen each view has its own camera on its own half. Zoom comes from
+the whole window's size, times 0.88 (`SPLIT_ZOOM`), so a half sees as far ahead as one
+driver alone does, from a little further back.
 
 ### Ghost
 
@@ -942,6 +970,17 @@ The composite shader runs in this order:
 5. Vignette, deepened under boost.
 
 Canvases are created lazily and rebuilt when the window size changes.
+
+**Two at a screen** run all of that once per view, side by side, each half
+`floor(width / 2)` wide so the canvases fit both and are never rebuilt between them.
+`post.present` takes the half's x. Anything that culls to the screen reads the size of
+the canvas being drawn into (`viewSize` in `track_renderer`), not the window's. Then
+`hud.drawView` draws each half's HUD in its own space under a scissor, and
+`hud.drawShared` the seam, the timing tower and the minimap over the middle.
+
+On the desktop, under Xvfb's software GL, two views took the draw from 6.1 to 8.9 ms
+on MIRAGE by day (`split-*` cases in `--perf`), with twice the draw calls. Phones don't
+offer it.
 
 **Low effects** skips glow and speed blur and halves particle emission. The lightmap
 stays.
@@ -1101,6 +1140,13 @@ the join, so a fade by power would swell. The motor is half and half.
 Sound isn't positional. The rival only changes volume with distance. Only one car's
 engine loops play, so the number of voices costs memory but nothing per frame.
 
+**Two at a screen** each have a channel: every loop above but the rival's. The first
+channel is the `audio` module itself, so one driver alone sounds exactly as before.
+`audio.split(true)` clones a second the first time (clones share their samples), puts
+each channel's mono sources 30 degrees to its own side and takes both down to 80%.
+`audio.update`, `audio.impact` and the engine duck take the driver's seat. Nobody
+hears a rival, because the other driver's engine is already there.
+
 Downshifts are silent, because a hard stop would rattle through every gear.
 
 ### Crashes
@@ -1149,7 +1195,12 @@ reached.
 - `input.consume(action)` is true once per press. A tap shorter than one frame still
   registers.
 
-`input.applyTo(car.input, manual)` fills the car's input table each step. Steering
+`input.applyTo(car.input, manual)` fills the car's input table each step.
+
+For two at a screen, `input.reader(keyboard, pad)` reads one driver's hands only:
+the keyboard, one pad or both, with its own presses (`keyPressed`, `padHeld`,
+`padPressed`) beside the merged ones. `input.gamepads()` lists pads oldest first, and
+`input.splitReaders()` deals them out. Steering
 sets `keyboard = true` unless an analogue axis is active, which picks the wind-on
 filter in `dynamics`. The stick has a deadzone of 0.08 and a curved response.
 
@@ -1207,6 +1258,10 @@ been seen. A key press or pad button in a race hands back.
 - **Phone:** one crude buzzer, so only crashes and boost lighting, with a 0.15 s
   minimum gap.
 
+Each driver has a seat with its own motors and timers. `rumble.assign(seat, pad)` gives
+it a pad, `false` for none, or nil for the first seat to follow the last pad used, as
+one driver alone does.
+
 ---
 
 ## 14. Menus and the HUD
@@ -1230,7 +1285,7 @@ Most screens show a panel down the left with a live demo race behind it.
 | Screen | Contents |
 | --- | --- |
 | `main` | RACE, TIME TRIAL, FREESTYLE, ONLINE, TRACK EDITOR (not on phones), SETTINGS, CONTROLS, CREDITS, QUIT |
-| `setup` | Track (THE LOT first in freestyle), car, paint, laps, opponents, difficulty, time, handling, radio rows in freestyle, START |
+| `setup` | Track (THE LOT first in freestyle), PLAYERS (race and freestyle, desktop with a pad plugged in), car, paint, laps, opponents, difficulty, time, handling, radio rows in freestyle, START. With two players, car and paint give way to each driver's car, paint, handling and gearbox, and the shared handling row goes. P1's gearbox is CONTROLS > GEARBOX; P2's are `car2`, `hue2`, `assists2` and `gearbox2` |
 | `settings` | Volume, camera, zoom, gearbox, units, effects, toggles, touch and fullscreen on desktop |
 | `online` | Server, car, paint, HOST A ROOM, room code, JOIN A ROOM, with `menu.ONLINE_NOTES` beside them. Once in a room it shrinks to the code, START RACE for the host and CANCEL, with the race and its drivers beside it |
 | `host` | Track, laps, time, START ROOM |
@@ -1249,6 +1304,16 @@ Most screens show a panel down the left with a live demo race behind it.
 
 With touch controls up, the dash moves to the centre and the minimap moves to the top
 right, out from under the thumbs.
+
+With two at a screen, the HUD comes down a size (`hud.splitScale`). Each half has a tag
+in its outside top corner (name, place, lap), its dash in its outside bottom corner,
+and its own pace note, start lights, toasts and WRONG WAY. The tower and the minimap
+sit on the seam, the minimap marking both drivers with their paint. A faint chip with
+the driver's name and a stripe of their paint floats over each of the two cars, in both
+halves. `markDrivers` in `race_manager` projects the cars through each view's camera
+for it. A driver home
+first gets their banner, then their result and WAITING FOR THE OTHER DRIVER. The
+results say which of the two came home ahead.
 
 ---
 

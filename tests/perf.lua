@@ -12,6 +12,7 @@ local hud = require("src/hud")
 local post = require("src/render/post")
 local renderer = require("src/render/track_renderer")
 local vfx = require("src/vfx_manager")
+local input = require("src/input")
 
 local perf = {}
 
@@ -30,7 +31,22 @@ local CASES = {
   { name = "mirage-night-boost-high", track = "mirage", time = "night", quality = "high", boost = true, sample = 60 },
   -- Freestyle's lot: lapping the slalom, through the cones.
   { name = "lot-night-high", lot = true, time = "night", quality = "high" },
+  -- Two at one screen: the same race drawn twice, a half each.
+  { name = "split-mirage-day-high", track = "mirage", time = "day", quality = "high", split = true },
+  { name = "split-harbour-night-high", track = "harbour", time = "night", quality = "high", split = true },
 }
+
+-- SPPPD_PERF=split runs only the cases whose names have that in them.
+local only = os.getenv("SPPPD_PERF")
+if only then
+  for i = #CASES, 1, -1 do
+    if not CASES[i].name:find(only, 1, true) then table.remove(CASES, i) end
+  end
+end
+
+-- Enough of a pad for a second driver who never touches it.
+local idlePad = { isConnected = function() return true end, getID = function() return 99 end,
+  getGamepadAxis = function() return 0 end, isVibrationSupported = function() return false end }
 
 -- Fires the boost again whenever braking for a corner has cancelled it.
 local function boosting(ai)
@@ -100,6 +116,7 @@ function perf.start()
   end
   timed(renderer, "drawGround", "ground")
   timed(hud, "draw", "hud")
+  timed(hud, "drawView", "hud")
   timed(post, "drawGlow", "glow")
   timed(post, "present", "composite")
   timed(vfx, "draw", "vfx")
@@ -126,6 +143,8 @@ function perf.start()
       mode = case.lot and "freestyle" or "race", entry = case.track and catalog.find(case.track), spec = garage[3],
       laps = 99, opponents = case.lot and 0 or 5,
       difficulty = "pro", time = case.time, startDelay = 0.2, seed = 3, assist = "arcade",
+      player2 = case.split and { spec = garage[6], name = "P2" } or nil,
+      readers = case.split and { input.reader(true, nil), input.reader(false, idlePad) } or nil,
     })
     state.screen = "race"
     local race = rm.race()
@@ -137,6 +156,7 @@ function perf.start()
       race.player.driver = AI.new(race.track, race.player, { skill = 0.92 })
     end
     if case.boost then race.player.driver = boosting(race.player.driver) end
+    if case.split then race.players[2].driver = AI.new(race.track, race.players[2], { skill = 0.9 }) end
     clock, frames = 0, {}
   end
 

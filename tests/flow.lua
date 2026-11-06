@@ -488,6 +488,84 @@ local function steps()
     rm.stop()
     menu.enter()
   end)
+  -- Two at one screen, with a pretend pad plugged in for the second driver.
+  step(30, function()
+    local pad = { axes = {} }
+    function pad:isConnected() return true end
+    function pad:isGamepad() return true end
+    function pad:getID() return 7 end
+    function pad:getName() return "Test Pad" end
+    function pad:getGamepadAxis(axis) return self.axes[axis] or 0 end
+    function pad:isVibrationSupported() return false end
+    flow.pad, flow.gamepads = pad, input.gamepads
+    input.gamepads = function() return { pad } end
+    settings.mode, settings.players, settings.opponents = "race", 1, 2
+    settings.gearbox, settings.gearbox2 = "auto", "auto"
+    menu.go("setup")
+    ui.focus.setup = 2
+  end)
+  step(3, function()
+    expect(menu.canSplit(), "a pad plugged in offers a second player")
+    press("right")
+  end)
+  -- Track, players, then each driver's car, paint, handling and gearbox.
+  step(3, function()
+    expect(settings.players == 2, "right on PLAYERS makes it two")
+    ui.focus.setup = 10
+    press("right")
+  end)
+  -- Laps, opponents, difficulty, time, start.
+  step(3, function()
+    expect(settings.gearbox2 == "manual" and settings.gearbox == "auto", "P2 GEARBOX is P2's alone")
+    ui.focus.setup = 15
+    press("return")
+  end)
+  step(3, function()
+    local race = rm.race()
+    expect(state.screen == "race" and rm.isSplit(), "START with two players splits the screen")
+    expect(#race.players == 2 and race.players[2].name == "P2", "with a second driver on the grid")
+    expect(race.players[2].input.manual and not race.players[1].input.manual, "each with their own gearbox")
+    love.keypressed("w", "w", false)
+    flow.pad.axes.triggerright = 1
+  end)
+  step(120, function()
+    local p1, p2 = rm.race().players[1], rm.race().players[2]
+    expect(p1.model.rpm > p1.spec.redline * 0.85, "W revs P1 at the lights")
+    expect(p2.model.rpm > p2.spec.redline * 0.85, "the second pad's trigger revs P2")
+    love.keyreleased("w")
+    flow.pad.axes.triggerright = 0
+  end)
+  step(1, function()
+    if rm.race().phase ~= "racing" then return "again" end
+    love.gamepadpressed(flow.pad, "rightshoulder")
+  end)
+  step(2, function()
+    local p1, p2 = rm.race().players[1], rm.race().players[2]
+    expect(p2.input.handbrake and not p1.input.handbrake, "R1 on the second pad is P2's handbrake alone")
+    love.gamepadreleased(flow.pad, "rightshoulder")
+    love.gamepadpressed(flow.pad, "start")
+  end)
+  step(3, function()
+    expect(rm.isPaused(), "the second driver can pause")
+    love.gamepadreleased(flow.pad, "start")
+    press("escape")
+  end)
+  step(3, function()
+    expect(not rm.isPaused(), "and escape resumes")
+    love.joystickremoved(flow.pad)
+  end)
+  step(3, function()
+    expect(rm.isPaused(), "pulling out the second driver's pad pauses")
+    input.gamepads = function() return {} end
+    rm.restart()
+  end)
+  step(3, function()
+    expect(rm.race() and not rm.isSplit() and #rm.race().players == 1, "a restart with no pad left races alone")
+    rm.stop()
+    input.gamepads = flow.gamepads
+    settings.players, settings.gearbox2 = 1, "auto"
+    menu.enter()
+  end)
   step(30, function()
     expect(music.isPlaying(), "music in the menu again")
     menu.go("settings")

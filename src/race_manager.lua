@@ -68,6 +68,31 @@ function playerDriver:update(car)
   touch.applyTo(car.input)
 end
 
+-- A driver's own hands when two share the screen: an input.reader, and a
+-- function that says whether their gearbox is manual.
+local function readerDriver(reader, manual)
+  local driver = {}
+  function driver:revs()
+    if session.paused then return 0 end
+    return reader:throttle()
+  end
+  function driver:boostButton()
+    if session.paused then return false end
+    local tapped = reader:consume("boost")
+    return tapped or reader:isDown("boost")
+  end
+  function driver:update(car)
+    reader:applyTo(car.input, manual())
+  end
+  return driver
+end
+
+-- The keyboard, any pad and the touch controls together, for one driver alone.
+local MERGED = {
+  isDown = function(_, action) return input.isDown(action) end,
+  consume = function(_, action) return input.consume(action) end,
+}
+
 local function lightsFor(car, env)
   car.highBeam = env.highBeams or false
   car.lowBeam = env.lights and not car.highBeam
@@ -77,15 +102,52 @@ local function newCamera(x, y, angle)
   return { x = x, y = y, rot = -angle - math.pi / 2, zoom = 1, lookX = 0, lookY = 0, trauma = 0, shakeX = 0, shakeY = 0 }
 end
 
+-- One driver's share of the session: their car, their hands, their camera and
+-- what the HUD is telling them. One alone has one; two at a screen have one each.
+local function newView(race, car, index, hands)
+  return {
+    index = index,
+    car = car,
+    hands = hands,
+    cam = newCamera(car.curX, car.curY, car.curA),
+    drift = race.mode == "freestyle" and { total = 0, combo = 0, idle = 0 } or nil,
+  }
+end
+
+local function viewOf(car)
+  if not session then return nil end
+  for _, view in ipairs(session.views) do
+    if view.car == car then return view end
+  end
+  return nil
+end
+
+-- Two drivers get a half each, side by side: a chase camera looks up the screen,
+-- so a half as tall as the window sees as far ahead as one driver alone does.
+local function viewRect(index, sw, sh)
+  if not session or not session.split then return 0, 0, sw, sh end
+  local w = math.floor(sw / 2)
+  return index == 1 and 0 or sw - w, 0, w, sh
+end
+
 function rm.start(opts)
   rm.stop()
   local track = opts.track or (opts.entry and Track.new(opts.entry.def))
+  -- Two at a screen need hands for the second: a pad. Without one, as on a RACE
+  -- AGAIN after it was pulled out, one drives alone.
+  local player2, readers = nil, nil
+  if opts.player2 and not opts.demo and not opts.online then
+    readers = opts.readers or { input.splitReaders() }
+    if readers[1] and readers[2] then player2 = opts.player2 end
+  end
   local race = Race.new({
     mode = opts.mode, track = track, laps = opts.laps, opponents = opts.opponents,
     spec = opts.spec, color = opts.color, assist = opts.assist or settings.assists,
     difficulty = opts.difficulty, seed = opts.seed, startDelay = opts.startDelay,
     online = opts.online,
     rules = opts.rules,
+    player2 = player2,
+    playerName = player2 and opts.playerName or nil,
     lot = opts.mode == "freestyle" and not opts.demo,
     manualGearbox = settings.gearbox == "manual",
     onLap = function(car, time, clean) rm.onLap(car, time, clean) end,
@@ -118,9 +180,7 @@ function rm.start(opts)
     alpha = 1,
     paused = false,
     demo = opts.demo,
-    cam = newCamera(race.player.curX, race.player.curY, race.player.curA),
-    toast = nil,
-    drift = race.mode == "freestyle" and { total = 0, combo = 0, idle = 0 } or nil,
+    split = #race.players > 1,
     bestLap = nil,
     ghostFrames = {},
     ghostTimer = 0,
@@ -129,10 +189,21 @@ function rm.start(opts)
   for _, car in ipairs(race.cars) do lightsFor(car, env) end
   for _, car in ipairs(race.cars) do sprites.get(car.spec) end
 
+  local hands1, hands2 = MERGED, nil
+  if session.split then hands1, hands2 = readers[1], readers[2] end
+  session.views = { newView(race, race.player, 1, hands1) }
+  if session.split then session.views[2] = newView(race, race.players[2], 2, hands2) end
+  rumble.assign(1, session.split and (hands1.pad or false) or nil)
+  rumble.assign(2, hands2 and hands2.pad or nil)
+  audio.split(session.split)
+
   if opts.demo then
     local AI = require("src/ai_controller")
     race.player.driver = AI.new(track, race.player, { skill = 0.95 })
     race.player.name = "VOSS"
+  elseif session.split then
+    race.player.driver = readerDriver(hands1, function() return settings.gearbox == "manual" end)
+    race.players[2].driver = readerDriver(hands2, function() return settings.gearbox2 == "manual" end)
   else
     race.player.driver = playerDriver
     if race.mode == "trial" then
@@ -184,10 +255,11 @@ function rm.setPaused(paused)
     touch.reset()
   end
   radio.pause(paused)
-  input.pressedOnce = {}
+  input.dropPresses()
 end
 
 -- True from the moment the player takes the flag, whatever the rest are doing.
+-- With two at a screen, from when the second of them does.
 function rm.isFinished()
   return session and session.finishClock ~= nil
 end
@@ -206,8 +278,34 @@ function rm.restart()
   if session then rm.start(session.opts) end
 end
 
-function rm.setToast(text, color, seconds, size)
-  session.toast = { text = text, color = color, time = seconds or 2.5, size = size }
+-- On one driver's half, or on everyone's when it's news for all.
+function rm.setToast(text, color, seconds, size, view)
+  local toast = { text = text, color = color, time = seconds or 2.5, size = size }
+  if view then
+    view.toast = toast
+    return
+  end
+  for _, each in ipairs(session.views) do
+    each.toast = { text = toast.text, color = toast.color, time = toast.time, size = toast.size }
+  end
+end
+
+-- The players' views, P1 first. Nil with no race.
+function rm.views()
+  return session and session.views
+end
+
+function rm.isSplit()
+  return session ~= nil and session.split
+end
+
+-- True when a pad that's gone was one of the two drivers'.
+function rm.usesPad(joystick)
+  if not session or not session.split then return false end
+  for _, view in ipairs(session.views) do
+    if view.hands.pad == joystick then return true end
+  end
+  return false
 end
 
 -- Lights the player's exhaust, and tells the others at once.
@@ -230,7 +328,8 @@ function rm.cheat(effect, label)
 end
 
 function rm.onLap(car, time, clean)
-  if not session or car ~= session.race.player or session.demo then return end
+  local view = viewOf(car)
+  if not view or session.demo then return end
   local race = session.race
   -- Freestyle counts no laps out loud.
   if race.mode == "freestyle" then return end
@@ -260,15 +359,17 @@ function rm.onLap(car, time, clean)
     session.ghostTimer = 0
   elseif race.mode == "race" and car.lapsDone < race.laps then
     local best = car.bestLap == time
-    rm.setToast(string.format("LAP %d  %s", car.lapsDone, hud.formatTime(time)), best and colors.sectorGreen or colors.paint, 2)
+    rm.setToast(string.format("LAP %d  %s", car.lapsDone, hud.formatTime(time)), best and colors.sectorGreen or colors.paint, 2,
+      nil, view)
   end
 end
 
 function rm.onCrash(car, hit)
-  if not session or car ~= session.race.player or session.demo then return end
-  rm.setToast("CRASHED", colors.kerb, Race.WRECK_TIME + 0.3)
-  session.cam.trauma = 1
-  audio.impact(math.max(CRASH_SOUND, hit * car.spec.mass / 9000), car.spec)
+  local view = viewOf(car)
+  if not view or session.demo then return end
+  rm.setToast("CRASHED", colors.kerb, Race.WRECK_TIME + 0.3, nil, view)
+  view.cam.trauma = 1
+  audio.impact(math.max(CRASH_SOUND, hit * car.spec.mass / 9000), car.spec, view.index)
 end
 
 -- Clean rules say the moment a lap is lost, not just at the line.
@@ -281,47 +382,47 @@ function rm.onSpoil(car, reason)
 end
 
 function rm.onRecover(car)
-  if not session or car ~= session.race.player or session.demo then return end
+  if not viewOf(car) or session.demo then return end
   audio.play("select", 0.5)
 end
 
 -- Simulation ----------------------------------------------------------------
 
-local function handleControls()
+-- The camera and the radio are everyone's; the rest is each driver's own.
+local function handleControls(view)
   local race = session.race
-  local car = race.player
-  car.horn = input.isDown("horn")
-  if input.consume("lowBeam") then
+  local car, hands = view.car, view.hands
+  car.horn = hands:isDown("horn")
+  if hands:consume("lowBeam") then
     car.lowBeam = not car.lowBeam
     if car.lowBeam then car.highBeam = false end
   end
-  if input.consume("highBeam") then
+  if hands:consume("highBeam") then
     car.highBeam = not car.highBeam
   end
-  if input.consume("camera") then
+  if hands:consume("camera") then
     settings.camera = settings.camera == "chase" and "fixed" or "chase"
     settings.save()
   end
-  if input.consume("respawn") and race.phase == "racing" and not car.finished and not car.wreck then
+  if hands:consume("respawn") and race.phase == "racing" and not car.finished and not car.wreck then
     race:respawn(car)
     audio.play("select", 0.5)
   end
-  if input.consume("radio") then radio.skip() end
+  if hands:consume("radio") then radio.skip() end
 end
 
 local function processImpacts()
   local events = world.drainEvents()
-  local race = session.race
-  local player = race.player
+  local views = session.views
   -- One crash is several contacts: only the hardest of them is the sound of it.
-  local hardest = 0
+  local hardest = {}
   for _, e in ipairs(events) do
-    local mine = e.carA == player or e.carB == player
     local strength = e.impulse / 9000
     if e.prop then
       -- A cone: a puff and a knock, never a dent or a broken combo.
-      if e.car == player and not session.demo then
-        local vx, vy = player.body:getLinearVelocity()
+      local view = viewOf(e.car)
+      if view and not session.demo then
+        local vx, vy = view.car.body:getLinearVelocity()
         for _ = 1, 3 do vfx.dust(e.x, e.y, vx, vy, 1) end
         audio.knock(e.impulse)
       end
@@ -329,24 +430,32 @@ local function processImpacts()
       vfx.scrape(e.x, e.y, e.nx, e.ny, math.min(2.5, strength * 3))
       if e.carA then car_view.hit(e.carA, e.x, e.y, strength, e.barrier) end
       if e.carB then car_view.hit(e.carB, e.x, e.y, strength, e.barrier) end
-      if mine and not session.demo then
-        session.cam.trauma = math.min(1, session.cam.trauma + math.min(0.6, strength * 0.8))
-        hardest = math.max(hardest, strength)
-        rumble.crash(strength)
-        if session.drift then session.drift.combo = 0 end
+      if not session.demo then
+        for i, view in ipairs(views) do
+          if e.carA == view.car or e.carB == view.car then
+            local cam = view.cam
+            cam.trauma = math.min(1, cam.trauma + math.min(0.6, strength * 0.8))
+            hardest[i] = math.max(hardest[i] or 0, strength)
+            rumble.crash(strength, i)
+            if view.drift then view.drift.combo = 0 end
+          end
+        end
       end
     end
   end
-  if hardest > 0 then audio.impact(hardest, player.spec) end
-  -- Contact flickers as a car bounces along a wall. This rides over the gaps.
-  player.scraping = player.scraped and 1 or math.max(0, (player.scraping or 0) - DT * SCRAPE_FADE)
-  player.scraped = false
+  for i, view in ipairs(views) do
+    local car = view.car
+    if hardest[i] then audio.impact(hardest[i], car.spec, i) end
+    -- Contact flickers as a car bounces along a wall. This rides over the gaps.
+    car.scraping = car.scraped and 1 or math.max(0, (car.scraping or 0) - DT * SCRAPE_FADE)
+    car.scraped = false
+  end
 end
 
-local function updateDrift(dt)
-  local drift = session.drift
+local function updateDrift(view, dt)
+  local drift = view.drift
   if not drift then return end
-  local car = session.race.player
+  local car = view.car
   local speed = car:getSpeed()
   if dynamics.sliding(car.model, speed) then
     drift.combo = drift.combo + speed * math.deg(math.abs(car.model.beta)) * dt * 0.12
@@ -361,14 +470,14 @@ local function updateDrift(dt)
 end
 
 -- The call a co-driver would make: what the next corner is, and when to brake.
-local function updatePaceNote()
+local function updatePaceNote(view)
   local race = session.race
-  local car = race.player
-  session.pace = nil
+  local car = view.car
+  view.pace = nil
   if not settings.paceNotes or not race.track or race.phase ~= "racing" or car.finished then return end
-  if not session.paceProfile then
+  if not view.paceProfile then
     local spec = car.spec
-    session.paceProfile = race.track:speedProfile({
+    view.paceProfile = race.track:speedProfile({
       mu = spec.grip * 0.95,
       vmax = 95,
       brake = spec.grip * config.GRAVITY * 0.8,
@@ -378,7 +487,7 @@ local function updatePaceNote()
 
   local track = race.track
   local samples, n = track.samples, track.count
-  local profile = session.paceProfile
+  local profile = view.paceProfile
   local speed = car:getSpeed()
   if speed < 12 then return end
   local index = car.trackIndex or 1
@@ -391,7 +500,7 @@ local function updatePaceNote()
   end
   if not at or slowest > speed * 0.9 then return end
 
-  session.pace = {
+  view.pace = {
     direction = samples[at].lineK > 0 and 1 or -1,
     -- Tightness runs 1 (hairpin) to 4 (fast kink), like a rally note.
     grade = slowest < 18 and 1 or (slowest < 28 and 2 or (slowest < 40 and 3 or 4)),
@@ -412,16 +521,21 @@ local function recordGhost(dt)
   end
 end
 
-function rm.syncCamera(blend)
-  local cam = session.cam
-  local car = session.race.player
+-- How far the camera pulls back on half a screen, against the whole window's
+-- framing. A half shows less road to the sides, so it stands a little further off.
+local SPLIT_ZOOM = 0.88
+
+local function syncView(view, blend)
+  local cam = view.cam
+  local car = view.car
   local x, y, a = car:interpolated(session.alpha)
   local speed = car:getSpeed()
 
   local beta = math.max(-0.6, math.min(0.6, car.model.beta))
   local facing = a + beta * 0.55
-  local sw, sh = love.graphics.getDimensions()
-  local base = math.min(sw / 1280, sh / 720)
+  local fullW, fullH = love.graphics.getDimensions()
+  local _, _, sw, sh = viewRect(view.index, fullW, fullH)
+  local base = math.min(fullW / 1280, fullH / 720) * (session.split and SPLIT_ZOOM or 1)
   local framing = ZOOM[settings.zoom] or ZOOM.near
   local speedFade = math.min(1, speed / 85)
   local targetZoom = base * framing.close * (1 - framing.pullBack * speedFade)
@@ -455,28 +569,48 @@ function rm.syncCamera(blend)
   cam.x, cam.y = x + cam.lookX, y + cam.lookY
 end
 
+function rm.syncCamera(blend)
+  for _, view in ipairs(session.views) do syncView(view, blend) end
+end
+
 -- The flag falls for the player here, while the rest may race on for a while.
+-- Each driver at the screen gets their own banner; the results wait for both.
 local function updateFinish(dt)
-  local player = session.race.player
-  if session.demo or not (player.finished or player.timedOut) then return end
+  if session.demo then return end
+  local allDone = true
+  for i, view in ipairs(session.views) do
+    local car = view.car
+    if view.finishClock then
+      view.finishClock = view.finishClock + dt
+    elseif car.finished or car.timedOut then
+      view.finishClock = 0
+      view.toast = nil
+      rumble.stop(i)
+      audio.play("finish", 0.6, car.place == 1 and 1 or 0.84)
+    else
+      allDone = false
+    end
+  end
+  if not allDone then return end
   if session.finishClock then
     session.finishClock = session.finishClock + dt
     return
   end
-  session.finishClock = 0
+  -- Held back by the later of the two, so the results never cut a banner short.
+  local clock = math.huge
+  for _, view in ipairs(session.views) do clock = math.min(clock, view.finishClock) end
+  session.finishClock = clock
   session.paused = false
-  session.toast = nil
   touch.reset()
   rumble.stop()
-  audio.play("finish", 0.6, player.place == 1 and 1 or 0.84)
 end
 
-local function updateCamera(dt)
-  local cam = session.cam
-  rm.syncCamera(1 - math.exp(-dt * 4))
+local function updateCamera(view, dt)
+  local cam = view.cam
+  syncView(view, 1 - math.exp(-dt * 4))
 
   -- Impacts shake the view; kerbs give it the slightest buzz.
-  local car = session.race.player
+  local car = view.car
   local rumble = 0
   for _, w in ipairs(car.model.wheels) do
     if w.surface == "kerb" then rumble = 0.05 end
@@ -545,6 +679,33 @@ local function updateOnline(dt)
   end
 end
 
+-- What one driver hears and feels. Alone, the nearest rival's engine joins in;
+-- two at a screen each hear their own car, panned to their own half.
+local function updateFeel(view, i, dt)
+  local race = session.race
+  local car = view.car
+  local rival, nearest
+  if not session.split then
+    for _, other in ipairs(race.cars) do
+      if other ~= car then
+        local d = math.sqrt((other.curX - car.curX) ^ 2 + (other.curY - car.curY) ^ 2) / M
+        if not nearest or d < nearest then rival, nearest = other, d end
+      end
+    end
+  end
+  audio.update(dt, car, rival, nearest and nearest * 12 or 0, i)
+  if not view.finishClock and not session.paused then rumble.update(dt, car, i) end
+  -- Downshifts stay silent: a hard stop would rattle through every gear.
+  local gear, lastGear = car.model.gear, view.lastGear or 1
+  if gear ~= lastGear then
+    view.lastGear = gear
+    if gear > lastGear then
+      audio.play("shift", audio.SHIFT_LEVEL, audio.variedPitch())
+      rumble.shift(i)
+    end
+  end
+end
+
 function rm.update(dt)
   -- An online race can't stop for one player: the menu opens over it instead.
   if not session or (session.paused and not session.opts.online) then return end
@@ -552,7 +713,7 @@ function rm.update(dt)
   if session.paused then
     race.player.horn = false
   elseif not session.demo then
-    handleControls()
+    for _, view in ipairs(session.views) do handleControls(view) end
   end
 
   session.accumulator = math.min(session.accumulator + dt, DT * config.MAX_STEPS_PER_FRAME)
@@ -569,11 +730,13 @@ function rm.update(dt)
         audio.play("go", 0.7)
         -- A flame code entered in the menus goes off with the lights.
         if cheats.takeFlames() then lightFlames() end
-        local launch = race.player.model.launch
-        if launch >= 0.85 then
-          rm.setToast("PERFECT START", colors.sectorGreen, 1.6)
-        elseif launch >= 0.25 then
-          rm.setToast("GOOD START", colors.marshal, 1.6)
+        for _, view in ipairs(session.views) do
+          local launch = view.car.model.launch
+          if launch >= 0.85 then
+            rm.setToast("PERFECT START", colors.sectorGreen, 1.6, nil, view)
+          elseif launch >= 0.25 then
+            rm.setToast("GOOD START", colors.marshal, 1.6, nil, view)
+          end
         end
       end
     end
@@ -584,50 +747,40 @@ function rm.update(dt)
   if session.opts.online then updateOnline(dt) end
 
   updateFinish(dt)
-  updateDrift(dt)
+  for _, view in ipairs(session.views) do
+    updateDrift(view, dt)
+    updatePaceNote(view)
+    updateCamera(view, dt)
+  end
   recordGhost(dt)
-  updatePaceNote()
-  updateCamera(dt)
   for _, car in ipairs(race.cars) do car_view.updateFx(car, dt) end
   vfx.update(dt)
 
   local song = radio.update()
   if song then rm.setToast("ON AIR  " .. song, colors.marshal, 3) end
-  if session.toast then session.toast.time = session.toast.time - dt end
+  for _, view in ipairs(session.views) do
+    if view.toast then view.toast.time = view.toast.time - dt end
+  end
 
   if not session.demo then
-    local player = race.player
-    player.neon, player.hornTune = settings.neon, settings.tuneHorn
-    for _, car in ipairs(race.cars) do audio.hornStep(car, dt) end
-    local rival, nearest
-    for _, car in ipairs(race.cars) do
-      if car ~= player then
-        local d = math.sqrt((car.curX - player.curX) ^ 2 + (car.curY - player.curY) ^ 2) / M
-        if not nearest or d < nearest then rival, nearest = car, d end
-      end
+    for _, view in ipairs(session.views) do
+      local car = view.car
+      -- The cheats are this machine's, so both drivers here have them.
+      car.neon, car.hornTune = settings.neon, settings.tuneHorn
     end
+    for _, car in ipairs(race.cars) do audio.hornStep(car, dt) end
     if rm.resultsAge() then
       audio.fadeOut(dt)
     else
-      audio.update(dt, player, rival, nearest and nearest * 12 or 0)
-      if not session.finishClock and not session.paused then rumble.update(dt, player) end
-      -- Downshifts stay silent: a hard stop would rattle through every gear.
-      local gear, lastGear = player.model.gear, session.lastGear or 1
-      if gear ~= lastGear then
-        session.lastGear = gear
-        if gear > lastGear then
-          audio.play("shift", audio.SHIFT_LEVEL, audio.variedPitch())
-          rumble.shift()
-        end
-      end
+      for i, view in ipairs(session.views) do updateFeel(view, i, dt) end
     end
   end
 end
 
 -- Drawing ---------------------------------------------------------------------
 
-local function withCamera(sw, sh, fn)
-  local cam = session.cam
+local function withCamera(sw, sh, fn, cam)
+  cam = cam or session.views[1].cam
   love.graphics.push()
   love.graphics.translate(sw / 2 + cam.shakeX, sh / 2 + cam.shakeY)
   love.graphics.scale(cam.zoom)
@@ -659,7 +812,7 @@ local function lightsState()
   return nil, true
 end
 
-local function drawWorld(sw, sh)
+local function drawWorld(sw, sh, cam)
   local race, env, scene = session.race, session.env, session.scene
   local alpha = session.alpha
   withCamera(sw, sh, function()
@@ -685,16 +838,19 @@ local function drawWorld(sw, sh)
     love.graphics.setBlendMode("alpha")
     local on, out = lightsState()
     scene:drawOverhead(on, out)
-  end)
+  end, cam)
 end
 
-function rm.drawScene(sw, sh)
+-- One view's picture, drawn at x, y on the screen: the whole window for one
+-- driver, or each driver's half.
+local function drawView(view, x, y, sw, sh)
   local race, env, scene = session.race, session.env, session.scene
   local alpha = session.alpha
-  local boosting = race.player.model.boostState == "active"
+  local car, cam = view.car, view.cam
+  local boosting = car.model.boostState == "active"
 
   post.begin(sw, sh)
-  drawWorld(sw, sh)
+  drawWorld(sw, sh, cam)
 
   if env.lights then
     post.drawLights(env.ambient, function()
@@ -704,7 +860,7 @@ function rm.drawScene(sw, sh)
           local x, y, a = car:interpolated(alpha)
           car_view.drawBeams(car, x, y, a, env.beams)
         end
-      end)
+      end, cam)
     end)
   end
 
@@ -718,10 +874,12 @@ function rm.drawScene(sw, sh)
       end
       local on, out = lightsState()
       scene:drawGlow(on, out)
-    end)
+    end, cam)
   end)
 
   post.present({
+    x = x,
+    y = y,
     lights = env.lights,
     grade = env.grade,
     saturation = env.saturation,
@@ -729,15 +887,56 @@ function rm.drawScene(sw, sh)
     vignette = env.vignette,
     punch = boosting and 0.25 or 0,
     speedBlur = settings.quality == "low" and 0
-      or math.max(0, math.min(1, (race.player:getSpeed() - 45) / 45)) * 0.01 + (boosting and 0.014 or 0),
+      or math.max(0, math.min(1, (car:getSpeed() - 45) / 45)) * 0.01 + (boosting and 0.014 or 0),
   })
+end
+
+function rm.drawScene(sw, sh)
+  for i, view in ipairs(session.views) do
+    local x, y, w, h = viewRect(i, sw, sh)
+    drawView(view, x, y, w, h)
+  end
+end
+
+-- Where each driver's car is in this view, in its own pixels, for the P1 and P2
+-- chips. The same transform withCamera applies, done by hand.
+local CAR_REACH = 2.6 * M  -- from a car's middle to past its nose or tail
+
+local function markDrivers(view, sw, sh)
+  local cam = view.cam
+  local c, sn = math.cos(cam.rot), math.sin(cam.rot)
+  view.marks = view.marks or {}
+  for i, other in ipairs(session.views) do
+    local x, y = other.car:interpolated(session.alpha)
+    local dx, dy = x - cam.x, y - cam.y
+    view.marks[i] = {
+      car = other.car,
+      x = sw / 2 + cam.shakeX + (dx * c - dy * sn) * cam.zoom,
+      y = sh / 2 + cam.shakeY + (dx * sn + dy * c) * cam.zoom,
+      reach = CAR_REACH * cam.zoom,
+    }
+  end
 end
 
 function rm.draw(sw, sh)
   if not session then return end
   rm.drawScene(sw, sh)
   if session.demo then return end
-  hud.draw(sw, sh, session.race, session)
+  if not session.split then
+    hud.draw(sw, sh, session.race, session, session.views[1])
+    return
+  end
+  for i, view in ipairs(session.views) do
+    local x, y, w, h = viewRect(i, sw, sh)
+    markDrivers(view, w, h)
+    love.graphics.push()
+    love.graphics.translate(x, y)
+    love.graphics.setScissor(x, y, w, h)
+    hud.drawView(w, h, session.race, session, view, sw, sh)
+    love.graphics.setScissor()
+    love.graphics.pop()
+  end
+  hud.drawShared(sw, sh, session.race, session)
 end
 
 return rm

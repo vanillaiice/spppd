@@ -147,7 +147,7 @@ function post.present(opts)
   shader:send("punch", opts.punch or 0)
   shader:send("speedBlur", opts.speedBlur or 0)
   love.graphics.setBlendMode("alpha", "premultiplied")
-  love.graphics.draw(post.scene)
+  love.graphics.draw(post.scene, opts.x or 0, opts.y or 0)
   love.graphics.setBlendMode("alpha")
   love.graphics.setShader()
 end

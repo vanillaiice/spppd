@@ -37,7 +37,51 @@ local function phone()
   require("src/touch").active = true
 end
 
+-- Two at one screen, both on autopilot, with a pretend pad for the second:
+-- SPPPD_MODE=freestyle for the lot, SPPPD_TIME and SPPPD_TRACK as elsewhere.
+local function split()
+  local pad = { isConnected = function() return true end, getID = function() return 99 end,
+    getGamepadAxis = function() return 0 end, isVibrationSupported = function() return false end }
+  local mode = os.getenv("SPPPD_MODE") or "race"
+  rm.start({
+    mode = mode, entry = mode == "race" and catalog.find(os.getenv("SPPPD_TRACK") or "mirage") or nil,
+    spec = garage[3], color = { 0.78, 0.07, 0.09 }, laps = 3, opponents = mode == "race" and 4 or 0,
+    difficulty = "pro", time = os.getenv("SPPPD_TIME") or "day", startDelay = 0.2, seed = 3, assist = "sport",
+    playerName = "P1", player2 = { spec = garage[6], color = { 0.07, 0.2, 0.62 }, name = "P2" },
+    readers = { input.reader(true, nil), input.reader(false, pad) },
+  })
+  state.screen = "race"
+  local AI = require("src/ai_controller")
+  local r = rm.race()
+  for i, car in ipairs(r.players) do
+    if mode == "race" then
+      car.driver = AI.new(r.track, car, { skill = 0.92 - i * 0.02 })
+    else
+      car.driver = { update = function(_, c)
+        c.input.throttle, c.input.steer = 1, i == 1 and -0.9 or 0.9
+        c.input.handbrake = (love.timer.getTime() * 2 + i) % 1 < 0.2
+      end }
+    end
+  end
+end
+
+-- Race setup with a pad plugged in and two players chosen.
+local function splitSetup()
+  local pad = { isConnected = function() return true end, getID = function() return 99 end,
+    getName = function() return "Xbox Wireless Controller" end }
+  input.gamepads = function() return { pad } end
+  settings.players, settings.car2, settings.hue2 = 2, 6, 6
+  menu.enter()
+  settings.mode = os.getenv("SPPPD_MODE") or "race"
+  menu.go("setup")
+  ui.focus.setup = 2
+end
+
 local SCENES = {
+  split = split,
+  splitsetup = splitSetup,
+  -- The finish with two: P1 home, P2 still out, then both and the results.
+  splitfinish = split,
   menu = function() state.screen = "splash" require("src/splash").timer = 99 end,
   setup = function() menu.enter() settings.mode = "race" menu.go("setup") end,
   newestcar = function() settings.car = #garage menu.enter() settings.mode = "race" menu.go("setup") end,
@@ -195,6 +239,12 @@ function visual.start(args)
         car.finishTime = 60 + car.body:getX() % 9
       end
       r.phase = "finished"
+    end
+    if scene == "splitfinish" and rm.race() and (frame == 60 or frame == 200) then
+      local r = rm.race()
+      local car = r.players[frame == 60 and 1 or 2]
+      car.lapsDone = r.laps - 1
+      car.distance = r.track.length * r.laps + 1
     end
     if scene == "finish" and rm.race() and frame == 60 then
       local r = rm.race()

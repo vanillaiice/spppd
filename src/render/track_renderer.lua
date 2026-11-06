@@ -15,6 +15,14 @@ local STUD_SIZE = 3      -- metres across, with the soft edge of its glow
 local STUD_INSET = 0.5   -- metres in from the road's edge, on the painted line
 local POOL_SIZE = 70     -- metres across, a lamp on an unlit circuit
 
+-- The size of what's being drawn into: the scene canvas, which is one player's
+-- half when two share the screen, or the window.
+local function viewSize()
+  local canvas = love.graphics.getCanvas()
+  if canvas then return canvas:getDimensions() end
+  return love.graphics.getDimensions()
+end
+
 local ROAD_SHADER = [[
   varying vec2 v_edge;
   varying float v_s;
@@ -595,7 +603,8 @@ function renderer.loadApron(timeName)
     love.graphics.setShader()
 
     -- Painted bays around wherever the camera is looking.
-    local tx, ty = love.graphics.inverseTransformPoint(love.graphics.getWidth() / 2, love.graphics.getHeight() / 2)
+    local vw, vh = viewSize()
+    local tx, ty = love.graphics.inverseTransformPoint(vw / 2, vh / 2)
     local cell = 40 * M
     local reach = 5
     local cx, cy = math.floor(tx / cell), math.floor(ty / cell)
@@ -619,7 +628,7 @@ function renderer.loadApron(timeName)
 
   -- Cones move, so they're drawn where they are, and only near the screen.
   function self:drawCones(cones)
-    local sw, sh = love.graphics.getWidth(), love.graphics.getHeight()
+    local sw, sh = viewSize()
     local cx, cy = love.graphics.inverseTransformPoint(sw / 2, sh / 2)
     local ex, ey = love.graphics.inverseTransformPoint(0, 0)
     local reach = (ex - cx) ^ 2 + (ey - cy) ^ 2 + (4 * M) ^ 2

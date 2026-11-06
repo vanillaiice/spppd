@@ -247,9 +247,11 @@ function love.joystickadded(joystick)
   touch.padAdded(joystick)
 end
 
--- Losing the pad mid-race pauses, so the car isn't left driving itself.
+-- Losing the pad mid-race pauses, so the car isn't left driving itself. With two
+-- at a screen, that's either driver's pad.
 function love.joystickremoved(joystick)
-  if not touch.padRemoved(joystick) then return end
+  local driving = touch.padRemoved(joystick)
+  if not driving and not rm.usesPad(joystick) then return end
   if state.screen == "race" and rm.isRunning() and not rm.isFinished() and not rm.isPaused() then
     rm.setPaused(true)
     input.clear()

@@ -34,6 +34,11 @@ local input = {
   held = {},
   pressedOnce = {},
   gamepad = nil,
+  -- The same presses again, kept apart by whose hands they came from, for two
+  -- drivers at one screen. The merged ones above are what one driver reads.
+  keyPressed = {},
+  padHeld = {},     -- [joystick] = { [button] = true }
+  padPressed = {},  -- [joystick] = { [action] = true }
 }
 
 local byKey = {}
@@ -50,6 +55,7 @@ function input.press(key)
   if action then
     input.held[key] = true
     input.pressedOnce[action] = true
+    input.keyPressed[action] = true
   end
 end
 
@@ -59,15 +65,25 @@ end
 
 function input.gamepadPress(joystick, button)
   input.gamepad = joystick
+  if joystick then
+    input.padHeld[joystick] = input.padHeld[joystick] or {}
+    input.padHeld[joystick][button] = true
+  end
   local action = byButton[button]
   if action then
     input.held["pad:" .. button] = true
     input.pressedOnce[action] = true
+    if joystick then
+      input.padPressed[joystick] = input.padPressed[joystick] or {}
+      input.padPressed[joystick][action] = true
+    end
   end
 end
 
 function input.gamepadRelease(joystick, button)
   input.held["pad:" .. button] = nil
+  local held = joystick and input.padHeld[joystick]
+  if held then held[button] = nil end
 end
 
 function input.joystickAdded(joystick)
@@ -76,6 +92,18 @@ end
 
 function input.joystickRemoved(joystick)
   if input.gamepad == joystick then input.gamepad = nil end
+  input.padHeld[joystick], input.padPressed[joystick] = nil, nil
+end
+
+-- Every pad that's plugged in, oldest first, so the same pad is the same player.
+function input.gamepads()
+  local list = {}
+  if not love.joystick then return list end
+  for _, joystick in ipairs(love.joystick.getJoysticks()) do
+    if joystick:isGamepad() and joystick:isConnected() then list[#list + 1] = joystick end
+  end
+  table.sort(list, function(a, b) return a:getID() < b:getID() end)
+  return list
 end
 
 function input.padConnected()
@@ -100,9 +128,19 @@ function input.consume(action)
   return pressed == true
 end
 
+-- Forget presses not yet read, but not what's held down.
+function input.dropPresses()
+  input.pressedOnce = {}
+  input.keyPressed = {}
+  input.padPressed = {}
+end
+
 function input.clear()
   input.pressedOnce = {}
   input.held = {}
+  input.keyPressed = {}
+  input.padHeld = {}
+  input.padPressed = {}
 end
 
 local function deadzone(v)
@@ -153,6 +191,87 @@ function input.applyTo(target, manualGearbox)
   target.manual = manualGearbox
   target.shiftUp = input.consume("shiftUp")
   target.shiftDown = input.consume("shiftDown")
+end
+
+-- One driver's own hands, when two share the screen: the keyboard, one pad, or
+-- both. It reads only what those hands pressed, and fills a car as applyTo does.
+local Reader = {}
+Reader.__index = Reader
+
+function input.reader(keyboard, pad)
+  return setmetatable({ keyboard = keyboard or false, pad = pad }, Reader)
+end
+
+function Reader:isDown(action)
+  if self.keyboard then
+    for _, key in ipairs(input.binds[action] or {}) do
+      if input.held[key] then return true end
+    end
+  end
+  local held = self.pad and input.padHeld[self.pad]
+  if held then
+    for _, button in ipairs(input.pads[action] or {}) do
+      if held[button] then return true end
+    end
+  end
+  return false
+end
+
+function Reader:consume(action)
+  local pressed = false
+  if self.keyboard and input.keyPressed[action] then
+    input.keyPressed[action] = nil
+    pressed = true
+  end
+  local list = self.pad and input.padPressed[self.pad]
+  if list and list[action] then
+    list[action] = nil
+    pressed = true
+  end
+  return pressed
+end
+
+function Reader:connected()
+  return self.pad ~= nil and self.pad:isConnected()
+end
+
+function Reader:throttle()
+  local amount = self:isDown("throttle") and 1 or 0
+  if self:connected() then amount = math.max(amount, self.pad:getGamepadAxis("triggerright")) end
+  return amount
+end
+
+function Reader:applyTo(target, manualGearbox)
+  local steer, brake = 0, 0
+  if self:isDown("steerLeft") then steer = steer - 1 end
+  if self:isDown("steerRight") then steer = steer + 1 end
+  if self:isDown("brake") then brake = 1 end
+  target.keyboard = true
+  if self:connected() then
+    local axis = input.curve(self.pad:getGamepadAxis("leftx"))
+    if axis ~= 0 then
+      steer = axis
+      target.keyboard = false
+    end
+    brake = math.max(brake, self.pad:getGamepadAxis("triggerleft"))
+  end
+  target.steer, target.throttle, target.brake = steer, self:throttle(), brake
+  target.handbrake = self:isDown("handbrake")
+  local boostTapped = self:consume("boost")
+  target.boost = boostTapped or self:isDown("boost")
+  target.manual = manualGearbox
+  target.shiftUp = self:consume("shiftUp")
+  target.shiftDown = self:consume("shiftDown")
+end
+
+-- Who drives with what when two share the screen, or nil without a pad for the
+-- second. One pad: the keyboard and the pad. Two or more: the keyboard goes with
+-- the first pad, and the second pad is the other driver's.
+function input.splitReaders(pads)
+  pads = pads or input.gamepads()
+  if #pads == 0 then return nil end
+  if #pads == 1 then return input.reader(true, nil), input.reader(false, pads[1]) end
+  return input.reader(true, pads[1]), input.reader(false, pads[2])
 end
 
 return input

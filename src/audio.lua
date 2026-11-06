@@ -1111,12 +1111,14 @@ function audio.knock(impulse)
   free:play()
 end
 
--- strength is the crash's impulse / 9000. spec is the car it happened to.
-function audio.impact(strength, spec)
+-- strength is the crash's impulse / 9000. spec is the car it happened to, and
+-- who the seat of the driver in it, whose engine ducks under the crash.
+function audio.impact(strength, spec, who)
   if not audio.ready then return end
+  local ch = audio.channel(who)
   local size, volume = audio.impactLevel(strength)
   -- Pressed along a wall, the grind already is the sound of it.
-  if size == 0 and audio.grind:getVolume() > 0.02 then return end
+  if size == 0 and ch.grind:getVolume() > 0.02 then return end
   local now = love.timer.getTime()
   if now - audio.lastImpact < IMPACT_GAP and size <= audio.lastSize then return end
   audio.lastImpact, audio.lastSize = now, size
@@ -1129,7 +1131,7 @@ function audio.impact(strength, spec)
   free:setVolume(volume * (0.92 + love.math.random() * 0.08))
   free:setPitch(audio.variedPitch(0.06) * (spec and audio.impactPitch(spec) or 1))
   free:play()
-  if size > 0 then audio.duck = math.max(audio.duck, IMPACT_TIERS[size].duck) end
+  if size > 0 then ch.duck = math.max(ch.duck, IMPACT_TIERS[size].duck) end
 end
 
 -- Sliding is worth hearing. Braking shouldn't nag every time it's used.
@@ -1299,7 +1301,95 @@ local function enginePitch(rpm, at)
   return math.min(3.2, math.max(0.35, rpm / at))
 end
 
-local function updateExhaust(dt, engine, mix, model, load, spec)
+-- A driver's own set of loops and the state behind them. The first is this
+-- module itself, so one driver alone sounds exactly as ever. A second, for two at
+-- a screen, is a clone of every loop: clones share their samples, so it costs
+-- sources and no memory to speak of.
+local channels = { audio }
+audio.gain = 1
+
+local function fadeCh(ch, source, target, dt, rate)
+  fadeTo(source, target * ch.gain, dt, rate)
+end
+
+-- The loops a driver's channel has one of each of. The rival's are the first's alone.
+local LOOP_KEYS = { "scrub", "squeal", "grind", "road", "loose", "wind", "boostGas", "blower", "motor", "horn", "flame" }
+-- Two at a screen each hear their own car a little to their own side, and a
+-- little quieter, so two engines together aren't louder than one alone was.
+local SPLIT_PAN = 0.5    -- sideways share of a unit distance: about 30 degrees
+local SPLIT_GAIN = 0.8
+
+-- Every source in a channel. The first's rival loops aren't in it.
+local function eachChannelLoop(ch, fn)
+  for _, key in ipairs(LOOP_KEYS) do fn(ch[key]) end
+  for _, source in pairs(ch.turbos) do fn(source) end
+  for _, source in pairs(ch.turboBoosts) do fn(source) end
+  for _, engine in pairs(ch.engines) do
+    for _, source in ipairs(engine.speeds) do fn(source) end
+    fn(engine.overrun)
+    fn(engine.idle)
+    fn(engine.limiter)
+  end
+end
+
+local function cloneChannel()
+  local ch = { gain = 1, spool = 0, duck = 0, boost = 0, boosting = false, engines = {}, turbos = {}, turboBoosts = {} }
+  local function copy(source)
+    local c = source:clone()
+    c:stop()
+    c:setVolume(0)
+    return c
+  end
+  for _, key in ipairs(LOOP_KEYS) do ch[key] = copy(audio[key]) end
+  for k, source in pairs(audio.turbos) do ch.turbos[k] = copy(source) end
+  for k, source in pairs(audio.turboBoosts) do ch.turboBoosts[k] = copy(source) end
+  for key, engine in pairs(audio.engines) do
+    local e = { voice = engine.voice, speeds = {} }
+    for i, source in ipairs(engine.speeds) do e.speeds[i] = copy(source) end
+    e.overrun, e.idle, e.limiter = copy(engine.overrun), copy(engine.idle), copy(engine.limiter)
+    ch.engines[key] = e
+  end
+  return ch
+end
+
+-- A seat's channel, or the first's for anything else.
+function audio.channel(who)
+  return channels[who or 1] or audio
+end
+
+-- Only a mono source can be placed: the rest stay in the middle.
+local function place(source, x)
+  if source:getChannelCount() ~= 1 then return end
+  source:setRelative(true)
+  if x == 0 then
+    source:setPosition(0, 0, 0)
+  else
+    source:setPosition(x, 0, -math.sqrt(1 - x * x))
+  end
+end
+
+-- Two drivers at a screen, or one. Two make the second channel the first time,
+-- and both go to their own side; one puts everything back where it was.
+function audio.split(on)
+  if not audio.ready then return end
+  if on and not channels[2] then channels[2] = cloneChannel() end
+  local count = on and 2 or 1
+  for i = 1, #channels do
+    local ch = channels[i]
+    ch.gain = on and SPLIT_GAIN or 1
+    local x = on and (i == 1 and -SPLIT_PAN or SPLIT_PAN) or 0
+    eachChannelLoop(ch, function(source)
+      place(source, x)
+      if i > count then
+        source:stop()
+        source:setVolume(0)
+      end
+    end)
+  end
+  audio.seats = count
+end
+
+local function updateExhaust(ch, dt, engine, mix, model, load, spec)
   local rpm, limiting = model.rpm, model.limiting
   local voice = engine.voice
   local rpms = voice.rpms
@@ -1309,68 +1399,68 @@ local function updateExhaust(dt, engine, mix, model, load, spec)
   local pulling = 1 - resting
   for i, source in ipairs(engine.speeds) do
     source:setPitch(enginePitch(rpm, rpms[i]))
-    fadeTo(source, limiting and 0 or mix.exhaust * blend[i] * (0.3 + power * 0.7) * pulling, dt, limiting and 30 or 8)
+    fadeCh(ch, source, limiting and 0 or mix.exhaust * blend[i] * (0.3 + power * 0.7) * pulling, dt, limiting and 30 or 8)
   end
   engine.idle:setPitch(enginePitch(rpm, voice.idleAt))
-  fadeTo(engine.idle, mix.idle * resting, dt, 8)
+  fadeCh(ch, engine.idle, mix.idle * resting, dt, 8)
   engine.overrun:setPitch(enginePitch(rpm, rpms[2]))
-  fadeTo(engine.overrun, mix.exhaust * (1 - power) * 1.1 * pulling, dt, 8)
+  fadeCh(ch, engine.overrun, mix.exhaust * (1 - power) * 1.1 * pulling, dt, 8)
   engine.limiter:setPitch(math.max(0.35, rpm / rpms[#rpms]))
-  fadeTo(engine.limiter, limiting and mix.limiter or 0, dt, 30)
+  fadeCh(ch, engine.limiter, limiting and mix.limiter or 0, dt, 30)
 end
 
 -- Pressure builds with a lag and has to go somewhere when the throttle shuts. A
 -- race engine's wastegate just opens, with none of a road car's blow-off.
-local function updateTurbo(dt, model, spec, revs)
+local function updateTurbo(ch, dt, model, spec, revs)
   local turbo = TURBOS[spec.turbos]
   if not turbo then
-    audio.spool = 0
+    ch.spool = 0
     return
   end
   local onPower = model.throttle > 0.4 and model.shiftTimer == 0
   local spoolUp = spec.raceExhaust and RACE_SPOOL or turbo.spoolUp
   local vented
-  audio.spool, vented = audio.spoolStep(audio.spool, onPower, revs, dt, spoolUp)
+  ch.spool, vented = audio.spoolStep(ch.spool, onPower, revs, dt, spoolUp)
   if vented then
     if not spec.raceExhaust then
-      audio.play("blowoff", audio.blowoffVolume(audio.spool) * turbo.ventLevel, audio.variedPitch() * turbo.ventPitch)
+      audio.play("blowoff", audio.blowoffVolume(ch.spool) * turbo.ventLevel, audio.variedPitch() * turbo.ventPitch)
     end
-    audio.spool = 0
+    ch.spool = 0
   end
 end
 
-local function updateEngineLayers(dt, model, spec, revs, load)
-  updateTurbo(dt, model, spec, revs)
+local function updateEngineLayers(ch, dt, model, spec, revs, load)
+  updateTurbo(ch, dt, model, spec, revs)
   local boosting = model.boostState == "active"
-  audio.boost = audio.boostStep(audio.boost, boosting, model.boostTank / spec.boostTime, dt)
+  ch.boost = audio.boostStep(ch.boost, boosting, model.boostTank / spec.boostTime, dt)
   -- The bottle shutting off dumps the pressure, like lifting off does.
   local turbo = TURBOS[spec.turbos]
-  if turbo and audio.boosting and not boosting and not spec.raceExhaust and audio.spool >= BLOWOFF_SPOOL then
+  if turbo and ch.boosting and not boosting and not spec.raceExhaust and ch.spool >= BLOWOFF_SPOOL then
     audio.play("blowoff", audio.blowoffVolume(1) * turbo.ventLevel, audio.variedPitch() * turbo.ventPitch)
   end
-  audio.boosting = boosting
-  local mix = audio.engineMix(spec, revs, load, audio.spool, audio.boost)
-  audio.duck = math.max(0, audio.duck - DUCK_RECOVERY * dt)
-  mix.exhaust = mix.exhaust * (1 - audio.duck)
-  if audio.boostKind(spec) == "turbo" then mix.exhaust = mix.exhaust * (1 - TURBO_BOOST_DUCK * audio.boost) end
+  ch.boosting = boosting
+  local mix = audio.engineMix(spec, revs, load, ch.spool, ch.boost)
+  ch.duck = math.max(0, ch.duck - DUCK_RECOVERY * dt)
+  mix.exhaust = mix.exhaust * (1 - ch.duck)
+  if audio.boostKind(spec) == "turbo" then mix.exhaust = mix.exhaust * (1 - TURBO_BOOST_DUCK * ch.boost) end
   local voice = audio.voiceOf(spec)
-  if voice then updateExhaust(dt, audio.engines[voice.key], mix, model, load, spec) end
-  local whistle = audio.turbos[spec.turbos]
-  local lift = audio.boostPitch(spec, audio.boost)
+  if voice then updateExhaust(ch, dt, ch.engines[voice.key], mix, model, load, spec) end
+  local whistle = ch.turbos[spec.turbos]
+  local lift = audio.boostPitch(spec, ch.boost)
   if whistle then
     -- Boost is full pressure, whatever the turbo has built by itself.
-    whistle:setPitch(audio.turboPitch(math.max(audio.spool, audio.boost)) * lift)
-    fadeTo(whistle, mix.turbo, dt, 10)
+    whistle:setPitch(audio.turboPitch(math.max(ch.spool, ch.boost)) * lift)
+    fadeCh(ch, whistle, mix.turbo, dt, 10)
   end
   local tank = model.boostTank / spec.boostTime
-  for turbos, source in pairs(audio.turboBoosts) do
+  for turbos, source in pairs(ch.turboBoosts) do
     source:setPitch(audio.boostGasPitch(tank))
-    fadeTo(source, turbos == spec.turbos and mix.turboBoost or 0, dt, 10)
+    fadeCh(ch, source, turbos == spec.turbos and mix.turboBoost or 0, dt, 10)
   end
-  audio.blower:setPitch(audio.blowerPitch(revs) * lift)
-  fadeTo(audio.blower, mix.blower, dt, 6)
-  audio.motor:setPitch(audio.motorPitch(revs) * lift)
-  fadeTo(audio.motor, mix.motor, dt, 6)
+  ch.blower:setPitch(audio.blowerPitch(revs) * lift)
+  fadeCh(ch, ch.blower, mix.blower, dt, 6)
+  ch.motor:setPitch(audio.motorPitch(revs) * lift)
+  fadeCh(ch, ch.motor, mix.motor, dt, 6)
 end
 
 local function updateRival(dt, rival, rivalDistance)
@@ -1399,13 +1489,16 @@ local function updateRival(dt, rival, rivalDistance)
   end
 end
 
-function audio.update(dt, car, rival, rivalDistance)
+-- who is the driver's seat: 1, or 2 with two at a screen. Only the first hears a rival.
+function audio.update(dt, car, rival, rivalDistance, who)
   if not audio.ready or not car then return end
+  local ch = channels[who or 1]
+  if not ch then return end
   local model = car.model
   local spec = car.spec
   local revs = math.max(0, math.min(1.1, model.rpm / spec.redline))
   local load = audio.engineLoad(model.throttle, model.shiftTimer > 0)
-  updateEngineLayers(dt, model, spec, revs, load)
+  updateEngineLayers(ch, dt, model, spec, revs, load)
 
   local speed = car:getSpeed()
   local slide, offRoad = 0, 0
@@ -1416,50 +1509,42 @@ function audio.update(dt, car, rival, rivalDistance)
   end
 
   local braking = model.brake > 0.05
-  audio.scrub:setPitch(0.9 + math.min(0.2, speed / 200))
-  fadeTo(audio.scrub, audio.scrubLevel(slide, braking), dt, 4)
-  audio.squeal:setPitch(0.96 + math.min(0.1, speed / 500) + slide * 0.04)
-  fadeTo(audio.squeal, audio.squealLevel(slide, braking), dt, 4)
-  audio.grind:setPitch(0.75 + math.min(0.55, speed / 90))
+  ch.scrub:setPitch(0.9 + math.min(0.2, speed / 200))
+  fadeCh(ch, ch.scrub, audio.scrubLevel(slide, braking), dt, 4)
+  ch.squeal:setPitch(0.96 + math.min(0.1, speed / 500) + slide * 0.04)
+  fadeCh(ch, ch.squeal, audio.squealLevel(slide, braking), dt, 4)
+  ch.grind:setPitch(0.75 + math.min(0.55, speed / 90))
   local grinding = audio.grindLevel(car.scraping or 0, speed)
-  fadeTo(audio.grind, grinding, dt, grinding > audio.grind:getVolume() and GRIND_IN or GRIND_OUT)
-  audio.road:setPitch(0.7 + math.min(0.7, speed / 100))
-  fadeTo(audio.road, math.min(0.3, speed / 230), dt, 3)
-  audio.loose:setPitch(0.75 + math.min(0.35, speed / 70))
+  fadeCh(ch, ch.grind, grinding, dt, grinding * ch.gain > ch.grind:getVolume() and GRIND_IN or GRIND_OUT)
+  ch.road:setPitch(0.7 + math.min(0.7, speed / 100))
+  fadeCh(ch, ch.road, math.min(0.3, speed / 230), dt, 3)
+  ch.loose:setPitch(0.75 + math.min(0.35, speed / 70))
   local looseLevel = audio.looseLevel(offRoad, speed)
-  fadeTo(audio.loose, looseLevel, dt, looseLevel > audio.loose:getVolume() and LOOSE_IN or LOOSE_OUT)
-  audio.wind:setPitch(0.85 + math.min(0.35, speed / 200) + model.slipstream * 0.1)
-  fadeTo(audio.wind, math.max(0, (speed - 18) / 110) * 0.55 + model.slipstream * 0.25, dt, 2)
+  fadeCh(ch, ch.loose, looseLevel, dt, looseLevel * ch.gain > ch.loose:getVolume() and LOOSE_IN or LOOSE_OUT)
+  ch.wind:setPitch(0.85 + math.min(0.35, speed / 200) + model.slipstream * 0.1)
+  fadeCh(ch, ch.wind, math.max(0, (speed - 18) / 110) * 0.55 + model.slipstream * 0.25, dt, 2)
   local boosting = model.boostState == "active"
   local tank = model.boostTank / spec.boostTime
-  audio.boostGas:setPitch(audio.boostGasPitch(tank))
+  ch.boostGas:setPitch(audio.boostGasPitch(tank))
   local gas = boosting and audio.boostKind(spec) == "gas" and audio.boostGasLevel(tank) or 0
-  fadeTo(audio.boostGas, gas, dt, gas > 0 and BOOST_GAS_IN or BOOST_GAS_OUT)
-  audio.horn:setPitch(audio.hornPitch(spec) * (car.hornRatio or 1))
+  fadeCh(ch, ch.boostGas, gas, dt, gas > 0 and BOOST_GAS_IN or BOOST_GAS_OUT)
+  ch.horn:setPitch(audio.hornPitch(spec) * (car.hornRatio or 1))
   local hornOn = car.hornSounding
   if hornOn == nil then hornOn = car.horn end
-  fadeTo(audio.horn, hornOn and HORN_LEVEL or 0, dt, HORN_FADE)
+  fadeCh(ch, ch.horn, hornOn and HORN_LEVEL or 0, dt, HORN_FADE)
   local fire = car.fx and car.fx.flameTime or 0
   local flame = FLAME_LEVEL * math.min(1, fire / FLAME_FADE)
-  audio.flame:setPitch(0.9 + 0.2 * math.min(1, fire / FLAME_FADE))
-  fadeTo(audio.flame, flame, dt, flame > audio.flame:getVolume() and FLAME_IN or FLAME_OUT)
+  ch.flame:setPitch(0.9 + 0.2 * math.min(1, fire / FLAME_FADE))
+  fadeCh(ch, ch.flame, flame, dt, flame * ch.gain > ch.flame:getVolume() and FLAME_IN or FLAME_OUT)
 
-  updateRival(dt, rival, rivalDistance)
+  if ch == audio then updateRival(dt, rival, rivalDistance) end
 end
 
 local function eachLoop(fn)
-  for _, key in ipairs({ "rivalMotor", "scrub", "squeal", "grind", "road", "loose", "wind", "boostGas", "blower", "motor", "horn", "rivalHorn", "flame" }) do
-    fn(audio[key])
-  end
-  for _, source in pairs(audio.turbos) do fn(source) end
-  for _, source in pairs(audio.turboBoosts) do fn(source) end
-  for _, engine in pairs(audio.engines) do
-    for _, source in ipairs(engine.speeds) do fn(source) end
-    fn(engine.overrun)
-    fn(engine.idle)
-    fn(engine.limiter)
-    fn(engine.rival)
-  end
+  fn(audio.rivalMotor)
+  fn(audio.rivalHorn)
+  for _, engine in pairs(audio.engines) do fn(engine.rival) end
+  for _, ch in ipairs(channels) do eachChannelLoop(ch, fn) end
 end
 
 function audio.silence()
@@ -1468,7 +1553,9 @@ function audio.silence()
     source:stop()
     source:setVolume(0)
   end)
-  audio.spool, audio.duck, audio.boost, audio.boosting = 0, 0, 0, false
+  for _, ch in ipairs(channels) do
+    ch.spool, ch.duck, ch.boost, ch.boosting = 0, 0, 0, false
+  end
 end
 
 -- The race noise dies away behind the results rather than cutting out.

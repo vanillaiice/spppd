@@ -40,8 +40,16 @@ function minimap.drawOutline(track, line, x, y, size, width, color)
   return ox, oy, scale
 end
 
+-- player is the player's car, or a list of the drivers at this screen. Two get
+-- their own paint in the middle of the marker, so each can find themselves.
 function minimap.draw(x, y, size, cars, player)
   if not minimap.track then return end
+  local players = {}
+  if player and player.model then
+    players[player] = true
+  elseif player then
+    for _, car in ipairs(player) do players[car] = "paint" end
+  end
   local b = minimap.bounds
   local ox, oy, scale = minimap.drawOutline(minimap.track, minimap.line, x, y, size, 2.5)
   local start = minimap.track.samples[1]
@@ -52,11 +60,16 @@ function minimap.draw(x, y, size, cars, player)
     local car = cars[i]
     local cx = ox + (car.curX - b.minX) * scale
     local cy = oy + (car.curY - b.minY) * scale
-    if car == player then
+    local mark = players[car]
+    if mark then
       love.graphics.setColor(0, 0, 0)
       love.graphics.circle("fill", cx, cy, 5)
       love.graphics.setColor(colors.marshal)
       love.graphics.circle("fill", cx, cy, 3.5)
+      if mark == "paint" then
+        love.graphics.setColor(car.color)
+        love.graphics.circle("fill", cx, cy, 2)
+      end
     else
       love.graphics.setColor(car.color)
       love.graphics.circle("fill", cx, cy, 3)

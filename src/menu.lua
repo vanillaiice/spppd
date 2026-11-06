@@ -117,9 +117,33 @@ local function currentCar()
   return garage[math.max(1, math.min(#garage, settings.car))]
 end
 
-local function currentColor(spec)
-  local paint = PAINTS[math.max(1, math.min(#PAINTS, settings.hue))]
+local function currentColor(spec, hue)
+  local paint = PAINTS[math.max(1, math.min(#PAINTS, hue or settings.hue))]
   return paint.color or spec.color
+end
+
+local function secondCar()
+  return garage[math.max(1, math.min(#garage, settings.car2))]
+end
+
+-- Two at one screen: a desktop with a pad for the second, in a race or freestyle.
+-- Time trial is one driver's, against their own ghost.
+function menu.canSplit(mode)
+  mode = mode or settings.mode
+  if ui.mobile or mode == "trial" then return false end
+  return #input.gamepads() >= 1
+end
+
+local function splitting(mode)
+  return settings.players == 2 and menu.canSplit(mode)
+end
+
+-- Who drives with what, as the PLAYERS row says it.
+local function splitHint()
+  local pads = input.gamepads()
+  if #pads == 0 then return "Plug in a pad for the second driver." end
+  local first = #pads >= 2 and "KEYBOARD OR " .. pads[1]:getName():upper() or "KEYBOARD"
+  return "P1: " .. first .. ".  P2: " .. pads[#pads >= 2 and 2 or 1]:getName():upper() .. "."
 end
 
 function menu.go(screen)
@@ -149,7 +173,16 @@ function menu.startRace(extra)
   local mode = extra.online and "race" or settings.mode
   local entry
   if mode == "freestyle" then entry = freestyleEntry() else entry = extra.entry or currentEntry() end
+  local player2, playerName
+  if not extra.online and not extra.fromEditor and splitting(mode) then
+    local spec2 = secondCar()
+    player2 = { spec = spec2, color = currentColor(spec2, settings.hue2), name = "P2",
+      assist = settings.assists2, manualGearbox = settings.gearbox2 == "manual" }
+    playerName = "P1"
+  end
   rm.start({
+    player2 = player2,
+    playerName = playerName,
     mode = mode,
     entry = entry,
     track = entry and cachedTrack(entry).track,
@@ -246,24 +279,27 @@ local function freestyleTrackRow()
     function(v) settings.freestyleTrack = v end, names, titles)
 end
 
-local function carRow()
+-- key is the setting it changes: car, or car2 for the second driver.
+local function carRow(label, key)
+  key = key or "car"
   local ids, names = {}, {}
   for i, spec in ipairs(garage) do
     ids[i] = i
     names[i] = spec.name
   end
-  return stepper("CAR", function() return settings.car end,
-    function(v) settings.car = v end, ids, names)
+  return stepper(label or "CAR", function() return settings[key] end,
+    function(v) settings[key] = v end, ids, names)
 end
 
-local function paintRow()
+local function paintRow(label, key)
+  key = key or "hue"
   local ids, names = {}, {}
   for i, p in ipairs(PAINTS) do
     ids[i] = i
     names[i] = p.name
   end
-  return stepper("PAINT", function() return settings.hue end,
-    function(v) settings.hue = v end, ids, names)
+  return stepper(label or "PAINT", function() return settings[key] end,
+    function(v) settings[key] = v end, ids, names)
 end
 
 local function lapsRow()
@@ -275,12 +311,41 @@ local function timeRow()
     function(v) settings.time = v end, TIMES, TIME_NAMES)
 end
 
+local function handlingRow(label, key)
+  return stepper(label, function() return settings[key] end,
+    function(v) settings[key] = v end, ASSISTS, ASSIST_NAMES)
+end
+
+-- The setting each HANDLING row changes, for its hint.
+local HANDLING_KEYS = { HANDLING = "assists", ["P1 HANDLING"] = "assists", ["P2 HANDLING"] = "assists2" }
+
+-- One driver's rows when two share the screen. P1's gearbox is the same setting
+-- as CONTROLS > GEARBOX.
+local function playerRows(rows, prefix, car, hue, assists, gearbox)
+  rows[#rows + 1] = carRow(prefix .. "CAR", car)
+  rows[#rows + 1] = paintRow(prefix .. "PAINT", hue)
+  rows[#rows + 1] = handlingRow(prefix .. "HANDLING", assists)
+  rows[#rows + 1] = stepper(prefix .. "GEARBOX", function() return settings[gearbox] end,
+    function(v) settings[gearbox] = v end, { "auto", "manual" }, { auto = "AUTO", manual = "MANUAL" })
+end
+
 local function setupRows()
   local rows = {}
   local mode = settings.mode
   rows[#rows + 1] = mode == "freestyle" and freestyleTrackRow() or trackRow()
-  rows[#rows + 1] = carRow()
-  rows[#rows + 1] = paintRow()
+  if menu.canSplit(mode) then
+    rows[#rows + 1] = stepper("PLAYERS", function() return settings.players end,
+      function(v) settings.players = v end, { 1, 2 })
+  end
+  local two = splitting(mode)
+  if two then
+    -- Each driver's own rows together: car, paint, handling, gearbox.
+    playerRows(rows, "P1 ", "car", "hue", "assists", "gearbox")
+    playerRows(rows, "P2 ", "car2", "hue2", "assists2", "gearbox2")
+  else
+    rows[#rows + 1] = carRow()
+    rows[#rows + 1] = paintRow()
+  end
   -- Open counts every lap; clean voids one that goes off, cuts, resets or wrecks.
   if mode == "trial" then
     rows[#rows + 1] = stepper("RULES", function() return settings.trialRules end,
@@ -294,8 +359,7 @@ local function setupRows()
       function(v) settings.difficulty = v end, DIFFICULTIES, DIFFICULTY_NAMES)
   end
   rows[#rows + 1] = timeRow()
-  rows[#rows + 1] = stepper("HANDLING", function() return settings.assists end,
-    function(v) settings.assists = v end, ASSISTS, ASSIST_NAMES)
+  if not two then rows[#rows + 1] = handlingRow("HANDLING", "assists") end
   -- A phone's save folder is out of reach, so there's no way to fill it there.
   if mode == "freestyle" and not ui.mobile then
     rows[#rows + 1] = stepper("RADIO", function() return settings.radioVolume end,
@@ -573,6 +637,21 @@ local function drawSetupPreview(sw, sh, boardW, s, carOnly)
   local spec = currentCar()
   local panelH = 72 * s
   local py = sh - panelH - 14 * s
+  if not carOnly and splitting() then
+    -- Both drivers' cars, half the panel each.
+    ui.panel(x, py, w, panelH, 0.82)
+    local half = w / 2
+    for i, each in ipairs({ { spec, currentColor(spec) }, { secondCar(), currentColor(secondCar(), settings.hue2) } }) do
+      local hx = x + (i - 1) * half
+      drawCar(each[1], each[2], hx + 42 * s, py + panelH / 2, s, 0)
+      ui.text("P" .. i, hx + 84 * s, py + 7 * s, 6 * s, colors.muted)
+      -- A size down from one driver's panel: the longest names have half the room.
+      ui.text(each[1].name, hx + 84 * s, py + 21 * s, 6 * s, colors.paint, "left", half - 90 * s)
+      ui.text(string.format("%.0f KW  %s", dynamics.peakPower(each[1]) / 1000, each[1].drive),
+        hx + 84 * s, py + 35 * s, 5 * s, colors.marshal, "left", half - 90 * s)
+    end
+    return
+  end
   ui.panel(x, py, w, panelH, 0.82)
   drawCar(spec, currentColor(spec), x + 42 * s, py + panelH / 2, s, 0)
   local tx = x + 84 * s
@@ -728,12 +807,15 @@ function menu.draw(sw, sh)
       drawSetupPreview(sw, sh, w, s, true)
     end
     if menu.screen == "setup" then
-      if focused.label == "HANDLING" then
-        ui.text(ASSIST_HINTS[settings.assists], 14 * s, sh - 34 * s, 5 * s, colors.muted, "left", w - 28 * s)
+      if HANDLING_KEYS[focused.label] then
+        ui.text(ASSIST_HINTS[settings[HANDLING_KEYS[focused.label]]], 14 * s, sh - 34 * s, 5 * s, colors.muted,
+          "left", w - 28 * s)
       elseif focused.label == "RULES" then
         ui.text(RULE_HINTS[settings.trialRules], 14 * s, sh - 34 * s, 5 * s, colors.muted, "left", w - 28 * s)
       elseif focused.label == "MUSIC FOLDER" then
         ui.text(MUSIC_HINT, 14 * s, sh - 34 * s, 5 * s, colors.muted, "left", w - 28 * s)
+      elseif focused.label == "PLAYERS" then
+        ui.text(splitHint(), 14 * s, sh - 34 * s, 5 * s, colors.muted, "left", w - 28 * s)
       end
     end
     if menu.screen == "online" and not failed then
@@ -846,12 +928,13 @@ function menu.drawResults(sw, sh)
   ui.kerb(x, y, w, 3 * s, s)
 
   local heading, headingColor = hud.finishHeading(race.player.place, race.player.timedOut)
+  if #race.players > 1 then heading, headingColor = hud.splitHeading(race.players) end
   ui.text(heading, x, y + 12 * s, 12 * s, headingColor, "center", w)
 
   local listY = y + 36 * s
   for i, car in ipairs(order) do
     local ry = listY + (i - 1) * rowH
-    if car == race.player then
+    if car.isPlayer then
       love.graphics.setColor(colors.marshal[1], colors.marshal[2], colors.marshal[3], 0.18)
       love.graphics.rectangle("fill", x + 6 * s, ry - 2 * s, w - 12 * s, rowH)
     end

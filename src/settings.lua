@@ -37,6 +37,11 @@ local settings = {
   difficulty = "pro",
   time = "day",
   trialRules = "open",  -- or "clean": see Race.new
+  players = 1,       -- 2 splits the screen, with a pad for the second
+  car2 = 2,          -- the second driver's car, paint, handling and gearbox
+  hue2 = 1,
+  assists2 = "arcade",
+  gearbox2 = "auto",
 
   server = SERVER,
 }

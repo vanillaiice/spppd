@@ -40,6 +40,7 @@ local CRASH_MEMORY = 0.15  -- seconds; a nose and then the tail swinging in are 
 local WRECK_TIME = 1.2     -- seconds out of the car's hands before it goes back
 local SHUNT_GRACE = 0.4    -- seconds after touching a car when a fence can't wreck it
 local RECOVER_CLEARANCE = 4 * M  -- how far out from a wall a wreck off the road restarts
+local LOT_PAIR = 3 * M           -- two drivers on the lot start this far either side of the box's middle
 
 -- Seats can have gaps, because someone left the lobby. The grid doesn't.
 local function gridPlace(online, slot)
@@ -85,10 +86,16 @@ function Race.new(opts)
   -- Tiers change how much grip a car has, so an online race has to share one.
   local handling = online and dynamics.DEFAULT_ASSIST or opts.assist or dynamics.DEFAULT_ASSIST
   self.handling = handling
+  -- A second driver at the same screen. Local only: never online.
+  local second = not online and opts.player2 or nil
   local slot = 1
   if self.mode == "race" and self.track then slot = online and gridPlace(online, online.slot) or (opts.opponents or 0) + 1 end
   local x, y, angle, index = 0, 0, -math.pi / 2, nil
-  if self.track then x, y, angle, index = self.track:gridSlot(slot) end
+  if self.track then
+    x, y, angle, index = self.track:gridSlot(slot)
+  elseif second then
+    x = -LOT_PAIR
+  end
 
   self.player = Car.new(spec, x, y, angle, {
     isPlayer = true,
@@ -98,7 +105,27 @@ function Race.new(opts)
   })
   self.player.input.manual = opts.manualGearbox or false
   self.player.trackIndex = index
+  self.player.homeX, self.player.homeY = x, y
   self.cars[1] = self.player
+  -- Everyone driven by someone here, P1 first.
+  self.players = { self.player }
+
+  if second then
+    local sx, sy, sa, si = LOT_PAIR, 0, -math.pi / 2, nil
+    if self.track then sx, sy, sa, si = self.track:gridSlot(slot + 1) end
+    local car = Car.new(second.spec or garage[1], sx, sy, sa, {
+      isPlayer = true,
+      color = second.color,
+      -- Each driver here picks their own handling. The AI goes by P1's.
+      assist = second.assist or handling,
+      name = second.name or "P2",
+    })
+    car.input.manual = second.manualGearbox or false
+    car.trackIndex = si
+    car.homeX, car.homeY = sx, sy
+    self.cars[2] = car
+    self.players[2] = car
+  end
 
   if online then
     self.player.slot = online.slot
@@ -210,18 +237,26 @@ local function placeOnLine(self, car, s)
   spoil(self, car, "reset")
 end
 
--- Knocked cones go back to their spots: all of them, or only the ones the
+-- True when no driver here is near enough to see something at x, y move.
+local function outOfSight(self, x, y)
+  local far = lot.CONE_RESET_DISTANCE ^ 2
+  for _, car in ipairs(self.players) do
+    local px, py = car.body:getPosition()
+    if (px - x) ^ 2 + (py - y) ^ 2 <= far then return false end
+  end
+  return true
+end
+
+-- Knocked cones go back to their spots: all of them, or only the ones every
 -- player is far enough from not to see it happen.
 function Race:resetCones(all)
   if not self.cones then return end
-  local px, py = self.player.body:getPosition()
-  local far = lot.CONE_RESET_DISTANCE ^ 2
   local moved = (1 * M) ^ 2
   for _, cone in ipairs(self.cones) do
     local body = cone.body
     local x, y = body:getPosition()
     if (x - cone.homeX) ^ 2 + (y - cone.homeY) ^ 2 > moved
-      and (all or (px - cone.homeX) ^ 2 + (py - cone.homeY) ^ 2 > far) then
+      and (all or outOfSight(self, cone.homeX, cone.homeY)) then
       body:setPosition(cone.homeX, cone.homeY)
       body:setAngle(0)
       body:setLinearVelocity(0, 0)
@@ -233,8 +268,8 @@ end
 function Race:respawn(car)
   local track = self.track
   if not track then
-    car:teleport(0, 0, -math.pi / 2)
-    if car == self.player then self:resetCones(true) end
+    car:teleport(car.homeX or 0, car.homeY or 0, -math.pi / 2)
+    if car.isPlayer then self:resetCones(true) end
     return
   end
   local index = car.trackIndex or 1
@@ -361,7 +396,7 @@ function Race:updateProgress(car, dt)
     if self.mode == "race" and car.lapsDone >= self.laps then
       car.finished = true
       car.finishTime = self.time
-      if car.isPlayer then self:onPlayerFinished() end
+      if car.isPlayer then self:onPlayerFinished(car) end
     end
   end
 end
@@ -374,9 +409,11 @@ local function coolDown(self, car)
   car.input.manual = false
 end
 
-function Race:onPlayerFinished()
-  if not self.online then self.finishGrace = FINISH_GRACE end
-  coolDown(self, self.player)
+-- The first driver here home starts the clock on everyone else.
+function Race:onPlayerFinished(car)
+  car = car or self.player
+  if not self.online and not self.finishGrace then self.finishGrace = FINISH_GRACE end
+  coolDown(self, car)
 end
 
 -- Another driver has gone. Someone who already took the flag only went home, so
@@ -475,6 +512,13 @@ function Race:step(dt)
     self.finishGrace = self.finishGrace - dt
     if self.finishGrace <= 0 or allFinished(self) then
       self.phase = "finished"
+      -- The other driver here didn't make it in time.
+      for _, car in ipairs(self.players) do
+        if not car.finished and not car.timedOut then
+          car.timedOut = true
+          coolDown(self, car)
+        end
+      end
     end
   end
 

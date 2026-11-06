@@ -41,6 +41,11 @@ on the left and UP on the right, like paddles.
 controls get out of the way. Touch the screen to bring them back. If the pad drops out
 mid-race, the race pauses.
 
+**Two players at one screen** on a desktop: plug in a pad and set PLAYERS to 2 in race
+or freestyle setup. The screen splits down the middle. With one pad, P1 drives on the
+keyboard and P2 on the pad; with two, P1 can use the keyboard or the first pad. Each
+player picks their own car, paint, handling and gearbox.
+
 **CONTROLS** in the main menu holds all of this: touch controls on, off or automatic,
 stick or buttons steering, Auto Gas, the gearbox, the size and opacity of the touch
 controls, and vibration. BUTTON LIST shows the buttons for whatever you're holding.
@@ -95,6 +100,7 @@ desktops online. What differs:
 | --- | --- | --- |
 | Race, time trial, freestyle | Yes | Yes |
 | Online, two to four players | Yes | Yes |
+| Two players at one screen | Yes, with a pad for the second | No |
 | Track editor | Yes | No |
 | Your own tracks | Make and race them | Race them online, from the host |
 | Freestyle radio, your own music | Yes | No |
