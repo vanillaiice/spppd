@@ -122,8 +122,26 @@ local function currentColor(spec, hue)
   return paint.color or spec.color
 end
 
-local function secondCar()
-  return garage[math.max(1, math.min(#garage, settings.car2))]
+-- Each driver's own settings when two share the screen. P1's gearbox is the same
+-- setting as CONTROLS > GEARBOX.
+local DRIVER_KEYS = {
+  { car = "car", hue = "hue", assists = "assists", gearbox = "gearbox" },
+  { car = "car2", hue = "hue2", assists = "assists2", gearbox = "gearbox2" },
+}
+
+-- Whose car the setup and pause rows set when two share the screen: one driver
+-- at a time, picked on the DRIVER row.
+menu.driver = 1
+
+local function driverKeys(two)
+  return DRIVER_KEYS[two and menu.driver or 1]
+end
+
+-- Driver i's car and its paint.
+local function driverCar(i)
+  local keys = DRIVER_KEYS[i]
+  local spec = garage[math.max(1, math.min(#garage, settings[keys.car]))]
+  return spec, currentColor(spec, settings[keys.hue])
 end
 
 -- Two at one screen: a desktop with a pad for the second, in a race or freestyle.
@@ -147,6 +165,8 @@ local function splitHint()
 end
 
 function menu.go(screen)
+  -- The setup screen always opens on P1.
+  if screen == "setup" then menu.driver = 1 end
   menu.screen = screen
   ui.focus[screen] = ui.focus[screen] or 1
 end
@@ -175,8 +195,8 @@ function menu.startRace(extra)
   if mode == "freestyle" then entry = freestyleEntry() else entry = extra.entry or currentEntry() end
   local player2, playerName
   if not extra.online and not extra.fromEditor and splitting(mode) then
-    local spec2 = secondCar()
-    player2 = { spec = spec2, color = currentColor(spec2, settings.hue2), name = "P2",
+    local spec2, color2 = driverCar(2)
+    player2 = { spec = spec2, color = color2, name = "P2",
       assist = settings.assists2, manualGearbox = settings.gearbox2 == "manual" }
     playerName = "P1"
   end
@@ -279,27 +299,32 @@ local function freestyleTrackRow()
     function(v) settings.freestyleTrack = v end, names, titles)
 end
 
--- key is the setting it changes: car, or car2 for the second driver.
-local function carRow(label, key)
+-- key is the setting it changes: car, or car2 for the second driver. apply, if
+-- given, runs once it has: the pause menu's way of changing the car on the road.
+local function carRow(label, key, apply)
   key = key or "car"
   local ids, names = {}, {}
   for i, spec in ipairs(garage) do
     ids[i] = i
     names[i] = spec.name
   end
-  return stepper(label or "CAR", function() return settings[key] end,
-    function(v) settings[key] = v end, ids, names)
+  return stepper(label or "CAR", function() return settings[key] end, function(v)
+    settings[key] = v
+    if apply then apply() end
+  end, ids, names)
 end
 
-local function paintRow(label, key)
+local function paintRow(label, key, apply)
   key = key or "hue"
   local ids, names = {}, {}
   for i, p in ipairs(PAINTS) do
     ids[i] = i
     names[i] = p.name
   end
-  return stepper(label or "PAINT", function() return settings[key] end,
-    function(v) settings[key] = v end, ids, names)
+  return stepper(label or "PAINT", function() return settings[key] end, function(v)
+    settings[key] = v
+    if apply then apply() end
+  end, ids, names)
 end
 
 local function lapsRow()
@@ -316,17 +341,10 @@ local function handlingRow(label, key)
     function(v) settings[key] = v end, ASSISTS, ASSIST_NAMES)
 end
 
--- The setting each HANDLING row changes, for its hint.
-local HANDLING_KEYS = { HANDLING = "assists", ["P1 HANDLING"] = "assists", ["P2 HANDLING"] = "assists2" }
-
--- One driver's rows when two share the screen. P1's gearbox is the same setting
--- as CONTROLS > GEARBOX.
-local function playerRows(rows, prefix, car, hue, assists, gearbox)
-  rows[#rows + 1] = carRow(prefix .. "CAR", car)
-  rows[#rows + 1] = paintRow(prefix .. "PAINT", hue)
-  rows[#rows + 1] = handlingRow(prefix .. "HANDLING", assists)
-  rows[#rows + 1] = stepper(prefix .. "GEARBOX", function() return settings[gearbox] end,
-    function(v) settings[gearbox] = v end, { "auto", "manual" }, { auto = "AUTO", manual = "MANUAL" })
+-- Picks whose car the rows under it set.
+local function driverRow()
+  return stepper("DRIVER", function() return menu.driver end,
+    function(v) menu.driver = v end, { 1, 2 }, { "P1", "P2" })
 end
 
 local function setupRows()
@@ -339,9 +357,14 @@ local function setupRows()
   end
   local two = splitting(mode)
   if two then
-    -- Each driver's own rows together: car, paint, handling, gearbox.
-    playerRows(rows, "P1 ", "car", "hue", "assists", "gearbox")
-    playerRows(rows, "P2 ", "car2", "hue2", "assists2", "gearbox2")
+    -- One driver's car, paint, handling and gearbox at a time.
+    local keys = driverKeys(true)
+    rows[#rows + 1] = driverRow()
+    rows[#rows + 1] = carRow("CAR", keys.car)
+    rows[#rows + 1] = paintRow("PAINT", keys.hue)
+    rows[#rows + 1] = handlingRow("HANDLING", keys.assists)
+    rows[#rows + 1] = stepper("GEARBOX", function() return settings[keys.gearbox] end,
+      function(v) settings[keys.gearbox] = v end, { "auto", "manual" }, { auto = "AUTO", manual = "MANUAL" })
   else
     rows[#rows + 1] = carRow()
     rows[#rows + 1] = paintRow()
@@ -611,6 +634,11 @@ local function drawSetupPreview(sw, sh, boardW, s, carOnly)
   local w = sw - x - 14 * s
   if w < 120 * s then return end
 
+  -- The driver the rows are setting, when two share the screen. Online is one
+  -- driver's, even with two chosen for races here.
+  local two = not carOnly and menu.screen == "setup" and splitting()
+  local spec, color = driverCar(two and menu.driver or 1)
+
   local entry
   if not carOnly then
     if settings.mode == "freestyle" then entry = freestyleEntry() else entry = currentEntry() end
@@ -626,7 +654,7 @@ local function drawSetupPreview(sw, sh, boardW, s, carOnly)
     ui.text(detail, x, 14 * s + size + 8 * s, 6 * s, colors.paint, "right", w - 6 * s)
     -- Freestyle times nothing, so a best lap means nothing there.
     if settings.mode ~= "freestyle" then
-      local best = settings.bestLap(entry.name, currentCar().id, settings.trialRules)
+      local best = settings.bestLap(entry.name, spec.id, settings.trialRules)
       ui.text("BEST " .. hud.formatTime(best), x + 6 * s, 14 * s + size + 20 * s, 6 * s,
         best and colors.sectorPurple or colors.muted)
     end
@@ -634,28 +662,13 @@ local function drawSetupPreview(sw, sh, boardW, s, carOnly)
 
   if carOnly then drawOnlineNotes(x, 14 * s, w, s) end
 
-  local spec = currentCar()
   local panelH = 72 * s
   local py = sh - panelH - 14 * s
-  if not carOnly and splitting() then
-    -- Both drivers' cars, half the panel each.
-    ui.panel(x, py, w, panelH, 0.82)
-    local half = w / 2
-    for i, each in ipairs({ { spec, currentColor(spec) }, { secondCar(), currentColor(secondCar(), settings.hue2) } }) do
-      local hx = x + (i - 1) * half
-      drawCar(each[1], each[2], hx + 42 * s, py + panelH / 2, s, 0)
-      ui.text("P" .. i, hx + 84 * s, py + 7 * s, 6 * s, colors.muted)
-      -- A size down from one driver's panel: the longest names have half the room.
-      ui.text(each[1].name, hx + 84 * s, py + 21 * s, 6 * s, colors.paint, "left", half - 90 * s)
-      ui.text(string.format("%.0f KW  %s", dynamics.peakPower(each[1]) / 1000, each[1].drive),
-        hx + 84 * s, py + 35 * s, 5 * s, colors.marshal, "left", half - 90 * s)
-    end
-    return
-  end
   ui.panel(x, py, w, panelH, 0.82)
-  drawCar(spec, currentColor(spec), x + 42 * s, py + panelH / 2, s, 0)
+  drawCar(spec, color, x + 42 * s, py + panelH / 2, s, 0)
   local tx = x + 84 * s
   ui.text(spec.name, tx, py + 7 * s, 8 * s, colors.paint)
+  if two then ui.text("P" .. menu.driver, x, py + 7 * s, 8 * s, colors.marshal, "right", w - 6 * s) end
   ui.text(string.format("%.0f KW  %s  %.0f KG", dynamics.peakPower(spec) / 1000, spec.drive, spec.mass),
     tx, py + 21 * s, 6 * s, colors.marshal)
   ui.text(spec.blurb, tx, py + 33 * s, 6 * s, colors.muted, "left", w - 90 * s)
@@ -807,14 +820,14 @@ function menu.draw(sw, sh)
       drawSetupPreview(sw, sh, w, s, true)
     end
     if menu.screen == "setup" then
-      if HANDLING_KEYS[focused.label] then
-        ui.text(ASSIST_HINTS[settings[HANDLING_KEYS[focused.label]]], 14 * s, sh - 34 * s, 5 * s, colors.muted,
+      if focused.label == "HANDLING" then
+        ui.text(ASSIST_HINTS[settings[driverKeys(splitting()).assists]], 14 * s, sh - 34 * s, 5 * s, colors.muted,
           "left", w - 28 * s)
       elseif focused.label == "RULES" then
         ui.text(RULE_HINTS[settings.trialRules], 14 * s, sh - 34 * s, 5 * s, colors.muted, "left", w - 28 * s)
       elseif focused.label == "MUSIC FOLDER" then
         ui.text(MUSIC_HINT, 14 * s, sh - 34 * s, 5 * s, colors.muted, "left", w - 28 * s)
-      elseif focused.label == "PLAYERS" then
+      elseif focused.label == "PLAYERS" or focused.label == "DRIVER" then
         ui.text(splitHint(), 14 * s, sh - 34 * s, 5 * s, colors.muted, "left", w - 28 * s)
       end
     end
@@ -888,17 +901,29 @@ local function quitRace()
   end
 end
 
+-- Freestyle's car and paint, changed on the road from the pause menu. The
+-- saved settings follow, so the setup screen shows them next time too.
+function menu.applyCar(index)
+  rm.swapCar(index, driverCar(index))
+end
+
+-- With two at the screen, DRIVER picks whose car CAR and PAINT change, as in setup.
+local function pauseCarRows(rows)
+  if not rm.canSwapCars() then return false end
+  local two = rm.isSplit()
+  local index = two and menu.driver or 1
+  local keys = driverKeys(two)
+  local apply = function() menu.applyCar(index) end
+  if two then rows[#rows + 1] = driverRow() end
+  rows[#rows + 1] = carRow("CAR", keys.car, apply)
+  rows[#rows + 1] = paintRow("PAINT", keys.hue, apply)
+  return true
+end
+
 function menu.drawPause(sw, sh)
   local s = ui.scale(sw, sh)
   love.graphics.setColor(0, 0, 0, 0.55)
   love.graphics.rectangle("fill", 0, 0, sw, sh)
-  local w = 190 * s
-  local x = (sw - w) / 2
-  local y = sh * 0.3
-  ui.panel(x, y, w, 76 * s, 0.95)
-  ui.kerb(x, y, w, 3 * s, s)
-  -- An online race can't stop for one player, and their car is coasting.
-  ui.text(rm.isOnline() and "RACE STILL RUNNING" or "PAUSED", x, y + 10 * s, 8 * s, colors.marshal, "center", w)
   local fromEditor = rm.opts().fromEditor
   local rows = {
     { label = "RESUME", activate = function() rm.setPaused(false) end },
@@ -906,7 +931,17 @@ function menu.drawPause(sw, sh)
   if not rm.isOnline() then
     rows[#rows + 1] = { label = "RESTART", activate = function() rm.restart() end }
   end
+  -- After RESTART, so RESUME and RESTART stay where hands know them.
+  local cars = pauseCarRows(rows)
   rows[#rows + 1] = { label = fromEditor and "BACK TO EDITOR" or "QUIT TO MENU", activate = quitRace }
+  -- Wide enough for "PAINT  < SUNSET ORANGE >".
+  local w = (cars and 230 or 190) * s
+  local x = (sw - w) / 2
+  local y = sh * 0.3
+  ui.panel(x, y, w, 28 * s + #rows * 16 * s, 0.95)
+  ui.kerb(x, y, w, 3 * s, s)
+  -- An online race can't stop for one player, and their car is coasting.
+  ui.text(rm.isOnline() and "RACE STILL RUNNING" or "PAUSED", x, y + 10 * s, 8 * s, colors.marshal, "center", w)
   ui.list("pause", rows, x + 8 * s, y + 24 * s, w - 16 * s, 16 * s, 7 * s, s)
   if ui.consumeBack() then rm.setPaused(false) end
 end

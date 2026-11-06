@@ -23,8 +23,8 @@ Ideas that are agreed in principle but not built yet.
 - **Freestyle drift counter:** a combo multiplier for chaining slides, a saved
   best per car, and a pop when a combo is banked. This is only freestyle's
   existing counter: Drift mode and drift scoring in races stay not planned.
-- **Live changes in freestyle:** swap car, paint, time of day or handling from
-  the pause menu, without going back to the setup screen.
+- **More live changes in freestyle:** time of day and handling from the pause
+  menu, as car and paint already are.
 
 ## Not planned
 

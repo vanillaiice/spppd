@@ -14,6 +14,7 @@ local radio = require("src/radio")
 local music = require("src/music")
 local world = require("src/world")
 local config = require("src/config")
+local garage = require("src/entities/garage")
 
 local flow = {}
 
@@ -417,13 +418,37 @@ local function steps()
   step(3, function()
     expect(rm.race().phase == "countdown", "RESTART returns to the lights")
     expect(radio.isPlaying() and radio.song() == flow.song, "and the song plays on")
+    flow.car, flow.hue, flow.color = settings.car, settings.hue, rm.race().player.color
     press("escape")
   end)
+  -- RESUME, RESTART, CAR, PAINT, QUIT TO MENU.
   step(3, function() press("down") end)
   step(2, function() press("down") end)
+  step(2, function() press("right") end)
+  step(2, function()
+    local car = rm.race().player
+    expect(settings.car == flow.car % #garage + 1, "CAR in the pause menu moves to the next car")
+    expect(car.spec == garage[settings.car] and rm.isPaused(), "and swaps it in on the road")
+    press("down")
+  end)
+  step(2, function() press("right") end)
+  step(2, function()
+    expect(settings.hue == flow.hue % 9 + 1 and rm.race().player.color ~= flow.color, "PAINT repaints it")
+    press("up")
+  end)
+  step(2, function() press("up") end)
+  step(2, function() press("return") end)
+  step(3, function()
+    local car = rm.race().player
+    expect(rm.race().phase == "countdown" and car.spec == garage[settings.car], "RESTART keeps the new car")
+    press("escape")
+  end)
+  for _ = 1, 4 do step(2, function() press("down") end) end
   step(2, function() press("return") end)
   step(4, function()
     expect(state.screen == "menu" and not radio.isPlaying(), "quitting stops the radio")
+    settings.car, settings.hue = flow.car, flow.hue
+    settings.save()
     settings.mode = "race"
     menu.startRace()
   end)
@@ -508,16 +533,29 @@ local function steps()
     expect(menu.canSplit(), "a pad plugged in offers a second player")
     press("right")
   end)
-  -- Track, players, then each driver's car, paint, handling and gearbox.
+  -- Track, players, driver, then that driver's car, paint, handling and gearbox.
   step(3, function()
     expect(settings.players == 2, "right on PLAYERS makes it two")
-    ui.focus.setup = 10
+    expect(menu.driver == 1, "the rows start on P1")
+    ui.focus.setup = 3
+    press("right")
+  end)
+  step(3, function()
+    expect(menu.driver == 2, "right on DRIVER moves the rows to P2")
+    flow.car, flow.car2 = settings.car, settings.car2
+    ui.focus.setup = 4
+    press("right")
+  end)
+  step(3, function()
+    expect(settings.car2 == flow.car2 % #garage + 1 and settings.car == flow.car, "CAR then sets P2's car alone")
+    ui.focus.setup = 7
     press("right")
   end)
   -- Laps, opponents, difficulty, time, start.
   step(3, function()
     expect(settings.gearbox2 == "manual" and settings.gearbox == "auto", "P2 GEARBOX is P2's alone")
-    ui.focus.setup = 15
+    settings.car2 = flow.car2
+    ui.focus.setup = 12
     press("return")
   end)
   step(3, function()

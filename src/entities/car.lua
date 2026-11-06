@@ -8,25 +8,10 @@ Car.__index = Car
 
 local M = config.METER
 
-function Car.new(spec, x, y, angle, opts)
-  opts = opts or {}
-  local self = setmetatable({}, Car)
-
-  self.spec = spec
-  self.name = opts.name or spec.name
-  self.color = opts.color or spec.color
-  self.isPlayer = opts.isPlayer or false
-  self.driver = opts.driver
-  self.model = dynamics.new(spec, opts.assist)
-
+-- The chassis on the body: its size, its outline and its weight.
+local function fit(self, spec)
   local length, width = spec.length * M, spec.width * M
   self.length, self.width = length, width
-
-  self.body = love.physics.newBody(world.physics, x, y, "dynamic")
-  self.body:setAngle(angle or 0)
-  self.body:setBullet(true)
-  self.body:setSleepingAllowed(false)
-
   -- Chamfered corners stop cars snagging on each other.
   local hl, hw, ch = length / 2, width / 2, width * 0.2
   local shape = love.physics.newPolygonShape(
@@ -39,6 +24,25 @@ function Car.new(spec, x, y, angle, opts)
   self.fixture:setCategory(world.CATEGORY_CAR)
   self.fixture:setUserData(self)
   self.body:setMassData(0, 0, spec.mass, spec.inertia * M * M)
+end
+
+function Car.new(spec, x, y, angle, opts)
+  opts = opts or {}
+  local self = setmetatable({}, Car)
+
+  self.spec = spec
+  self.name = opts.name or spec.name
+  self.color = opts.color or spec.color
+  self.isPlayer = opts.isPlayer or false
+  self.driver = opts.driver
+  self.assist = opts.assist
+  self.model = dynamics.new(spec, opts.assist)
+
+  self.body = love.physics.newBody(world.physics, x, y, "dynamic")
+  self.body:setAngle(angle or 0)
+  self.body:setBullet(true)
+  self.body:setSleepingAllowed(false)
+  fit(self, spec)
 
   self.input = {
     throttle = 0, brake = 0, steer = 0,
@@ -168,6 +172,22 @@ end
 function Car:ghost(seconds)
   if self.ghostTimer <= 0 then self.fixture:setMask(world.CATEGORY_CAR) end
   self.ghostTimer = math.max(self.ghostTimer, seconds)
+end
+
+-- Another car in this one's place: the same body where it stands, stopped, on
+-- the same handling, with the new car's size, weight, tyres and engine.
+function Car:setSpec(spec, color)
+  self.fixture:destroy()
+  fit(self, spec)
+  if self.ghostTimer > 0 then self.fixture:setMask(world.CATEGORY_CAR) end
+  -- Boost is earned by sliding, so the tank's share carries over: a swap is no refill.
+  local share = self.model.boostTank / self.spec.boostTime
+  self.spec = spec
+  self.color = color or spec.color
+  self.model = dynamics.new(spec, self.assist)
+  self.model.boostTank = share * spec.boostTime
+  local x, y = self.body:getPosition()
+  self:teleport(x, y, self.body:getAngle())
 end
 
 -- Put the car back on the road, briefly passing through other cars.

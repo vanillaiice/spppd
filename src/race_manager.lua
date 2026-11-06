@@ -278,6 +278,40 @@ function rm.restart()
   if session then rm.start(session.opts) end
 end
 
+-- True when the pause menu can change the cars: freestyle, with nobody else's
+-- race to keep to.
+function rm.canSwapCars()
+  return session ~= nil and not session.demo and not session.opts.online
+    and session.race.mode == "freestyle"
+end
+
+-- A driver's car changed from the pause menu, where it stands. index is their
+-- seat: 1, or 2 with two at a screen. RESTART keeps the new one.
+function rm.swapCar(index, spec, color)
+  if not rm.canSwapCars() then return end
+  local view = session.views[index]
+  if not view then return end
+  local car = view.car
+  session.race:swapCar(car, spec, color)
+  sprites.get(spec)
+  lightsFor(car, session.env)
+  -- What the drawing and the HUD kept of the old car.
+  local fx = car.fx
+  if fx then
+    fx.dents, fx.mesh, fx.wrecked, fx.dentsChanged = {}, nil, false, true
+    fx.gear = 1
+    for _, trail in ipairs(fx.trails) do skids.lift(trail) end
+  end
+  view.paceProfile, view.lastGear = nil, nil
+  if view.drift then view.drift.combo = 0 end
+  local opts = session.opts
+  if index == 1 then
+    opts.spec, opts.color = spec, color
+  elseif opts.player2 then
+    opts.player2.spec, opts.player2.color = spec, color
+  end
+end
+
 -- On one driver's half, or on everyone's when it's news for all.
 function rm.setToast(text, color, seconds, size, view)
   local toast = { text = text, color = color, time = seconds or 2.5, size = size }

@@ -276,6 +276,15 @@ function Race:respawn(car)
   placeOnLine(self, car, track.samples[(index + 1) % track.count + 1])
 end
 
+-- Freestyle's live car change, from the pause menu. A wreck in progress is
+-- over: the new car arrives whole. A bigger car swapped in against a wall is
+-- eased out of it, which loses no speed, so it's no crash.
+function Race:swapCar(car, spec, color)
+  car.wreck = nil
+  car.input.wrecked, car.input.brake = false, 0
+  car:setSpec(spec, color)
+end
+
 -- Back to where it hit, not where it slid to. Going on from there made a wreck
 -- quicker than braking, so the slide comes off its distance here: a long one is
 -- past what updateProgress would count.

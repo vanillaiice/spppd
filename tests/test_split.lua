@@ -112,6 +112,20 @@ h.describe("two at one screen", function()
     race:destroy()
   end)
 
+  h.it("swapping P2's car leaves P1's alone, and P2 keeps their handling", function()
+    local race = Race.new({ mode = "freestyle", lot = true, spec = garage[3], seed = 5, startDelay = 0,
+      assist = "sim", player2 = { spec = garage[5], name = "P2", assist = "arcade" } })
+    local p1, p2 = race.players[1], race.players[2]
+    local p1Model = p1.model
+    race:swapCar(p2, garage[8])
+    h.assertEq(p2.spec, garage[8])
+    h.assertEq(p2.model.assist, dynamics.new(garage[8], "arcade").assist, "P2 still on arcade")
+    h.assertEq(p1.spec, garage[3], "P1's car is P1's")
+    h.assertEq(p1.model, p1Model)
+    h.assertEq(race.cars[2], p2)
+    race:destroy()
+  end)
+
   h.it("each driver has their own handling and gearbox", function()
     local track = Track.new(catalog.builtin()[1].def)
     local race = Race.new({ mode = "race", track = track, laps = 1, opponents = 1, spec = garage[3], seed = 5,

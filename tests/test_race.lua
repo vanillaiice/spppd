@@ -1040,4 +1040,64 @@ h.describe("race", function()
     h.assertTrue(not warned, "freestyle said wrong way")
     race:destroy()
   end)
+
+  -- The car the pause menu swaps in, against the one it replaces.
+  local function otherCar(spec)
+    for _, each in ipairs(garage) do
+      if math.abs(each.length - spec.length) > 0.3 and math.abs(each.mass - spec.mass) > 100 then return each end
+    end
+  end
+
+  h.it("a car swapped in on the lot stands where the old one was, stopped", function()
+    local race = Race.new({ mode = "freestyle", lot = true, spec = garage[3], seed = 3, startDelay = 0, assist = "sim" })
+    local car = race.player
+    race.player.driver = { update = function(_, c) c.input.throttle = 1 c.input.steer = 0.3 end }
+    run(race, 3)
+    h.assertTrue(car:getSpeed() > 5, "should be moving before the swap")
+    local x, y, a = car.body:getX(), car.body:getY(), car.body:getAngle()
+    local tier = car.model.assist
+    car.model.boostTank = garage[3].boostTime / 4
+    local spec = otherCar(garage[3])
+    race:swapCar(car, spec, { 1, 0, 0 })
+    h.assertNear(car.model.boostTank, spec.boostTime / 4, 1e-6, "a swap is no boost refill")
+    h.assertEq(race.player, car, "the same car in the race")
+    h.assertEq(car.spec, spec)
+    h.assertEq(car.model.spec, spec, "with the new car's tyres and engine")
+    h.assertEq(car.model.assist, tier, "on the same handling")
+    h.assertNear(car.length, spec.length * M, 1e-6)
+    h.assertNear(car.width, spec.width * M, 1e-6)
+    h.assertNear(car.body:getMass(), spec.mass, 1e-3)
+    h.assertEq(car.color[1], 1, "in the new paint")
+    h.assertEq(car.fixture:getUserData(), car, "and the world still knows it's a car")
+    h.assertNear(car.body:getX(), x, 1e-6)
+    h.assertNear(car.body:getY(), y, 1e-6)
+    h.assertNear(car.body:getAngle(), a, 1e-6)
+    h.assertNear(car:getSpeed(), 0, 1e-6, "from a stop")
+    run(race, 3)
+    h.assertTrue(car:getSpeed() > 5, "and it drives off")
+    checkFinite(race)
+    race:destroy()
+  end)
+
+  h.it("a swap ends a wreck, and one against a wall isn't a crash", function()
+    local race, car = lotRace()
+    local block = lot.layout().blocks[2]
+    local cx = (block.x + block.w / 2) / M
+    launch(car, cx, block.y / M - 20, 0, 1, 30)
+    run(race, 1.5, function() return car.wreck end)
+    h.assertTrue(car.wreck, "should be wrecked")
+    -- The longest car there is, nose to the container where the short one hit.
+    local longest = garage[1]
+    for _, each in ipairs(garage) do if each.length > longest.length then longest = each end end
+    race:swapCar(car, longest)
+    h.assertEq(car.wreck, nil, "the new car arrives whole")
+    h.assertTrue(not car.input.wrecked and car.input.brake == 0, "and in the driver's hands")
+    car:teleport(cx * M, block.y - (longest.length / 2 - 0.9) * M, math.pi / 2)
+    car.driver = { update = function(_, c) c.input.throttle = 0 c.input.brake = 1 end }
+    local wrecked = false
+    run(race, 1, function() wrecked = wrecked or car.wreck ~= nil end)
+    h.assertTrue(not wrecked, "being pushed out of the wall wrecked it")
+    checkFinite(race)
+    race:destroy()
+  end)
 end)

@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+### Freestyle
+
+- Change car and paint from the pause menu, without leaving the drive. The new car
+  takes the old one's place, standing still. With two at a screen, a DRIVER row picks
+  whose car they change.
+
 ### Online
 
 - Lose the connection mid-race, switch from Wi-Fi to mobile data, or leave the game

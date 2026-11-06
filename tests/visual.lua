@@ -25,6 +25,11 @@ local function autopilot()
   r.player.driver = AI.new(r.track, r.player, { skill = 0.92 })
 end
 
+-- Round and round on the lot, which has no line for the AI to follow.
+local function circle()
+  rm.race().player.driver = { update = function(_, c) c.input.throttle, c.input.steer = 0.6, 0.5 end }
+end
+
 -- Lay the game out as a phone would. Pair with SPPPD_SIZE=800x360.
 -- SPPPD_GEARBOX=manual adds the shift buttons, and SPPPD_TOUCHSIZE (small, large)
 -- and SPPPD_OPACITY (0.25 to 1) set the touch controls' size and opacity.
@@ -74,6 +79,8 @@ local function splitSetup()
   menu.enter()
   settings.mode = os.getenv("SPPPD_MODE") or "race"
   menu.go("setup")
+  -- Whose rows show: SPPPD_DRIVER=2 for P2's.
+  menu.driver = tonumber(os.getenv("SPPPD_DRIVER")) or 1
   ui.focus.setup = 2
 end
 
@@ -202,12 +209,18 @@ local SCENES = {
   phoneonline = function() phone() menu.enter() settings.mode = "race" menu.go("online") end,
   phonehost = function() phone() menu.enter() settings.mode = "race" menu.go("host") end,
   pause = function() race({ track = "mirage", time = "day" }) autopilot() end,
+  -- Freestyle's pause menu, with its CAR and PAINT rows: on the lot, on a phone,
+  -- and two at a screen (SPPPD_MODE=freestyle).
+  freepause = function() race({ mode = "freestyle", time = "day", opponents = 0 }) circle() end,
+  phonefreepause = function() phone() race({ mode = "freestyle", time = "day", opponents = 0 }) circle() end,
+  splitpause = split,
   results = function() race({ track = "boat", time = "day", opponents = 3 }) autopilot() end,
   -- Only the player over the line: 40 frames shows the banner, 120 the results.
   finish = function() race({ track = "boat", time = "day", opponents = 3 }) autopilot() end,
 }
 
 local waitFrames = 180
+local PAUSED = { pause = true, freepause = true, phonefreepause = true, splitpause = true }
 
 function visual.start(args)
   local scene, out, frames
@@ -251,7 +264,7 @@ function visual.start(args)
       r.player.lapsDone = r.laps - 1
       r.player.distance = r.track.length * r.laps + 1
     end
-    if scene == "pause" and frame == waitFrames - 2 then rm.setPaused(true) end
+    if PAUSED[scene] and frame == waitFrames - 2 then rm.setPaused(true) end
   end
   love.draw = function()
     draw()
