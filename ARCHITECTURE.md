@@ -188,7 +188,7 @@ keeps them, turns vsync off and uses the same test identity.
 | `love . --test [filter]` | `tests/run.lua`, then quit with its result. Main returns before loading any game module |
 | `love . --perf` | `tests/perf.lua` after a blocking load |
 | `love . --visual flow` | `tests/flow.lua` |
-| `love . --visual online` | `tests/flow_online.lua`, with `SPPPD_RELAY` set |
+| `love . --visual online` | `tests/flow_online.lua`, with `SPPPD_RELAY` set to a local relay |
 | `love . --visual <scene> [out] [frames]` | One scene from `tests/visual.lua` |
 
 ### Loading behind the splash
@@ -1858,8 +1858,16 @@ on the server's loopback only. Docker's published ports go past UFW, as 80 and 4
 so the firewall needs no rule. The official server runs with `-analytics`, and its
 Docker log, which holds IP addresses, is capped at 10 MB, as `PRIVACY.md` promises.
 
+Never point the network tests at the official server. Each run makes dozens of rooms
+and races from one address, and they land in its analytics and the dashboard's
+activity as if people had played. `tests/relay.lua` skips them for any address that
+isn't loopback or private. `make check-relay` (`relay probe HOST:PORT`) checks the
+server instead: it asks for a seat without a cookie, which only gets a cookie back,
+so it counts no visitor, writes no activity and makes no room.
+
 ```
 make deploy-relay                                          # first run makes the password
+make check-relay                                           # does it answer? Deploys run this too
 ssh -L 9090:127.0.0.1:9090 $SPPPD_SSH_USER@$SPPPD_HOST     # then http://localhost:9090
 kamal relay-users                                          # list the dashboard users
 ```
@@ -1963,7 +1971,8 @@ positions, hence "new cars go on the end".
 | `make run` | Runs the game |
 | `make server` | `dist/relay` |
 | `make relay-linux` | `dist/relay-linux`, static, for the server |
-| `make deploy-relay` | Tests the relay, then deploys it. See [Deploying](#deploying) |
+| `make deploy-relay` | Tests the relay, deploys it, then checks it answers. See [Deploying](#deploying) |
+| `make check-relay` | Checks the official relay answers, without showing in its stats |
 | `make site` | The website in `site/dist`, with this version's builds to download. See [The website](#the-website) |
 | `make deploy-site` | Builds the website, then deploys it |
 | `make zip` | `dist/spppd-2.8.0.love`. Tests stay out |
@@ -2000,7 +2009,7 @@ there. There are no tags and no CI.
 | `test_support` | 64 | Settings, input, catalogue, midnight, audio, cache, radio |
 | `test_touch` | 20 | Stick, buttons, phone layout |
 | `test_editor` | 12 | Document model |
-| `test_network` | 29 | Packets, track sharing, hostile input, remote cars, rooms, start sync, rematch, live relay when `SPPPD_RELAY` is set |
+| `test_network` | 29 | Packets, track sharing, hostile input, remote cars, rooms, start sync, rematch, a real relay when `SPPPD_RELAY` names one on this machine or the LAN |
 
 Things to know about the harness:
 

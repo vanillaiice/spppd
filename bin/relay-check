@@ -1,0 +1,18 @@
+#!/usr/bin/env bash
+set -euo pipefail
+cd "$(dirname "$0")/.."
+
+# Checks the official relay answers, from outside, without taking a seat: it shows
+# nowhere in the analytics or the dashboard's activity. The network tests make rooms
+# and races, so they only ever run against a relay on this machine (make test-online).
+env_file="${SPPPD_ENV:-.env}"
+[ -f "$env_file" ] || { echo "$env_file is missing. It needs SPPPD_DOMAIN." >&2; exit 1; }
+set -a; . "$env_file"; set +a
+: "${SPPPD_DOMAIN:?is not set in $env_file}"
+
+make -s server
+# A relay just restarted can take a moment to listen.
+for _ in 1 2 3 4 5; do
+  ./dist/relay probe "$SPPPD_DOMAIN:8080" && exit 0
+done
+exit 1

@@ -889,6 +889,11 @@ func main() {
 	flag.Usage = usage
 	flag.Parse()
 
+	// The probe opens no database, so it leaves no file behind.
+	if flag.NArg() > 0 && flag.Arg(0) == "probe" {
+		os.Exit(probeCommand(flag.Args()))
+	}
+
 	store, err := OpenStore(*dbPath)
 	if err != nil {
 		log.Fatalf("Failed to open the database: %v", err)

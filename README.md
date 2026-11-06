@@ -151,7 +151,8 @@ If you turn them on, tell your players, as `PRIVACY.md` does for the official se
 `-status :8081` serves how many drivers are online and races running as JSON at
 `/api/status`, which <https://spppd.xyz/status/> shows for the official server.
 
-`make deploy-relay` deploys the official server. See `ARCHITECTURE.md`.
+`make deploy-relay` deploys the official server, and `make check-relay` checks it answers
+without showing in its stats. See `ARCHITECTURE.md`.
 
 ## Building and testing
 

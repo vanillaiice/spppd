@@ -1,4 +1,4 @@
-.PHONY: run test test-visual test-server test-online test-online-visual listen sound-report server relay-linux deploy-relay deploy-backup site-downloads site site-dev deploy-site itch release-files zip apk apk-perf win64 win32 all clean
+.PHONY: run test test-visual test-server test-online test-online-visual listen sound-report server relay-linux deploy-relay check-relay deploy-backup site-downloads site site-dev deploy-site itch release-files zip apk apk-perf win64 win32 all clean
 
 # src/config.lua holds the version.
 ver := $(shell sed -n 's/.*VERSION = "\(.*\)".*/\1/p' src/config.lua)
@@ -56,6 +56,11 @@ relay-linux:
 
 deploy-relay: test-server
 	./bin/relay-deploy
+
+# Checks the official relay answers without counting in its analytics. Never point
+# the network tests at it: they make rooms and races that end up in the stats.
+check-relay:
+	./bin/relay-check
 
 # Litestream, which backs the relay's database up to a bucket. See config/litestream.yml.
 deploy-backup:

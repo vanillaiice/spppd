@@ -638,3 +638,47 @@ func TestStragglersAfterARaceGetNoAnswer(t *testing.T) {
 		}
 	}
 }
+
+func TestAProbeLeavesNoTrace(t *testing.T) {
+	conn, err := net.ListenUDP("udp", &net.UDPAddr{IP: net.IPv4(127, 0, 0, 1)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer conn.Close()
+	relay := NewRelay(func(data []byte, to *net.UDPAddr) { _, _ = conn.WriteToUDP(data, to) })
+	relay.EnableAnalytics([]byte("key"))
+	go func() {
+		buffer := make([]byte, maxPacketBytes+1)
+		for {
+			n, from, err := conn.ReadFromUDP(buffer)
+			if err != nil {
+				return
+			}
+			relay.Handle(buffer[:n], from)
+		}
+	}()
+	if err := probe(conn.LocalAddr().String(), 2*time.Second); err != nil {
+		t.Fatal(err)
+	}
+	relay.mu.Lock()
+	defer relay.mu.Unlock()
+	tally := relay.tally
+	if len(tally.Visitors) != 0 || tally.Rooms != 0 || tally.Joins != 0 || tally.Refused != 0 {
+		t.Errorf("the probe was counted: %+v", tally)
+	}
+	if len(relay.events) != 0 || len(relay.rooms) != 0 || len(relay.clients) != 0 {
+		t.Errorf("the probe left %d events, %d rooms, %d clients", len(relay.events), len(relay.rooms), len(relay.clients))
+	}
+}
+
+func TestAProbeOfNothingFails(t *testing.T) {
+	conn, err := net.ListenUDP("udp", &net.UDPAddr{IP: net.IPv4(127, 0, 0, 1)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	address := conn.LocalAddr().String()
+	conn.Close()
+	if err := probe(address, 600*time.Millisecond); err == nil {
+		t.Error("a probe of a closed port passed")
+	}
+}

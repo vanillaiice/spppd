@@ -23,6 +23,8 @@ func usage() {
   relay [-db FILE] user add NAME    add a dashboard user
   relay [-db FILE] user passwd NAME set a user's password, ending their logins
   relay [-db FILE] user del NAME    remove a user
+  relay probe HOST:PORT             check a relay answers, without taking a seat
+                                    or showing in its analytics or activity
 
 Passwords are read from the terminal without echo, or as one line from stdin.
 

@@ -30,4 +30,7 @@ if [ "${SPPPD_BACKUP:-off}" = on ]; then
 fi
 
 # Reboot works for a first deploy too. Anyone racing is told the server is restarting.
-exec "${KAMAL_BIN:-kamal}" accessory reboot relay "$@"
+"${KAMAL_BIN:-kamal}" accessory reboot relay "$@"
+
+# Then check it answers from outside, without showing in its analytics.
+SPPPD_ENV="$env_file" ./bin/relay-check

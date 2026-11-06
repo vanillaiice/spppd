@@ -13,13 +13,12 @@ local function freshClient()
 end
 
 local function relayAddress()
-  local relay = os.getenv("SPPPD_RELAY")
-  if not relay then
-    print("        skipped: set SPPPD_RELAY=host:port to run against a live server")
+  local host, port = require("tests/relay").address()
+  if not host then
+    print("        skipped: " .. port)
     return nil
   end
-  local host, port = relay:match("^(.+):(%d+)$")
-  return host, tonumber(port)
+  return host, port
 end
 
 -- Runs clients together until `done`, as frames of a game would.

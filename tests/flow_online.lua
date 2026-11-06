@@ -86,7 +86,8 @@ local function steps()
 
   step(1, function()
     if state.screen ~= "menu" then return "again" end
-    settings.server = assert(os.getenv("SPPPD_RELAY"), "set SPPPD_RELAY")
+    local host, port = require("tests/relay").address()
+    settings.server = assert(host, port) .. ":" .. port
     settings.track, settings.laps, settings.time = "harbour", 2, "dusk"
     saved = { track = settings.track, laps = settings.laps, time = settings.time }
     ui.focus.main = 4
