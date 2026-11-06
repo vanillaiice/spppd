@@ -30,9 +30,11 @@ local COMPOSITE = [[
 
     // Streak the sides of the frame only. The centre column holds your car
     // and the road ahead, and those must never be smeared.
-    if (speedBlur > 0.0005) {
-      vec2 toEdge = uv - vec2(0.5, 0.5);
-      float mask = smoothstep(0.32, 0.5, abs(toEdge.x));
+    // The middle of the frame has no mask, so every tap there would read the
+    // same texel: skip the loop.
+    vec2 toEdge = uv - vec2(0.5, 0.5);
+    float mask = smoothstep(0.32, 0.5, abs(toEdge.x));
+    if (speedBlur > 0.0005 && mask > 0.0) {
       // A per-pixel offset turns would-be ghost images into fine grain.
       float jitter = fract(sin(dot(sc, vec2(12.9898, 78.233))) * 43758.5453);
       for (int i = 0; i < 10; i++) {
