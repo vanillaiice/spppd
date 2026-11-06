@@ -11,6 +11,8 @@
 - Protocol 5. Everyone in a room needs this version, and from now on later 3.x
   versions keep racing it: they add to what's sent without changing it.
 - The online server is harder to flood with forged traffic.
+- The website has a server status page, <https://spppd.xyz/status/>: whether the
+  online server is up, and how many drivers are on it.
 
 ## 2.8.0 (2026-11-04)
 

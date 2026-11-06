@@ -1,0 +1,131 @@
+---
+import Page from '../layouts/Page.astro';
+import site from '../site.config';
+---
+
+<Page title="Server status" description="Whether SPPPD's online server is up, and how busy it is.">
+  <section class="server panel" id="official" aria-live="polite">
+    <header>
+      <h2>{site.relay}</h2>
+      <span class="light" data-light>Checking</span>
+    </header>
+    <dl data-numbers hidden>
+      <div><dt>Drivers online</dt><dd data-players></dd></div>
+      <div><dt>Races running</dt><dd data-races></dd></div>
+    </dl>
+    <p class="error" data-error hidden></p>
+    <p class="muted">Updated every 15 seconds.</p>
+  </section>
+
+  <noscript><p class="error">This page needs JavaScript to ask the server.</p></noscript>
+</Page>
+
+<script>
+  type Status = { up: boolean; players: number; races: number };
+
+  const card = document.getElementById('official')!;
+  const part = (name: string) => card.querySelector<HTMLElement>(`[data-${name}]`)!;
+
+  function show(s: Status | null) {
+    const up = s?.up === true;
+    part('light').textContent = up ? 'Up' : 'Down';
+    part('light').dataset.state = up ? 'up' : 'down';
+    part('numbers').hidden = !up;
+    part('error').hidden = up;
+    if (!s || !up) {
+      part('error').textContent = "The server isn't answering. Online races won't work until it's back.";
+      return;
+    }
+    part('players').textContent = String(s.players);
+    part('races').textContent = String(s.races);
+  }
+
+  async function refresh() {
+    try {
+      const response = await fetch('/api/status', { headers: { Accept: 'application/json' } });
+      show(response.ok ? await response.json() : null);
+    } catch {
+      show(null);
+    }
+  }
+
+  refresh();
+  setInterval(() => {
+    if (document.visibilityState === 'visible') refresh();
+  }, 15000);
+</script>
+
+<style>
+  .server {
+    max-width: 40rem;
+  }
+
+  .server header {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.5rem 1rem;
+    margin-bottom: 1rem;
+  }
+
+  .server h2 {
+    font-size: 1rem;
+    margin: 0;
+  }
+
+  .light {
+    font-family: var(--pixel);
+    font-size: 0.75rem;
+    padding: 0.4rem 0.6rem;
+    color: var(--paint);
+    box-shadow: inset 0 0 0 2px var(--paint-dim);
+  }
+
+  .light[data-state='up'] {
+    background: var(--green);
+    color: #1d1c2a;
+    box-shadow: none;
+  }
+
+  .light[data-state='down'] {
+    background: var(--kerb);
+    color: var(--kerb-light);
+    box-shadow: none;
+  }
+
+  dl {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(9rem, 1fr));
+    gap: 1rem 1.5rem;
+    margin: 0 0 1rem;
+  }
+
+  dl[hidden] {
+    display: none;
+  }
+
+  dt {
+    color: var(--paint-dim);
+    font-size: 0.9375rem;
+  }
+
+  dd {
+    margin: 0.35rem 0 0;
+    font-family: var(--pixel);
+    font-size: 0.875rem;
+    color: var(--marshal);
+  }
+
+  .error {
+    color: var(--paint);
+    border-left: 4px solid var(--kerb);
+    padding-left: 0.75rem;
+  }
+
+  .muted {
+    color: var(--paint-dim);
+    font-size: 0.9375rem;
+    margin: 0;
+  }
+</style>

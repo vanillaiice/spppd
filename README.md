@@ -148,6 +148,9 @@ relay takes at once, and the dashboard shows both against their limits.
 Statistics are off unless you start the relay with `-analytics`. They count unique IPs
 as keyed hashes, plus rooms, races and traffic, and the dashboard exports them as CSV.
 If you turn them on, tell your players, as `PRIVACY.md` does for the official server.
+`-status :8081` serves how many drivers are online and races running as JSON at
+`/api/status`, which <https://spppd.xyz/status/> shows for the official server.
+
 `make deploy-relay` deploys the official server. See `ARCHITECTURE.md`.
 
 ## Building and testing

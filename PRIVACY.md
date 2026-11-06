@@ -35,6 +35,9 @@ Questions, or a request to see or delete what's held about you:
 | Recent activity on the admin dashboard: the same events, plus refused connections | Same as the log | The last 200 events, in memory, until the server restarts |
 | A banned IP address, when it was banned, and which admin banned it | To keep out someone who abused the server | Until the ban is lifted |
 
+The status page shows how many drivers are online and races running. Those are
+counts, and say nothing about anyone.
+
 Only the operator can see the log and the dashboard. The dashboard isn't reachable
 from the internet, and it needs an admin login.
 

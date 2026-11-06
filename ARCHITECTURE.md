@@ -1824,6 +1824,15 @@ earlier names, comma-separated, which kamal-proxy also serves and Caddy redirect
 user's password to it as `SPPPD_DASHBOARD_TOKEN`; the user is `admin`. Deploying restarts the relay, and anyone
 racing is told. Bans, users, logins and analytics survive it.
 
+### Server status
+
+`spppd.xyz/status/` tells players whether the official relay is up, with how many
+drivers are online and races running. `-status addr` serves those counts as JSON at
+`GET /api/status`; if it answers, the relay is up. On the official server it listens
+on `:8081` on the kamal network only, and the website's Caddy passes `/api/status` to
+`spppd-relay:8081`, so a stopped relay shows as down. In `make site-dev`, Vite passes
+it to `127.0.0.1:8081` (`SPPPD_STATUS` to change that).
+
 ### The website
 
 `site/` is an Astro site, served at `https://spppd.xyz` from the same name
@@ -1834,7 +1843,8 @@ does the TLS. Caddy logs no requests.
 
 It has no copy of anything the repository already says. The changelog page is
 `CHANGELOG.md` split at each `## version (date)` heading, leaving out `Unreleased`, and
-the privacy and terms pages are `PRIVACY.md` and `TERMS.md`. Their links to each other
+the privacy and terms pages are `PRIVACY.md` and `TERMS.md`. The status page is the one
+page with data from outside the build: see Server status. Their links to each other
 become links to the pages (`siteLinks` in `site/src/lib/repo.ts`). The version comes
 from `src/config.lua`. The downloads are this version's builds from `dist/`, which
 `make site-downloads` copies into `site/public/download/`, and the build stops if one is

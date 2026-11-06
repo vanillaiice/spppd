@@ -53,7 +53,9 @@ accessories:
     image: alpine:3.24
     host: <%= ENV.fetch('SPPPD_HOST') %>
     # Analytics are on for the official server; PRIVACY.md says what they keep.
-    cmd: /srv/relay -addr :8080 -dashboard :9090 -db /data/relay.db -analytics
+    # -status serves /api/status on the kamal network only, where the website's Caddy
+    # passes it on. It isn't published on the server.
+    cmd: /srv/relay -addr :8080 -dashboard :9090 -status :8081 -db /data/relay.db -analytics
     # UDP, open to the world, for the game. Docker keeps the sender's address, which
     # the rate limit and bans depend on.
     port: "8080:8080/udp"

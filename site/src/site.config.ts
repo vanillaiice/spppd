@@ -3,6 +3,9 @@ export default {
   description:
     'A free top-down racing game for Windows, Android and Linux. Race the AI, slide for boost, build your own tracks, or race up to three friends online.',
   contact: 'vanillaiice1@proton.me',
+  // The game's default online server, as the status page names it. The page asks
+  // /api/status, which Caddy passes to the relay.
+  relay: 'spppd.xyz',
   repo: 'https://github.com/vanillaiice/spppd',
   // GitHub links go to the profile while the repo is private. Set back to repo once it's public.
   github: 'https://github.com/vanillaiice',

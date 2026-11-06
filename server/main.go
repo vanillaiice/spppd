@@ -864,6 +864,7 @@ func main() {
 	players := flag.Int("max-players", 2000, "players the relay takes at once")
 	rooms := flag.Int("max-rooms", 0, "rooms open at once, waiting or racing; 0 for no limit beyond -max-players")
 	dashboard := flag.String("dashboard", "", "HTTP address for the dashboard (off if empty)")
+	statusAddr := flag.String("status", "", "HTTP address for the public status at /api/status (off if empty)")
 	dbPath := flag.String("db", "spppd-relay.db", "SQLite file for bans, dashboard users and analytics; empty keeps them in memory")
 	analytics := flag.Bool("analytics", false, "count unique IPs (as keyed hashes), rooms, races and traffic")
 	analyticsDays := flag.Int("analytics-days", 30, "days to keep the hashed IPs behind the unique counts; daily totals are kept")
@@ -945,6 +946,22 @@ func main() {
 		go func() {
 			log.Printf("Dashboard listening on %s", *dashboard)
 			log.Fatalf("Dashboard stopped: %v", server.ListenAndServe())
+		}()
+	}
+
+	if *statusAddr != "" {
+		server := &http.Server{
+			Addr:              *statusAddr,
+			Handler:           newStatusPage(relay),
+			ReadHeaderTimeout: 5 * time.Second,
+			ReadTimeout:       10 * time.Second,
+			WriteTimeout:      10 * time.Second,
+			IdleTimeout:       time.Minute,
+			MaxHeaderBytes:    16 << 10,
+		}
+		go func() {
+			log.Printf("Status listening on %s", *statusAddr)
+			log.Fatalf("Status stopped: %v", server.ListenAndServe())
 		}()
 	}
 

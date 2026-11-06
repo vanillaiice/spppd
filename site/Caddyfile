@@ -17,6 +17,12 @@
 		respond "ok" 200
 	}
 
+	# The online server's public status, for /status/. The relay serves it on the
+	# kamal network, where its container is spppd-relay. It's down when the relay is.
+	handle /api/status {
+		reverse_proxy {$SPPPD_RELAY_STATUS:spppd-relay:8081}
+	}
+
 	root * /srv
 	encode zstd gzip
 
