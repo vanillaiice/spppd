@@ -1,5 +1,8 @@
 -- Moves the other player's car from network updates. Packets arrive 20 times
 -- a second, so the car is steered towards where it should be by now.
+local dynamics = require("src/sim/dynamics")
+local config = require("src/config")
+
 local RemoteDriver = {}
 RemoteDriver.__index = RemoteDriver
 
@@ -45,6 +48,7 @@ function RemoteDriver:update(car, race, dt)
   model.reverse = state.reverse or false
   model.boostState = state.boost and "active" or "ready"
   for _, wheel in ipairs(model.wheels) do wheel.slide = state.slide or 0 end
+  dynamics.showBurnout(model, math.sqrt(vx * vx + vy * vy) / config.METER)
   car.horn = state.horn or false
   -- Their game put them back on the road, so they're a ghost there. Solid here,
   -- they'd be a stopped car on the racing line that only this driver can hit.

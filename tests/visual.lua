@@ -122,6 +122,19 @@ local SCENES = {
     autopilot()
   end,
   marina = function() race({ track = "harbour", time = "day" }) autopilot() end,
+  -- Gas and brake held on the lot: SPPPD_CAR=hot_hatch for a front-drive car,
+  -- SPPPD_STEER=1 to swing it round, SPPPD_LIGHTS=1 to stay at the lights.
+  burnout = function()
+    race({ mode = "freestyle", time = "day", opponents = 0, spec = garage.byId(os.getenv("SPPPD_CAR") or "muscle_monster") })
+    local r = rm.race()
+    if os.getenv("SPPPD_LIGHTS") then r.startDelay = 100 end
+    local steer = tonumber(os.getenv("SPPPD_STEER")) or 0
+    r.player.driver = {
+      revs = function() return 1 end,
+      brakes = function() return 1 end,
+      update = function(_, c) c.input.throttle, c.input.brake, c.input.steer = 1, 1, steer end,
+    }
+  end,
   start = function()
     race({ track = "mirage", time = "day" })
     local r = rm.race()

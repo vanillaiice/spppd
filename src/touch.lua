@@ -249,6 +249,13 @@ function touch.revs()
   return pedal(touch.stick.y)
 end
 
+-- The stick pulled back at the lights. The BRAKE button presses the brake key, so
+-- the keyboard's reading has that.
+function touch.brakes()
+  if not touch.shown() or not touch.stick then return 0 end
+  return pedal(-touch.stick.y)
+end
+
 -- Layered over input.applyTo, so a keyboard or pad keeps working alongside.
 function touch.applyTo(target)
   if not touch.shown() then return end

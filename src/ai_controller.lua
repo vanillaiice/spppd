@@ -164,10 +164,11 @@ function AI:update(car, race, dt)
   if onLoose then throttle = min(throttle, 0.6) end
   if model.slip > 0.5 then throttle = throttle * 0.6 end
 
-  -- Being pointed the wrong way needs more than the racing line can offer.
+  -- Being pointed the wrong way needs more than the racing line can offer. Off
+  -- the brake, or gas and brake together would hold it in a burnout.
   if fx < 0 and speed < 8 then
     steer = fy >= 0 and 1 or -1
-    throttle = 0.5
+    throttle, brake = 0.5, 0
   end
 
   if self.digital then

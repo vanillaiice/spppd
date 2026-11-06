@@ -653,6 +653,11 @@ function flow.run(list, pace)
 end
 
 function flow.start()
+  -- The flow drives with the keyboard alone, whatever pad is plugged into the
+  -- machine: a real one adds the PLAYERS row and moves every row under it.
+  input.gamepads = function() return {} end
+  input.joystickAdded = function() end
+  input.gamepad = nil
   flow.run(steps())
 end
 

@@ -17,6 +17,10 @@ local FLAME_CRACKLE = 6    -- pops a second, on average
 -- reach, where they start under it, how far apart and how wide, in metres.
 local PIPE_OUT, PIPE_IN, PIPE_SPREAD, PIPE_WIDTH = 0.45, 0.25, 0.32, 0.3
 local NEON_PULSE = 2.2     -- radians a second
+-- Share of a burning tyre's slip speed its smoke is thrown back with. The smoke
+-- keeps a fifth of what it's given and slows fast, so a full burnout's trails
+-- about a car length behind.
+local BURNOUT_THROW = 1.5
 -- Crashes: a wreck smokes this many puffs a second from where it folded in, and
 -- throws this many bits of itself. A hit this hard, as impulse / 9000, throws a
 -- few bits without wrecking, but at most every DEBRIS_GAP seconds.
@@ -125,6 +129,10 @@ local function wheelFx(car, wheel, trail, speed)
   local vx, vy = car.body:getLinearVelocity()
   local spinning = math.max(0, wheel.spin) / 16
   local grip = math.max(wheel.slide, spinning)
+  -- A burnout smokes on the spot. It only lays rubber where the tyre moves over
+  -- the road, as a tail swinging round does, or the marks pile up in one place.
+  local burning = spinning > 1
+  local moving = speed > 1.5 or (wheel.vx or 0) ^ 2 + (wheel.vy or 0) ^ 2 > 0.25
 
   if loose then
     if speed > 3 then
@@ -132,10 +140,24 @@ local function wheelFx(car, wheel, trail, speed)
       vfx.dust(x, y, -vx * 0.6, -vy * 0.6, math.min(1, speed / 30) * 0.8)
     else
       skids.lift(trail)
+      if burning then vfx.dust(x, y, vx, vy, 0.6) end
     end
-  elseif grip > 0.32 and speed > 1.5 and surface == "asphalt" then
-    skids.add(trail, x, y, nx, ny, math.min(0.62, 0.18 + grip * 0.5), 0.03, 0.03, 0.035)
-    vfx.tyreSmoke(x, y, vx, vy, math.min(1, (grip - 0.25) * 1.1))
+  elseif grip > 0.32 and surface == "asphalt" and (speed > 1.5 or burning) then
+    if moving then
+      skids.add(trail, x, y, nx, ny, math.min(0.62, 0.18 + grip * 0.5), 0.03, 0.03, 0.035)
+    else
+      skids.lift(trail)
+    end
+    local sx, sy = vx, vy
+    if burning then
+      -- Thrown back off the spinning tyre, so it billows out behind it.
+      local throw = wheel.spin * M * BURNOUT_THROW
+      sx, sy = vx - math.cos(a) * throw, vy - math.sin(a) * throw
+    end
+    vfx.tyreSmoke(x, y, sx, sy, math.min(1, (grip - 0.25) * 1.1))
+    -- Half again as thick in a burnout. Four tyres of it stay inside the smoke's
+    -- 700 particles.
+    if burning then vfx.tyreSmoke(x, y, sx, sy, 0.5) end
   else
     skids.lift(trail)
   end

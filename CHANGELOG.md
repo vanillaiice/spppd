@@ -2,6 +2,15 @@
 
 ## Unreleased
 
+### Driving
+
+- Burnouts: hold gas and brake together near a stop. The brakes hold one axle
+  and the engine spins the other on the limiter, with smoke and rubber. RWD
+  spins its rears and swings its tail round when steered. FWD spins its fronts
+  and barely turns. AWD spins all four and creeps forward. Let go of the brake
+  to launch. It works at the start lights too, where the car stays put. Online,
+  the others see your smoke.
+
 ### Freestyle
 
 - Change car and paint from the pause menu, without leaving the drive. The new car

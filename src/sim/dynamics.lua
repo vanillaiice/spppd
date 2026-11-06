@@ -53,6 +53,17 @@ local SLIDE_REFILL = 3          -- how many times faster the tank fills in a sli
 -- Hard cornering on the racing line reaches 18 degrees; a held drift sits past 25.
 local SLIDE_MIN_BETA = math.rad(20)
 local SLIDE_MIN_SPEED = 7       -- m/s; below this a slide is just a spin
+-- Gas and brake held together near a stop light up the tyres. The brakes hold the
+-- axle the engine doesn't drive, so RWD spins its rears and FWD its fronts. AWD
+-- spins all four, and its brakes can only slow it to a crawl.
+local BURNOUT_PEDAL = 0.5       -- both pedals at least this far down
+local BURNOUT_MAX_SPEED = 4     -- m/s; faster than this it's braking, not a burnout
+local BURNOUT_SPIN = 30         -- slip speed (m/s) of a spinning tyre at full throttle
+local BURNOUT_SIDE_GRIP = 0.3   -- share of side grip a spinning tyre keeps
+local BURNOUT_YAW = 1.4         -- rad/s at full lock: RWD swings its tail round the fronts
+local BURNOUT_TURN = { RWD = 1, FWD = 0.25, AWD = 0.6 }  -- of that, by drive
+local BURNOUT_PIVOT = 10        -- how firmly the turn is pushed towards that (per s)
+local CREEP_SPEED, CREEP_PUSH = 1.5, 1.5  -- AWD's crawl (m/s) and how hard it gets there (m/s^2)
 
 local ASPHALT_ROLL = 0.014
 
@@ -171,6 +182,7 @@ function dynamics.new(spec, assist)
     absActive = 0,
     escActive = 0,
     drift = 0,      -- 0..1 how far into a handbrake drift the car is
+    burnout = 0,    -- 0..1 throttle spinning the tyres with the brake held
     slipstream = 0, -- 0..1 how far into another car's wake, set by the race
 
     boostState = "ready",
@@ -353,6 +365,11 @@ end
 -- the shift into reverse when the car is stopped and the brake is held.
 local function resolvePedals(c, input, vx, dt)
   local throttle, brake = input.throttle, input.brake
+  -- At the lights the brake only holds the car, for a burnout: no backing up.
+  if input.rev then
+    c.stoppedOnBrake = 0
+    return 0, brake
+  end
   if c.reverse then
     if throttle > 0.05 then
       c.reverse = false
@@ -373,6 +390,23 @@ local function resolvePedals(c, input, vx, dt)
     c.stoppedOnBrake = 0
   end
   return throttle, brake
+end
+
+-- How hard the tyres are being lit up: 0, or the throttle doing it.
+function dynamics.burnoutAmount(throttle, brake, speed, reverse)
+  if reverse or speed > BURNOUT_MAX_SPEED then return 0 end
+  if throttle < BURNOUT_PEDAL or brake < BURNOUT_PEDAL then return 0 end
+  return throttle
+end
+
+-- A car someone else's game drives: its pedals, sent over, say whether it's in a
+-- burnout, so its driven tyres smoke here too.
+function dynamics.showBurnout(c, speed)
+  local amount = dynamics.burnoutAmount(c.throttle, c.brake, speed, c.reverse)
+  c.burnout = amount
+  for _, w in ipairs(c.wheels) do
+    w.spin = w.driven and BURNOUT_SPIN * amount or 0
+  end
 end
 
 local function updateGearbox(c, input, wheelSpeed, dt)
@@ -418,8 +452,9 @@ local function updateGearbox(c, input, wheelSpeed, dt)
   end
 end
 
--- Returns the total drive force at the wheels (N), signed for direction.
-local function driveForce(c, pedal, wheelSpeed, dt)
+-- Returns the total drive force at the wheels (N), signed for direction. rev is
+-- the throttle on a free-spinning engine: at the lights, or in a burnout.
+local function driveForce(c, pedal, wheelSpeed, dt, rev)
   local spec = c.spec
   local ratio = c.reverse and spec.reverseGear or spec.gears[c.gear]
   ratio = ratio * spec.finalDrive
@@ -432,12 +467,12 @@ local function driveForce(c, pedal, wheelSpeed, dt)
   local launch = spec.idleRpm + (spec.motor and 0 or pedal * (spec.redline * 0.48 - spec.idleRpm))
   local target = max(coupled, launch)
   local rate = 14
-  if c.rev then
+  if rev then
     -- A motor has no sparks to cut: it just holds its top speed.
     if c.rpm > spec.redline * LIMITER_TOP and not spec.motor then c.revCut = true
     elseif c.rpm < spec.redline * LIMITER_LOW then c.revCut = false end
     target = spec.idleRpm
-    if not c.revCut then target = target + c.rev * (spec.redline - spec.idleRpm) end
+    if not c.revCut then target = target + rev * (spec.redline - spec.idleRpm) end
     -- Slow enough that the revs can be held in the launch window by ear.
     rate = target > c.rpm and REV_RISE or REV_FALL
     if target > c.rpm and c.rpm > spec.redline * LIMITER_ZONE and not spec.motor then rate = LIMITER_RISE end
@@ -446,8 +481,8 @@ local function driveForce(c, pedal, wheelSpeed, dt)
   c.rpm = c.rpm + (target - c.rpm) * follow
   c.clutch = coupled < launch and 1 - coupled / launch or 0
   -- For the sound. In gear there's no cut to bounce off: the revs just stop climbing.
-  local held = max(pedal, c.rev or 0) > 0.5
-  c.limiting = held and not spec.motor and c.rpm > spec.redline * (c.rev and LIMITER_ZONE or 0.98)
+  local held = max(pedal, rev or 0) > 0.5
+  c.limiting = held and not spec.motor and c.rpm > spec.redline * (rev and LIMITER_ZONE or 0.98)
 
   if c.shiftTimer > 0 then return 0 end
 
@@ -475,6 +510,8 @@ function dynamics.step(c, input, vx, vy, r, dt)
   local pedal, brakeInput = resolvePedals(c, input, vx, dt)
   c.rev = input.rev
   c.throttle, c.brake, c.handbrake = max(pedal, c.rev or 0), brakeInput, input.handbrake and true or false
+  local burnout = input.wrecked and 0 or dynamics.burnoutAmount(c.throttle, brakeInput, speed, c.reverse)
+  c.burnout = burnout
   if input.handbrake then
     c.handbrakeHold = 1
   else
@@ -573,9 +610,12 @@ function dynamics.step(c, input, vx, vy, r, dt)
     end
   end
   drivenSpeed = drivenSpeed / drivenN
+  -- In a burnout the engine is let loose on tyres that are just spinning, so
+  -- the gearbox goes by the car's speed instead, and stays down in first.
+  if burnout > 0 then drivenSpeed = vx end
 
   updateGearbox(c, input, drivenSpeed, dt)
-  local totalDrive = driveForce(c, pedal, drivenSpeed, dt)
+  local totalDrive = driveForce(c, pedal, drivenSpeed, dt, c.rev or (burnout > 0 and burnout or nil))
 
   -- Without a throttle the engine holds the car back a little.
   if abs(pedal) < 0.02 and c.shiftTimer == 0 and not c.reverse then
@@ -632,14 +672,27 @@ function dynamics.step(c, input, vx, vy, r, dt)
     local alpha = atan2(tvy, max(abs(tvx), MIN_SLIP_SPEED))
     w.alpha = alpha
 
+    -- A burnout spins the driven tyres and the brakes hold the others still. A
+    -- spinning tyre has little side grip left, which lets RWD swing its tail.
+    local spinning = burnout > 0 and w.driven
+
     -- Lateral force, never enough to reverse the slip within one step.
     local fy = -maxForce * sin(c.tyreC * atan(c.tyreB * alpha))
+    if spinning then fy = fy * BURNOUT_SIDE_GRIP end
     local stopY = abs(tvy) * massPerWheel / dt
     if fy > stopY then fy = stopY elseif fy < -stopY then fy = -stopY end
 
     -- Longitudinal demand
     local fx = totalDrive * (w.front and frontShare or rearShare)
     local braking = brakeForce * (w.front and spec.brakeBias or (1 - spec.brakeBias)) / 2
+    if spinning then
+      -- Its push and the held tyres' brakes cancel out. AWD has no tyre left to
+      -- hold, so it crawls along at a pace its brakes can manage.
+      fx, braking = 0, 0
+      if c.drivenCount == 4 and not c.rev then
+        fx = massPerWheel * max(-CREEP_PUSH, min(CREEP_PUSH, (CREEP_SPEED * burnout - vx) * 2))
+      end
+    end
     if c.handbrakeHold > 0 and not w.front then
       braking = braking + spec.handbrakeForce / 2 * (1 - drift * 0.85) * c.handbrakeHold
     end
@@ -663,7 +716,7 @@ function dynamics.step(c, input, vx, vy, r, dt)
     end
 
     -- Traction control trims drive to what the tyre can use.
-    if fx ~= 0 and assist.tc > 0 then
+    if fx ~= 0 and assist.tc > 0 and not spinning then
       local spare = sqrt(max(maxForce * maxForce - fy * fy, (maxForce * 0.2) ^ 2))
       if abs(fx) > spare then
         tcHit = 1
@@ -698,6 +751,7 @@ function dynamics.step(c, input, vx, vy, r, dt)
         slipTarget = -abs(tvx)
       end
     end
+    if spinning then slipTarget = BURNOUT_SPIN * burnout end
     w.spin = w.spin + (slipTarget - w.spin) * (1 - math.exp(-dt * 16))
 
     -- Rolling resistance and loose-surface drag
@@ -735,6 +789,19 @@ function dynamics.step(c, input, vx, vy, r, dt)
   local ease = input.handbrake and 1 or 1 - math.exp(-dt / ESC_LAG)
   c.escMoment = c.escMoment + (escMoment - c.escMoment) * ease
   mzTotal = mzTotal + c.escMoment
+  -- Steered in a burnout, the car turns on the spot, pivoting on the held tyres
+  -- as the spinning ones slide round: RWD most, as its steered fronts still
+  -- grip, FWD least, as its steered tyres are the spinning ones. AWD pivots on
+  -- its fronts.
+  if burnout > 0 and not c.rev then
+    local wanted = c.steer / spec.steerLock * BURNOUT_YAW * (BURNOUT_TURN[spec.drive] or 1) * burnout
+    local axle = spec.drive == "FWD" and wheels[1].x or wheels[3].x
+    local push = spec.inertia * (wanted - r) * BURNOUT_PIVOT / axle
+    local limit = spec.mass * G * 0.8
+    push = max(-limit, min(limit, push))
+    fyTotal = fyTotal + push
+    mzTotal = mzTotal + axle * push
+  end
   if vx > 0 then
     fxTotal = fxTotal + scrub * assist.carry + spec.mass * assist.tow * c.slipstream * pedal
   end

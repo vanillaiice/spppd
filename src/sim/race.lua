@@ -484,6 +484,8 @@ function Race:step(dt)
       car.input.handbrake = false
       -- The clutch is in at the lights, so the pedal only spins the engine.
       car.input.rev = car.driver and car.driver.revs and car.driver:revs(dt) or 0
+      -- The brake held with it lights the tyres up on the spot.
+      car.input.brake = car.driver and car.driver.brakes and car.driver:brakes() or 0
       car.input.boost = car.driver and car.driver.boostButton and car.driver:boostButton() or false
     end
     if self.timer >= self.startDelay then

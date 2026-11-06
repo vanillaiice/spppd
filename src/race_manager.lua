@@ -48,6 +48,12 @@ function playerDriver:revs()
   return math.max(input.throttle(), touch.revs())
 end
 
+-- The brake at the lights, held with the gas for a burnout.
+function playerDriver:brakes()
+  if session.paused then return 0 end
+  return math.max(input.brake(), touch.brakes())
+end
+
 -- Read at the lights too, so a press there is used up and can't fire at the go.
 function playerDriver:boostButton()
   if session.paused then return false end
@@ -75,6 +81,10 @@ local function readerDriver(reader, manual)
   function driver:revs()
     if session.paused then return 0 end
     return reader:throttle()
+  end
+  function driver:brakes()
+    if session.paused then return 0 end
+    return reader:brake()
   end
   function driver:boostButton()
     if session.paused then return false end

@@ -164,26 +164,33 @@ function input.throttle()
   return amount
 end
 
+-- How far the brake is pressed, on any device.
+function input.brake()
+  local amount = input.isDown("brake") and 1 or 0
+  local pad = input.gamepad
+  if pad and pad:isConnected() then
+    amount = math.max(amount, pad:getGamepadAxis("triggerleft"))
+  end
+  return amount
+end
+
 -- Fill a car's input table from the player's hands.
 function input.applyTo(target, manualGearbox)
-  local steer, brake = 0, 0
+  local steer = 0
   if input.isDown("steerLeft") then steer = steer - 1 end
   if input.isDown("steerRight") then steer = steer + 1 end
-  if input.isDown("brake") then brake = 1 end
   target.keyboard = true
 
   local pad = input.gamepad
   if pad and pad:isConnected() then
     local axis = input.curve(pad:getGamepadAxis("leftx"))
-    local left = pad:getGamepadAxis("triggerleft")
     if axis ~= 0 then
       steer = axis
       target.keyboard = false
     end
-    brake = math.max(brake, left)
   end
 
-  target.steer, target.throttle, target.brake = steer, input.throttle(), brake
+  target.steer, target.throttle, target.brake = steer, input.throttle(), input.brake()
   target.handbrake = input.isDown("handbrake")
   -- Checking the press too means a tap shorter than a frame still counts.
   local boostTapped = input.consume("boost")
@@ -241,11 +248,16 @@ function Reader:throttle()
   return amount
 end
 
+function Reader:brake()
+  local amount = self:isDown("brake") and 1 or 0
+  if self:connected() then amount = math.max(amount, self.pad:getGamepadAxis("triggerleft")) end
+  return amount
+end
+
 function Reader:applyTo(target, manualGearbox)
-  local steer, brake = 0, 0
+  local steer = 0
   if self:isDown("steerLeft") then steer = steer - 1 end
   if self:isDown("steerRight") then steer = steer + 1 end
-  if self:isDown("brake") then brake = 1 end
   target.keyboard = true
   if self:connected() then
     local axis = input.curve(self.pad:getGamepadAxis("leftx"))
@@ -253,9 +265,8 @@ function Reader:applyTo(target, manualGearbox)
       steer = axis
       target.keyboard = false
     end
-    brake = math.max(brake, self.pad:getGamepadAxis("triggerleft"))
   end
-  target.steer, target.throttle, target.brake = steer, self:throttle(), brake
+  target.steer, target.throttle, target.brake = steer, self:throttle(), self:brake()
   target.handbrake = self:isDown("handbrake")
   local boostTapped = self:consume("boost")
   target.boost = boostTapped or self:isDown("boost")

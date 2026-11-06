@@ -652,3 +652,85 @@ h.describe("dynamics", function()
     h.assertNear(fine.vx, coarse.vx, coarse.vx * 0.01, "speed after 8s")
   end)
 end)
+
+-- Gas and brake together near a stop: the driven tyres spin, the others hold.
+h.describe("burnouts", function()
+  local function firstWith(drive)
+    for _, spec in ipairs(garage) do
+      if spec.drive == drive then return spec end
+    end
+  end
+
+  local function burn(spec, t, seconds)
+    local s = sim(spec, "arcade")
+    for _ = 1, seconds / DT do s:step(input(t)) end
+    return s
+  end
+
+  local function spins(s, front)
+    local w = s.c.wheels[front and 1 or 3]
+    return w.spin
+  end
+
+  local SPINS = { RWD = { false, true }, FWD = { true, false }, AWD = { true, true } }
+  for _, spec in ipairs(garage) do
+    local drive = spec.drive
+    local frontSpins, rearSpins = SPINS[drive][1], SPINS[drive][2]
+    h.it(spec.name .. " (" .. drive .. ") spins only its driven tyres, on the limiter in first", function()
+      local s = burn(spec, { throttle = 1, brake = 1 }, 2)
+      h.assertTrue(s.c.burnout > 0, "in a burnout")
+      h.assertEq(spins(s, true) > 20, frontSpins, "front tyres spinning")
+      h.assertEq(spins(s, false) > 20, rearSpins, "rear tyres spinning")
+      h.assertEq(s.c.gear, 1)
+      if not spec.motor then h.assertTrue(s.c.rpm > spec.redline * 0.85, "revs up high") end
+      h.assertTrue(not s.c.reverse, "not backing up")
+      if drive == "AWD" then
+        h.assertBetween(s.vx, 0.5, 2, "AWD crawls: its brakes can't hold all four")
+      else
+        h.assertTrue(speedOf(s) < 0.3, "held on the spot")
+      end
+    end)
+  end
+
+  h.it("steered, RWD swings round the most and FWD the least", function()
+    local function yaw(drive)
+      return math.abs(burn(firstWith(drive), { throttle = 1, brake = 1, steer = 1 }, 2).r)
+    end
+    local rwd, fwd, awd = yaw("RWD"), yaw("FWD"), yaw("AWD")
+    h.assertTrue(rwd > 0.8, "RWD turns on the spot: " .. rwd)
+    h.assertTrue(fwd < awd and awd < rwd, string.format("FWD %.2f < AWD %.2f < RWD %.2f", fwd, awd, rwd))
+  end)
+
+  h.it("lets go into a launch when the brake comes off", function()
+    local spec = firstWith("RWD")
+    local s = burn(spec, { throttle = 1, brake = 1 }, 1)
+    for _ = 1, 1.5 / DT do s:step(input({ throttle = 1 })) end
+    h.assertTrue(s.c.burnout == 0 and s.vx > 4, "drives off")
+  end)
+
+  h.it("is plain braking at speed", function()
+    local s = sim(firstWith("RWD"), "arcade")
+    s.vx = 20
+    s:step(input({ throttle = 1, brake = 1 }))
+    h.assertEq(s.c.burnout, 0)
+  end)
+
+  h.it("smokes at the lights without moving the car or backing it up", function()
+    for _, drive in ipairs({ "RWD", "FWD", "AWD" }) do
+      local s = burn(firstWith(drive), { rev = 1, brake = 1 }, 1.5)
+      h.assertTrue(s.c.burnout > 0, drive .. " burning at the lights")
+      h.assertTrue(speedOf(s) < 0.05, drive .. " stays on its spot")
+      h.assertTrue(not s.c.reverse, drive .. " not in reverse")
+    end
+  end)
+
+  h.it("shows on a car another game drives, from its pedals", function()
+    local c = dynamics.new(firstWith("FWD"), "arcade")
+    c.throttle, c.brake = 1, 1
+    dynamics.showBurnout(c, 0)
+    h.assertTrue(c.wheels[1].spin > 20 and c.wheels[3].spin == 0, "front tyres smoke")
+    c.brake = 0
+    dynamics.showBurnout(c, 0)
+    h.assertEq(c.wheels[1].spin, 0, "and stop when it lets go")
+  end)
+end)
