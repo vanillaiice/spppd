@@ -308,11 +308,60 @@ local function fade(c, a)
   return { c[1], c[2], c[3], (c[4] or 1) * a }
 end
 
-local function drawArrow(b, c)
+local function drawArrow(b, x, y, c)
   local w = b.r * 0.42
   local dir = b.shape == "left" and -1 or 1
   love.graphics.setColor(c)
-  love.graphics.polygon("fill", b.x + dir * w, b.y, b.x - dir * w * 0.7, b.y - w, b.x - dir * w * 0.7, b.y + w)
+  love.graphics.polygon("fill", x + dir * w, y, x - dir * w * 0.7, y - w, x - dir * w * 0.7, y + w)
+end
+
+-- One button with its middle at x, y.
+local function paintButton(b, x, y, c, held, a, s)
+  local panel = colors.asphaltDeep
+  if held then
+    love.graphics.setColor(fade(c, a))
+  else
+    love.graphics.setColor(panel[1], panel[2], panel[3], 0.55 * a)
+  end
+  love.graphics.circle("fill", x, y, b.r)
+  love.graphics.setColor(c[1], c[2], c[3], 0.9 * a)
+  love.graphics.setLineWidth(2 * s)
+  love.graphics.circle("line", x, y, b.r)
+  if b.shape then
+    drawArrow(b, x, y, fade(held and panel or c, a))
+  else
+    -- Red text on the dark panel is hard to read, so brake is labelled in white.
+    local text = b.action == "brake" and colors.paint or (held and panel or c)
+    ui.text(b.label, x - b.r, y - b.size / 2, b.size, fade(text, a), "center", b.r * 2)
+  end
+end
+
+-- A button looks the same frame after frame until it's pressed, and its circles
+-- cost a slow phone more than the rest of the HUD. So each look is drawn once
+-- into a canvas, keyed by everything that changes it, and kept.
+local looks, lookCount = {}, 0
+local MAX_LOOKS = 64
+
+local function look(b, c, held, a, s)
+  local key = string.format("%s|%s|%.2f|%.2f|%s|%s|%.3f|%.2f", b.action, b.label or b.shape,
+    b.r, b.size or 0, tostring(c), tostring(held), a, s)
+  local found = looks[key]
+  if found then return found end
+  if lookCount >= MAX_LOOKS then looks, lookCount = {}, 0 end
+  local half = math.ceil(b.r + 2 * s + 2)
+  local canvas = love.graphics.newCanvas(half * 2, half * 2)
+  canvas:setFilter("nearest", "nearest")
+  love.graphics.push("all")
+  love.graphics.origin()
+  love.graphics.setScissor()
+  love.graphics.setCanvas(canvas)
+  love.graphics.clear(0, 0, 0, 0)
+  paintButton(b, half, half, c, held, a, s)
+  love.graphics.pop()
+  found = { canvas = canvas, half = half }
+  looks[key] = found
+  lookCount = lookCount + 1
+  return found
 end
 
 local function drawButton(b, car, s)
@@ -320,23 +369,15 @@ local function drawButton(b, car, s)
   -- Boost stays lit for as long as it's on, not just while it's pressed.
   local held = input.isDown(b.action) or (b.action == "boost" and car.model.boostState == "active")
   local a = held and math.max(opacity(), HELD_FLOOR) or opacity()
-  local panel = colors.asphaltDeep
-  if held then
-    love.graphics.setColor(fade(c, a))
-  else
-    love.graphics.setColor(panel[1], panel[2], panel[3], 0.55 * a)
-  end
-  love.graphics.circle("fill", b.x, b.y, b.r)
-  love.graphics.setColor(c[1], c[2], c[3], 0.9 * a)
-  love.graphics.setLineWidth(2 * s)
-  love.graphics.circle("line", b.x, b.y, b.r)
-  if b.shape then
-    drawArrow(b, fade(held and panel or c, a))
-  else
-    -- Red text on the dark panel is hard to read, so brake is labelled in white.
-    local text = b.action == "brake" and colors.paint or (held and panel or c)
-    ui.text(b.label, b.x - b.r, b.y - b.size / 2, b.size, fade(text, a), "center", b.r * 2)
-  end
+  local l = look(b, c, held, a, s)
+  -- On a whole pixel, so the canvas lands on the screen's pixels as drawn.
+  local dpi = love.graphics.getDPIScale()
+  local x = math.floor((b.x - l.half) * dpi + 0.5) / dpi
+  local y = math.floor((b.y - l.half) * dpi + 0.5) / dpi
+  love.graphics.setColor(1, 1, 1, 1)
+  love.graphics.setBlendMode("alpha", "premultiplied")
+  love.graphics.draw(l.canvas, x, y)
+  love.graphics.setBlendMode("alpha")
 end
 
 function touch.draw(sw, sh, car)
