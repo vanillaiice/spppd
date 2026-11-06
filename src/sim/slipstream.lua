@@ -20,19 +20,24 @@ local FADE_RATE = 0.9    -- per second; the slow fade is what makes a slingshot
 
 -- How far `car` sits inside the wake of `other`, 0..1.
 function slipstream.wake(car, other)
-  local _, _, ovx, ovy = other:getVelocity()
+  -- Most pairs are far apart, so that's checked before anything else.
+  local x, y = car.body:getPosition()
+  local ox, oy = other.body:getPosition()
+  local dx, dy = (x - ox) / M, (y - oy) / M
+  if dx * dx + dy * dy > RANGE * RANGE + FAR_WIDTH * FAR_WIDTH then return 0 end
+
+  local ovx, ovy = other.body:getLinearVelocity()
+  ovx, ovy = ovx / M, ovy / M
   local speed = sqrt(ovx * ovx + ovy * ovy)
   if speed < MIN_SPEED then return 0 end
 
   -- The wake trails the way the car is travelling, not the way it is pointed.
   local ux, uy = ovx / speed, ovy / speed
-  local _, _, vx, vy = car:getVelocity()
+  local vx, vy = car.body:getLinearVelocity()
+  vx, vy = vx / M, vy / M
   local own = sqrt(vx * vx + vy * vy)
   if own < MIN_SPEED or vx * ux + vy * uy < own * SAME_WAY then return 0 end
 
-  local x, y = car.body:getPosition()
-  local ox, oy = other.body:getPosition()
-  local dx, dy = (x - ox) / M, (y - oy) / M
   local behind = -(dx * ux + dy * uy)
   if behind < MIN_GAP or behind > RANGE then return 0 end
 
