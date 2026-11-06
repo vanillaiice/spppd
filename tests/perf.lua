@@ -13,6 +13,16 @@ local post = require("src/render/post")
 local renderer = require("src/render/track_renderer")
 local vfx = require("src/vfx_manager")
 local input = require("src/input")
+local ui = require("src/ui")
+local touch = require("src/touch")
+local minimap = require("src/minimap")
+local Race = require("src/sim/race")
+local Car = require("src/entities/car")
+local world = require("src/world")
+local dynamics = require("src/sim/dynamics")
+local slipstream = require("src/sim/slipstream")
+local audio = require("src/audio")
+local car_view = require("src/render/car_view")
 
 local perf = {}
 
@@ -120,6 +130,22 @@ function perf.start()
   timed(post, "drawGlow", "glow")
   timed(post, "present", "composite")
   timed(vfx, "draw", "vfx")
+  -- Parts of the HUD, which are also inside its own figure.
+  timed(ui, "text", "text")
+  timed(ui, "panel", "panel")
+  timed(touch, "draw", "touchui")
+  timed(minimap, "draw", "minimap")
+  -- Parts of the update. Race.step holds the rest of the simulation's figures.
+  timed(Race, "step", "sim")
+  timed(world, "step", "box2d")
+  timed(dynamics, "step", "tyres")
+  timed(AI, "update", "ai")
+  timed(slipstream, "update", "slip")
+  timed(Car, "updateSurfaces", "surfaces")
+  timed(Race, "updateProgress", "progress")
+  timed(audio, "update", "audio")
+  timed(car_view, "updateFx", "carfx")
+  timed(vfx, "update", "particles")
 
   -- CPU time since launch. Everything has loaded by now, so this covers rendering
   -- the sounds on a first launch, and reading them from the cache after that.
