@@ -1160,6 +1160,9 @@ local FADE_OUT = 0.5
 
 local function fadeTo(source, target, dt, rate)
   local now = source:getVolume()
+  -- Silent and staying so. A loop this quiet is already paused: only this
+  -- function plays loops, and it pauses them at this level.
+  if now <= 0.001 and target <= 0.001 then return end
   local step = (rate or 8) * dt
   local v = now + math.max(-step, math.min(step, target - now))
   source:setVolume(v)
