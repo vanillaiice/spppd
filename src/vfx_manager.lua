@@ -17,9 +17,24 @@ local function newSystem(image, buffer)
   return ps
 end
 
+local SYSTEMS = { "smoke", "dirt", "sparks", "pop", "fire", "fireCore", "soot" }
+
+-- Dust takes the colour of the ground it's thrown from.
+local function setDust(dirt, dust)
+  dirt:setColors(dust[1], dust[2], dust[3], 0.0, dust[1], dust[2], dust[3], 0.3, dust[1], dust[2], dust[3], 0)
+end
+
+-- The systems are made once and emptied for each race after that.
 function vfx.load(dustColor)
-  textures.load()
   local dust = dustColor or { 0.5, 0.42, 0.28 }
+  vfx.debris = {}
+  vfx.density = 1
+  if vfx.smoke then
+    for _, name in ipairs(SYSTEMS) do vfx[name]:reset() end
+    setDust(vfx.dirt, dust)
+    return
+  end
+  textures.load()
 
   local smoke = newSystem(textures.smoke, 700)
   smoke:setParticleLifetime(0.8, 1.9)
@@ -37,7 +52,7 @@ function vfx.load(dustColor)
   dirt:setSizeVariation(0.6)
   dirt:setLinearDamping(1.8, 3)
   dirt:setRotation(0, math.pi * 2)
-  dirt:setColors(dust[1], dust[2], dust[3], 0.0, dust[1], dust[2], dust[3], 0.3, dust[1], dust[2], dust[3], 0)
+  setDust(dirt, dust)
   vfx.dirt = dirt
 
   local sparks = newSystem(textures.spark, 400)
@@ -89,9 +104,6 @@ function vfx.load(dustColor)
   soot:setLinearDamping(1.4, 2.4)
   soot:setColors(0.16, 0.15, 0.15, 0.0, 0.2, 0.19, 0.19, 0.4, 0.3, 0.29, 0.29, 0.22, 0.42, 0.41, 0.41, 0)
   vfx.soot = soot
-
-  vfx.debris = {}
-  vfx.density = 1
 end
 
 local function aim(ps, x, y, vx, vy, jitter)
