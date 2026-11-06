@@ -100,10 +100,18 @@ function Car:updateSurfaces(track)
     for i = 1, 4 do wheels[i].surface = "asphalt" end
     return
   end
+  local x, y = self.body:getPosition()
+  local a = self.body:getAngle()
+  local ca, sa = math.cos(a), math.sin(a)
+  -- The first wheel searches around where the car was last step. The others
+  -- are within a sample or two of it, so they search a narrow window around it.
+  local hint, window = self.trackIndex, nil
   for i = 1, 4 do
     local w = wheels[i]
-    local x, y = self:wheelWorldPosition(w)
-    w.surface = track:surfaceAt(x, y, self.trackIndex)
+    local wx, wy = w.x * M, w.y * M
+    local surface, index = track:surfaceAt(x + wx * ca - wy * sa, y + wx * sa + wy * ca, hint, window)
+    w.surface = surface
+    hint, window = index, 3
   end
 end
 

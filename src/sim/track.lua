@@ -622,12 +622,14 @@ function Track.new(def)
 end
 
 -- Find where a world point sits on the ribbon. Pass the previous index as
--- `hint` so that parallel stretches of road can't steal the result.
-function Track:locate(x, y, hint)
+-- `hint` so that parallel stretches of road can't steal the result. `window`
+-- is how many samples either side of it to search, 12 unless said.
+function Track:locate(x, y, hint, window)
   local samples, n = self.samples, self.count
   local best, bestD = 1, math.huge
   if hint then
-    for k = -12, 12 do
+    window = window or 12
+    for k = -window, window do
       local i = wrap(hint + k, n)
       local s = samples[i]
       local dx, dy = x - s.x, y - s.y
@@ -673,8 +675,8 @@ function Track:locate(x, y, hint)
   return best, s0, (across - 0.5) * width, off, across < 0.5 and "l" or "r"
 end
 
-function Track:surfaceAt(x, y, hint)
-  local i, _, _, off, side = self:locate(x, y, hint)
+function Track:surfaceAt(x, y, hint, window)
+  local i, _, _, off, side = self:locate(x, y, hint, window)
   if off <= 0 then return "asphalt", i end
   local s = self.samples[i]
   if off <= KERB_WIDTH and (side == "l" and s.kerbL or side == "r" and s.kerbR) then
