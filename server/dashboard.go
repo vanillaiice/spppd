@@ -10,7 +10,6 @@ import (
 	"log"
 	"net"
 	"net/http"
-	"net/url"
 	"sync"
 	"time"
 )
@@ -138,17 +137,16 @@ func (l *loginLimiter) succeed(ip string) {
 	delete(l.fails, ip)
 }
 
-// sameOrigin stops another site making a browser post to the dashboard.
-func sameOrigin(r *http.Request) bool {
-	if r.Method == http.MethodGet || r.Method == http.MethodHead {
-		return true
-	}
-	origin := r.Header.Get("Origin")
-	if origin == "" {
-		return true
-	}
-	parsed, err := url.Parse(origin)
-	return err == nil && parsed.Host == r.Host
+// maxFormBytes is far more than any of the dashboard's forms needs.
+const maxFormBytes = 64 << 10
+
+// securityHeaders keeps the page out of frames and stops a browser guessing types.
+// Scripts aren't restricted, because htmx runs the page's hx-on attributes.
+func securityHeaders(h http.Header) {
+	h.Set("Content-Security-Policy", "frame-ancestors 'none'; base-uri 'none'; form-action 'self'; object-src 'none'")
+	h.Set("X-Frame-Options", "DENY")
+	h.Set("X-Content-Type-Options", "nosniff")
+	h.Set("Referrer-Policy", "no-referrer")
 }
 
 type userKey struct{}
@@ -257,11 +255,16 @@ func newDashboard(relay *Relay, store *Store, analyticsDays int) http.Handler {
 		d.export(w, "races", d.store.ExportRaces)
 	})))
 
+	// Another site can't make a browser post here: the browser's Sec-Fetch-Site
+	// says where a request came from, and Origin is checked when it's missing.
+	crossOrigin := http.NewCrossOriginProtection()
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if !sameOrigin(r) {
+		securityHeaders(w.Header())
+		if err := crossOrigin.Check(r); err != nil {
 			http.Error(w, "cross-site request refused", http.StatusForbidden)
 			return
 		}
+		r.Body = http.MaxBytesReader(w, r.Body, maxFormBytes)
 		mux.ServeHTTP(w, r)
 	})
 }

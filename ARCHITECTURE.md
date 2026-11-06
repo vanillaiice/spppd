@@ -1590,12 +1590,15 @@ It needs at least one other driver left.
 
 Forwarding doesn't parse anything, which keeps the relay independent of the game
 protocol. `event|` packets are never forwarded, so a client can't fake one from the
-relay. `refuse` writes to the dashboard but not the log, because anyone can send those
-as fast as they like.
+relay. `refuse` stays out of the log, because anyone can send those as fast as they
+like. It counts them, and the sweep writes one dashboard line a second that sums them
+up, so a flood can't push everything else off the activity list.
 
 **`Sweep`** runs once a second: it computes traffic rates, drops clients silent for over
-5 s if they share a room or 60 s if alone, repeats every room, and clears old rate
-buckets.
+5 s if they share a room or 60 s if alone, repeats each room to the clients heard from
+in the last 2 s, sums up the refusals, and clears old rate buckets. A game sends at
+least four times a second, so only an address that has stopped sending, or never
+was, misses the repeat.
 
 Concurrency is simple: one goroutine reads the socket, one sweeps, HTTP handlers run
 on their own, and all of them hold `mu`. `Sender` is a function, so tests run the
@@ -1612,14 +1615,15 @@ The relay is public, so it limits what any one address can cost:
 | Connections from one IP | 16 | Refused |
 | Players on the relay | 2000 (`-max-players`) | Refused |
 | Rooms open, waiting or racing | No limit by default (`-max-rooms`) | Hosting is refused; joining an open room still works |
-| Rate buckets | 65536, cleared after 10 s idle | Forged sources can't grow memory without limit |
+| Rate buckets | 65536, cleared after 10 s idle | A random entry is forgotten to make room, so forged sources can neither grow memory nor shut newcomers out |
 | Room codes | 1 to 16 letters and numbers | Refused |
 
 Four players on one connection use about 130 packets a second. Room codes from the game
 are 6 characters from 32, so about a billion, and the rate limit puts guessing one out
 of reach. The longest refusal is about five times the size of what prompted it, but a
-forged source gets the same rate limit, which caps that at under 20 kB/s, so the relay
-isn't worth abusing as a reflector.
+forged source gets the same rate limit, which caps that at under 20 kB/s. A forged
+`host` gets one answer, not one a second, because the sweep only repeats rooms to
+addresses still sending. So the relay isn't worth abusing as a reflector.
 
 Players have no accounts. Only the dashboard has users.
 
@@ -1701,8 +1705,13 @@ Who gets in:
   the `Host` must be loopback too, which stops a page using DNS tricks through a local
   browser. Forging `Host` from another machine gets nowhere. Adding the first user
   from the page logs you in as them.
-- Either way, a non-GET request's `Origin` must match, so another site can't make a
-  browser post to it, or log it in.
+- Either way, Go's `http.CrossOriginProtection` refuses a non-GET request that a
+  browser marks as from another site (`Sec-Fetch-Site`), or whose `Origin` doesn't
+  match, so another site can't make a browser post to it, or log it in.
+
+Every answer says it can't be framed (`frame-ancestors 'none'`, `X-Frame-Options`) and
+mustn't be sniffed. A form body over 64 kB is cut off, and the server times out slow
+or idle connections.
 
 Changing your password ends your other logins. Nobody can remove themselves, so
 there's always a user who can get in. If every password is lost, `relay -db FILE user
@@ -1714,9 +1723,10 @@ existing user, so a password changed on the dashboard survives a deploy.
 
 ### Deploying
 
-The relay runs as a Kamal accessory on the official server: `alpine:3.20` with the static
+The relay runs as a Kamal accessory on the official server: `alpine:3.24` with the static
 binary uploaded beside it, so there's no image to build or registry to push to. It runs
-on a read-only root with every capability dropped, as the deploy user, so it can write
+on a read-only root with every capability dropped, `no-new-privileges`, 256 MB of
+memory and 128 processes at most, as the deploy user, so it can write
 `~/spppd-relay/data`, which Kamal mounts at `/data` for the database. `bin/relay-deploy`
 looks up that user's IDs over SSH. UDP 8080 is public, and the dashboard is published
 on the server's loopback only. Docker's published ports go past UFW, as 80 and 443 do,

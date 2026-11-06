@@ -48,7 +48,9 @@ builder:
 
 accessories:
   relay:
-    image: alpine:3.20
+    # Only a home for the static binary, which uses nothing from it. Keep it on a
+    # supported release all the same: 3.24 is supported until May 2028.
+    image: alpine:3.24
     host: <%= ENV.fetch('SPPPD_HOST') %>
     # Analytics are on for the official server; PRIVACY.md says what they keep.
     cmd: /srv/relay -addr :8080 -dashboard :9090 -db /data/relay.db -analytics
@@ -74,6 +76,10 @@ accessories:
       user: "<%= ENV.fetch('SPPPD_RELAY_USER', 'nobody') %>"
       read-only: true
       cap-drop: ALL
+      security-opt: no-new-privileges:true
+      # Far above what it uses, so a runaway can't take the server down with it.
+      memory: 256m
+      pids-limit: 128
     env:
       secret:
         # The first dashboard user's password, for the user "admin". It's only

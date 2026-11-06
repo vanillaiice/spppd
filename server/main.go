@@ -28,6 +28,9 @@ const (
 	maxRoomPlayers = 4
 	maxPerIP       = 16 // a whole LAN party can share one address
 	maxRateEntries = 1 << 16
+	// A client that has said nothing for this long isn't listening, so the sweep
+	// stops repeating its room to it. Games send four times a second at least.
+	announceWindow = 2 * time.Second
 )
 
 var eventPrefix = []byte("event|")
@@ -85,6 +88,14 @@ func (t Traffic) minus(other Traffic) Traffic {
 	}
 }
 
+// refusalCount gathers refusals between sweeps, so a flood of them makes one
+// dashboard line a second rather than pushing everything else off the list.
+type refusalCount struct {
+	total   int
+	last    string         // the latest address refused
+	reasons map[string]int // how often each reason was given
+}
+
 // Event is one line of the dashboard's recent activity.
 type Event struct {
 	Seq  uint64 // counts up, so the page can tell which lines are new
@@ -108,6 +119,7 @@ type Relay struct {
 	sampled    Traffic
 	perSecond  Traffic
 	dropped    uint64
+	refusals   refusalCount // since the last sweep
 	started    time.Time
 	send       Sender
 	now        func() time.Time
@@ -171,13 +183,41 @@ func (r *Relay) event(format string, args ...any) {
 }
 
 // refuse turns a player away. It stays out of the log, because anyone can
-// send these as fast as they like.
+// send these as fast as they like, and the sweep sums them up for the dashboard.
 func (r *Relay) refuse(reason string, addr *net.UDPAddr) {
 	r.send([]byte("event|error|"+reason), addr)
 	if r.tally != nil {
 		r.tally.Refused++
 	}
-	r.record(fmt.Sprintf("[REFUSED] %v: %s", addr, reason))
+	if r.refusals.reasons == nil {
+		r.refusals.reasons = make(map[string]int)
+	}
+	r.refusals.total++
+	r.refusals.last = addr.String()
+	r.refusals.reasons[reason]++
+}
+
+// reportRefusals writes the refusals since the last sweep as one line. A lone one
+// reads as it always did. Callers hold the lock.
+func (r *Relay) reportRefusals() {
+	count := r.refusals
+	r.refusals = refusalCount{}
+	if count.total == 0 {
+		return
+	}
+	reasons := make([]string, 0, len(count.reasons))
+	for reason := range count.reasons {
+		reasons = append(reasons, reason)
+	}
+	sort.Strings(reasons)
+	if count.total == 1 {
+		r.record(fmt.Sprintf("[REFUSED] %s: %s", count.last, reasons[0]))
+		return
+	}
+	for i, reason := range reasons {
+		reasons[i] = fmt.Sprintf("%s (%d)", reason, count.reasons[reason])
+	}
+	r.record(fmt.Sprintf("[REFUSED] %d times, last %s: %s", count.total, count.last, strings.Join(reasons, ", ")))
 }
 
 // allow spends one token from an IP's bucket. Callers hold the lock.
@@ -189,9 +229,15 @@ func (r *Relay) allow(ip string) bool {
 	burst := r.rate * 2
 	bucket := r.buckets[ip]
 	if bucket == nil {
-		// Forged sources can't grow this without limit.
+		// Forged sources can't grow this without limit. Nor can they fill it to
+		// shut everyone new out: a full table makes room by forgetting an entry at
+		// random, which is most likely one of theirs. A forgotten bucket starts
+		// full, so the worst it does is give that address a fresh burst.
 		if len(r.buckets) >= maxRateEntries {
-			return false
+			for other := range r.buckets {
+				delete(r.buckets, other)
+				break
+			}
 		}
 		bucket = &rateBucket{tokens: burst, last: now}
 		r.buckets[ip] = bucket
@@ -456,8 +502,9 @@ func (r *Relay) remove(client *Client) {
 }
 
 // Sweep runs once a second. It drops clients that have gone quiet, giving
-// someone alone in a room longer, works out the traffic rates, and repeats each
-// room's state, so a lost update heals and clients know the relay is alive.
+// someone alone in a room longer, works out the traffic rates, repeats each
+// room's state to everyone still sending, so a lost update heals and clients
+// know the relay is alive, and sums up the refusals.
 func (r *Relay) Sweep(racing, waiting time.Duration) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
@@ -484,9 +531,14 @@ func (r *Relay) Sweep(racing, waiting time.Duration) {
 	if r.tally != nil {
 		r.tally.Peak = max(r.tally.Peak, len(r.clients))
 	}
-	for _, room := range r.rooms {
-		r.announce(room)
+	// Only to those still talking: an address that sent one packet and went quiet
+	// may never have been listening, and mustn't get a stream of answers.
+	for _, client := range r.clients {
+		if now.Sub(client.LastSeen) <= announceWindow {
+			r.tell(client)
+		}
 	}
+	r.reportRefusals()
 	for ip, bucket := range r.buckets {
 		if now.Sub(bucket.last) > 10*time.Second {
 			delete(r.buckets, ip)
@@ -714,9 +766,19 @@ func main() {
 	}
 
 	if *dashboard != "" {
+		server := &http.Server{
+			Addr:    *dashboard,
+			Handler: newDashboard(relay, store, *analyticsDays),
+			// Nobody holds a connection open for nothing.
+			ReadHeaderTimeout: 5 * time.Second,
+			ReadTimeout:       10 * time.Second,
+			WriteTimeout:      30 * time.Second,
+			IdleTimeout:       2 * time.Minute,
+			MaxHeaderBytes:    16 << 10,
+		}
 		go func() {
 			log.Printf("Dashboard listening on %s", *dashboard)
-			log.Fatalf("Dashboard stopped: %v", http.ListenAndServe(*dashboard, newDashboard(relay, store, *analyticsDays)))
+			log.Fatalf("Dashboard stopped: %v", server.ListenAndServe())
 		}()
 	}
 

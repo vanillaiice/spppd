@@ -443,6 +443,7 @@ func TestSnapshotDoesNotShareEvents(t *testing.T) {
 	relay, _, _ := setup()
 	host(relay, "ABCD", 1)
 	join(relay, "NOPE", 2)
+	relay.Sweep(5*time.Second, 60*time.Second)
 	snap := relay.Snapshot()
 	if len(snap.Events) != 2 || snap.Events[0].Text != "[REFUSED] 127.0.0.1:2: No room with that code" {
 		t.Fatalf("newest should come first: %+v", snap.Events)
@@ -455,16 +456,79 @@ func TestSnapshotDoesNotShareEvents(t *testing.T) {
 
 func TestEventsStayWithinTheLimit(t *testing.T) {
 	relay, _, _ := setup()
+	relay.rate = 0
 	for i := 0; i < maxEvents+25; i++ {
-		join(relay, "NOPE", i+1)
+		relay.Handle([]byte(fmt.Sprintf("event|host|2|R%d", i)), addrAt(fmt.Sprintf("198.51.100.%d", i%250+1), 1000+i))
 	}
 	events := relay.Snapshot().Events
 	if len(events) != maxEvents {
 		t.Fatalf("kept %d events", len(events))
 	}
-	want := "[REFUSED] 127.0.0.1:225: No room with that code"
-	if events[0].Text != want {
+	if !strings.Contains(events[0].Text, fmt.Sprintf("%q", fmt.Sprintf("R%d", maxEvents+24))) {
 		t.Fatalf("newest event lost: %q", events[0].Text)
+	}
+}
+
+func TestRefusalsAreSummedUpEachSecond(t *testing.T) {
+	relay, _, now := setup()
+	relay.rate = 0
+	host(relay, "ABCD", 1)
+	for i := 0; i < 500; i++ {
+		join(relay, "NOPE", 100+i)
+	}
+	host(relay, "ABCD", 9)
+	if got := len(relay.Snapshot().Events); got != 1 {
+		t.Fatalf("refusals should wait for the sweep, got %d lines", got)
+	}
+	*now = now.Add(time.Second)
+	relay.Sweep(5*time.Second, 60*time.Second)
+	events := relay.Snapshot().Events
+	want := "[REFUSED] 501 times, last 127.0.0.1:9: No room with that code (500), That room code is taken (1)"
+	if len(events) != 2 || events[0].Text != want {
+		t.Fatalf("got %+v", events)
+	}
+	if !strings.Contains(events[1].Text, "[HOST]") {
+		t.Fatalf("the flood pushed out what came before: %+v", events)
+	}
+	relay.Sweep(5*time.Second, 60*time.Second)
+	if got := len(relay.Snapshot().Events); got != 2 {
+		t.Fatalf("a quiet second adds nothing, got %d lines", got)
+	}
+}
+
+// Forged sources filling the rate table mustn't shut new players out.
+func TestAFullRateTableStillLetsNewcomersIn(t *testing.T) {
+	relay, sent, _ := setup()
+	for i := 0; i < maxRateEntries+100; i++ {
+		ip := net.IPv4(10, byte(i>>16), byte(i>>8), byte(i))
+		relay.Handle([]byte("x"), &net.UDPAddr{IP: ip, Port: 1})
+	}
+	if len(relay.buckets) > maxRateEntries {
+		t.Fatalf("the table grew to %d", len(relay.buckets))
+	}
+	relay.Handle([]byte("event|host|2|REAL01"), addrAt("198.51.100.7", 1))
+	if got := last(sent); got.to != "198.51.100.7:1" || !strings.HasPrefix(got.data, "event|room|1|REAL01") {
+		t.Fatalf("a real host got %+v", got)
+	}
+}
+
+// An address that sent one packet and went quiet gets nothing more, so a forged
+// one can't turn the relay into a stream of packets at someone else.
+func TestTheSweepOnlyAnswersThoseStillSending(t *testing.T) {
+	relay, sent, now := setup()
+	host(relay, "ABCD", 1)
+	host(relay, "WXYZ", 2)
+	for i := 0; i < 59; i++ {
+		*now = now.Add(time.Second)
+		relay.Handle([]byte("hello|still here"), addr(2))
+		relay.Sweep(5*time.Second, 60*time.Second)
+	}
+	quiet, talking := len(sentTo(sent, 1)), len(sentTo(sent, 2))
+	if quiet > 3 {
+		t.Fatalf("a silent address got %d packets", quiet)
+	}
+	if talking < 59 {
+		t.Fatalf("a client still sending should hear every second, got %d", talking)
 	}
 }
 

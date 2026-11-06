@@ -521,3 +521,40 @@ func TestFormats(t *testing.T) {
 		}
 	}
 }
+
+func TestPagesCannotBeFramed(t *testing.T) {
+	relay, _, _ := setup()
+	page, _ := dash(t, relay)
+	out := request(page, http.MethodGet, "/login", nil, nil)
+	if got := out.Header().Get("X-Frame-Options"); got != "DENY" {
+		t.Fatalf("X-Frame-Options %q", got)
+	}
+	if got := out.Header().Get("Content-Security-Policy"); !strings.Contains(got, "frame-ancestors 'none'") {
+		t.Fatalf("Content-Security-Policy %q", got)
+	}
+	if got := out.Header().Get("X-Content-Type-Options"); got != "nosniff" {
+		t.Fatalf("X-Content-Type-Options %q", got)
+	}
+}
+
+func TestACrossSiteFetchIsRefused(t *testing.T) {
+	relay, _, _ := setup()
+	host(relay, "ABCD", 1)
+	page, _ := dash(t, relay)
+	form := url.Values{"addr": {addr(1).String()}}
+	out := request(page, http.MethodPost, "/close", form, map[string]string{"Sec-Fetch-Site": "cross-site"})
+	if out.Code != http.StatusForbidden || len(relay.rooms) != 1 {
+		t.Fatalf("status %d rooms %v", out.Code, relay.rooms)
+	}
+}
+
+func TestAHugeFormIsRefused(t *testing.T) {
+	relay, _, _ := setup()
+	host(relay, "ABCD", 1)
+	page, _ := dash(t, relay)
+	form := url.Values{"addr": {addr(1).String()}, "pad": {strings.Repeat("x", maxFormBytes)}}
+	out := request(page, http.MethodPost, "/close", form, nil)
+	if len(relay.rooms) != 1 {
+		t.Fatalf("status %d: a form past the limit was acted on", out.Code)
+	}
+}
