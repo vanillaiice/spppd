@@ -43,6 +43,12 @@ local DIFFICULTIES = { "rookie", "pro", "ace" }
 local DIFFICULTY_NAMES = { rookie = "ROOKIE", pro = "PRO", ace = "ACE" }
 local ASSISTS = { "arcade", "sport", "sim" }
 local ASSIST_NAMES = { arcade = "ARCADE", sport = "SPORT", sim = "SIM" }
+local RULES = { "open", "clean" }
+local RULE_NAMES = { open = "OPEN", clean = "CLEAN" }
+local RULE_HINTS = {
+  open = "Every lap counts, however you get round.",
+  clean = "Off the road, a cut, a reset or a wreck voids the lap.",
+}
 local ASSIST_HINTS = {
   arcade = "Big grip and easy drifts. Hold the handbrake to slide.",
   sport = "Realistic grip, with driver aids as a safety net.",
@@ -155,6 +161,7 @@ function menu.startRace(extra)
     time = extra.time or settings.time,
     fromEditor = extra.fromEditor,
     online = extra.online,
+    rules = mode == "trial" and settings.trialRules or nil,
   })
   state.screen = "race"
 end
@@ -274,6 +281,11 @@ local function setupRows()
   rows[#rows + 1] = mode == "freestyle" and freestyleTrackRow() or trackRow()
   rows[#rows + 1] = carRow()
   rows[#rows + 1] = paintRow()
+  -- Open counts every lap; clean voids one that goes off, cuts, resets or wrecks.
+  if mode == "trial" then
+    rows[#rows + 1] = stepper("RULES", function() return settings.trialRules end,
+      function(v) settings.trialRules = v end, RULES, RULE_NAMES)
+  end
 
   if mode == "race" then
     rows[#rows + 1] = lapsRow()
@@ -460,7 +472,7 @@ function menu.testDrive(doc, track)
   menu.demoRunning = false
   rm.start({
     mode = "trial", track = track, spec = spec, color = currentColor(spec),
-    laps = 9999, opponents = 0, time = settings.time, fromEditor = true,
+    laps = 9999, opponents = 0, time = settings.time, fromEditor = true, rules = settings.trialRules,
   })
   state.screen = "race"
 end
@@ -550,7 +562,7 @@ local function drawSetupPreview(sw, sh, boardW, s, carOnly)
     ui.text(detail, x, 14 * s + size + 8 * s, 6 * s, colors.paint, "right", w - 6 * s)
     -- Freestyle times nothing, so a best lap means nothing there.
     if settings.mode ~= "freestyle" then
-      local best = settings.bestLap(entry.name, currentCar().id)
+      local best = settings.bestLap(entry.name, currentCar().id, settings.trialRules)
       ui.text("BEST " .. hud.formatTime(best), x + 6 * s, 14 * s + size + 20 * s, 6 * s,
         best and colors.sectorPurple or colors.muted)
     end
@@ -718,6 +730,8 @@ function menu.draw(sw, sh)
     if menu.screen == "setup" then
       if focused.label == "HANDLING" then
         ui.text(ASSIST_HINTS[settings.assists], 14 * s, sh - 34 * s, 5 * s, colors.muted, "left", w - 28 * s)
+      elseif focused.label == "RULES" then
+        ui.text(RULE_HINTS[settings.trialRules], 14 * s, sh - 34 * s, 5 * s, colors.muted, "left", w - 28 * s)
       elseif focused.label == "MUSIC FOLDER" then
         ui.text(MUSIC_HINT, 14 * s, sh - 34 * s, 5 * s, colors.muted, "left", w - 28 * s)
       end

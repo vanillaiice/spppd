@@ -85,11 +85,13 @@ function rm.start(opts)
     spec = opts.spec, color = opts.color, assist = opts.assist or settings.assists,
     difficulty = opts.difficulty, seed = opts.seed, startDelay = opts.startDelay,
     online = opts.online,
+    rules = opts.rules,
     lot = opts.mode == "freestyle" and not opts.demo,
     manualGearbox = settings.gearbox == "manual",
     onLap = function(car, time, clean) rm.onLap(car, time, clean) end,
     onCrash = function(car, hit) rm.onCrash(car, hit) end,
     onRecover = function(car) rm.onRecover(car) end,
+    onSpoil = function(car, reason) rm.onSpoil(car, reason) end,
   })
 
   local timeName = opts.time or "day"
@@ -135,8 +137,8 @@ function rm.start(opts)
     race.player.driver = playerDriver
     if race.mode == "trial" then
       if opts.entry then
-        session.bestLap = settings.bestLap(opts.entry.name, opts.spec.id)
-        session.ghost = settings.ghost(opts.entry.name, opts.spec.id)
+        session.bestLap = settings.bestLap(opts.entry.name, opts.spec.id, race.rules)
+        session.ghost = settings.ghost(opts.entry.name, opts.spec.id, race.rules)
       end
     end
   end
@@ -241,7 +243,7 @@ function rm.onLap(car, time, clean)
       -- A test drive from the editor keeps its best in memory only.
       local isRecord = not session.bestLap or time < session.bestLap
       if entry then
-        isRecord = settings.submitLap(entry.name, session.opts.spec.id, time, session.ghostFrames)
+        isRecord = settings.submitLap(entry.name, session.opts.spec.id, time, session.ghostFrames, race.rules)
       end
       if isRecord then
         rm.setToast("NEW BEST  " .. hud.formatTime(time), colors.sectorPurple)
@@ -267,6 +269,15 @@ function rm.onCrash(car, hit)
   rm.setToast("CRASHED", colors.kerb, Race.WRECK_TIME + 0.3)
   session.cam.trauma = 1
   audio.impact(math.max(CRASH_SOUND, hit * car.spec.mass / 9000), car.spec)
+end
+
+-- Clean rules say the moment a lap is lost, not just at the line.
+local SPOILED = { off = "OFF TRACK", cut = "SHORTCUT", reset = "RESET", wreck = "CRASHED" }
+
+function rm.onSpoil(car, reason)
+  if not session or car ~= session.race.player or session.demo then return end
+  if session.race.mode ~= "trial" then return end
+  rm.setToast(SPOILED[reason] .. " - LAP VOID", colors.kerb, reason == "wreck" and Race.WRECK_TIME + 0.3 or 2)
 end
 
 function rm.onRecover(car)

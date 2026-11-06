@@ -84,6 +84,8 @@ local function drawTrialPanel(race, ctx, s)
   ui.text("LAST", x + 4 * s, y + rowH + 3 * s, size, colors.muted)
   ui.text(hud.formatTime(car.lastLap), x, y + rowH + 3 * s, size, colors.paint, "right", w - 4 * s)
   ui.text("BEST", x + 4 * s, y + rowH * 2 + 3 * s, size, colors.muted)
+  -- Each rule keeps its own best, so say whose this is.
+  ui.text(race.rules == "open" and "OPEN" or "CLEAN", x + 31 * s, y + rowH * 2 + 4 * s, 4 * s, colors.muted)
   ui.text(hud.formatTime(ctx.bestLap), x, y + rowH * 2 + 3 * s, size, colors.sectorPurple, "right", w - 4 * s)
 end
 

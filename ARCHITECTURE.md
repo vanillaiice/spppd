@@ -775,14 +775,18 @@ share of the spread. AI cars come from the garage, offset by the seed.
 - A car starting behind the line begins with a negative distance into lap 1.
 - Each step adds the signed change in `s`, wrapped around the lap, so reversing takes
   distance away.
-- **A jump over 45 m isn't counted** and marks the lap unclean. That's how cutting
-  across the infield fails to pay.
+- **A jump over 45 m isn't counted**, and under clean rules it marks the lap unclean.
+  That's how cutting across the infield fails to pay.
 - A lap completes when `floor(distance / length)` rises, during `racing`.
 
 So laps come from distance covered, and no checkpoints are needed.
 
-A lap stays **clean** unless all four wheels leave the road, a jump happens or the car
-respawns. Only clean laps count as a best lap.
+`Race.new` takes `rules`. Under `"clean"`, the default and what a race always uses, a
+lap stays **clean** unless all four wheels leave the road, a jump happens, the car
+respawns or it's wrecked. `spoil` is the one place that marks it, and it calls
+`onSpoil(car, reason)` once per lap with `off`, `cut`, `reset` or `wreck`. Time trial
+shows that as a toast. Under `"open"`, the time trial default (SETUP > RULES), nothing
+spoils a lap and every lap counts. Only clean laps count as a best lap.
 
 Going backwards at over 4 m/s for 1.2 s shows WRONG WAY. Pressing reset (`R`) moves
 the car two samples ahead on the racing line, stationary, and ghosted for 2.5 s.
@@ -895,7 +899,9 @@ The FIXED camera stays north-up and leads by velocity instead.
 ### Ghost
 
 Time trial samples x, y and angle 15 times a second into a flat array during each
-lap. If the lap is clean and a record, `settings.submitLap` saves it. Playback
+lap. If the lap is clean and a record, `settings.submitLap` saves it. Open and clean
+rules keep separate records, the open ones under a `/open` key, so a cut lap never
+beats a clean one; old records are clean ones. Playback
 interpolates between frames, drawn at 35% alpha. The ghost has no physics. A test
 drive from the editor keeps its best lap in memory only.
 

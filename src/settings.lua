@@ -36,6 +36,7 @@ local settings = {
   opponents = 5,
   difficulty = "pro",
   time = "day",
+  trialRules = "open",  -- or "clean": see Race.new
 
   server = SERVER,
 }
@@ -107,23 +108,25 @@ function settings.save()
   love.filesystem.write(FILE, "return " .. serialize(out) .. "\n")
 end
 
-local function recordKey(trackName, carId)
-  return trackName .. "/" .. carId
+-- Clean records keep the key they always had. Open ones are their own table, so a
+-- cut lap never beats a clean one.
+local function recordKey(trackName, carId, rules)
+  return trackName .. "/" .. carId .. (rules == "open" and "/open" or "")
 end
 
-function settings.bestLap(trackName, carId)
-  local r = records[recordKey(trackName, carId)]
+function settings.bestLap(trackName, carId, rules)
+  local r = records[recordKey(trackName, carId, rules)]
   return r and r.time or nil
 end
 
-function settings.ghost(trackName, carId)
-  local r = records[recordKey(trackName, carId)]
+function settings.ghost(trackName, carId, rules)
+  local r = records[recordKey(trackName, carId, rules)]
   return r and r.ghost or nil
 end
 
 -- Returns true when this lap is a new record.
-function settings.submitLap(trackName, carId, time, ghost)
-  local key = recordKey(trackName, carId)
+function settings.submitLap(trackName, carId, time, ghost, rules)
+  local key = recordKey(trackName, carId, rules)
   local current = records[key]
   if current and current.time <= time then return false end
   records[key] = { time = time, ghost = ghost }

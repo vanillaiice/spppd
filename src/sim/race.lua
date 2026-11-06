@@ -54,6 +54,8 @@ end
 function Race.new(opts)
   local self = setmetatable({}, Race)
   self.mode = opts.mode or "race"    -- race | trial | freestyle
+  -- "clean" voids a lap for going off, cutting, a reset or a wreck; "open" never does.
+  self.rules = opts.rules or "clean"
   self.track = opts.track
   self.laps = opts.laps or 3
   self.phase = "countdown"
@@ -66,6 +68,7 @@ function Race.new(opts)
   self.onLap = opts.onLap
   self.onCrash = opts.onCrash
   self.onRecover = opts.onRecover
+  self.onSpoil = opts.onSpoil
 
   world.load(self.track)
   -- Freestyle's playground, when it isn't on a circuit.
@@ -194,10 +197,17 @@ function Race:standings()
   return order
 end
 
-local function placeOnLine(car, s)
+-- The lap stops counting, said once per lap. Open rules let everything go.
+local function spoil(self, car, reason)
+  if self.rules == "open" or not car.lapClean then return end
+  car.lapClean = false
+  if self.onSpoil then self.onSpoil(car, reason) end
+end
+
+local function placeOnLine(self, car, s)
   car:teleport(s.lineX, s.lineY, math.atan2(s.ty, s.tx), 2.5)
   car.trackIndex = s.index
-  car.lapClean = false
+  spoil(self, car, "reset")
 end
 
 -- Knocked cones go back to their spots: all of them, or only the ones the
@@ -228,7 +238,7 @@ function Race:respawn(car)
     return
   end
   local index = car.trackIndex or 1
-  placeOnLine(car, track.samples[(index + 1) % track.count + 1])
+  placeOnLine(self, car, track.samples[(index + 1) % track.count + 1])
 end
 
 -- Back to where it hit, not where it slid to. Going on from there made a wreck
@@ -253,7 +263,7 @@ local function recover(self, car)
   local delta = (s.s - car.trackS + track.length / 2) % track.length - track.length / 2
   car.distance = car.distance + delta
   car.trackS = s.s
-  placeOnLine(car, s)
+  placeOnLine(self, car, s)
   if self.onRecover then self.onRecover(car) end
 end
 
@@ -266,6 +276,7 @@ local function wreck(self, car, hit)
   input.handbrake, input.boost, input.shiftUp, input.shiftDown = false, false, false, false
   input.wrecked = true
   if self.onCrash then self.onCrash(car, hit) end
+  spoil(self, car, "wreck")
 end
 
 -- A fence can wreck a car, but another car can't, and that includes being shoved
@@ -309,7 +320,7 @@ function Race:updateProgress(car, dt)
   if abs(delta) < SHORTCUT_JUMP then
     car.distance = car.distance + delta
   else
-    car.lapClean = false
+    spoil(self, car, "cut")
   end
 
   -- All four wheels off means the lap doesn't count as clean.
@@ -321,7 +332,7 @@ function Race:updateProgress(car, dt)
   end
   car.offCount = offCount
   car.offTrack = offCount == 4
-  if car.offTrack and self.phase == "racing" then car.lapClean = false end
+  if car.offTrack and self.phase == "racing" then spoil(self, car, "off") end
 
   -- Wrong way warning
   local sample = track.samples[index]

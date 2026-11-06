@@ -576,6 +576,82 @@ h.describe("race", function()
     race:destroy()
   end)
 
+  -- Drives the car round from the line, onto the grass for a stretch, and
+  -- through a cut, a reset and a wreck. Returns what the race said.
+  local function infractions(rules)
+    local track = Track.new(catalog.builtin()[1].def)
+    local spoils, laps = {}, {}
+    local race = Race.new({ mode = "trial", track = track, laps = 9999, opponents = 0, seed = 3, startDelay = 0.1,
+      rules = rules,
+      onSpoil = function(_, reason) spoils[#spoils + 1] = reason end,
+      onLap = function(_, _, clean) laps[#laps + 1] = clean end })
+    run(race, 0.2)
+    local car = race.player
+    local n = track.count
+    local function drive(from, to, offset)
+      for i = from, to do
+        local p = track.samples[i % n + 1]
+        local side = offset or 0
+        car:teleport(p.x + p.nx * side, p.y + p.ny * side, math.atan2(p.ty, p.tx))
+        car.trackIndex = p.index
+        race:step(DT)
+      end
+    end
+    -- Out on the grass for twenty samples, twice in one lap.
+    drive(1, 40)
+    drive(41, 60, track.samples[50].w / 2 + 12 * M)
+    drive(61, 80, track.samples[70].w / 2 + 12 * M)
+    drive(81, n + 2)
+    local afterOff = { spoils = #spoils, clean = car.lapClean }
+    race:respawn(car)
+    race:step(DT)
+    local afterReset = #spoils
+    -- Three quarters of the way round in one go.
+    local far = math.floor(n * 0.8)
+    drive(far, far)
+    local afterCut = #spoils
+    race:destroy()
+    return spoils, laps, afterOff, afterReset, afterCut
+  end
+
+  h.it("clean rules void a lap once per infraction lap, and say why", function()
+    local spoils, laps, afterOff, afterReset, afterCut = infractions("clean")
+    h.assertEq(spoils[1], "off", "the grass spoils it")
+    h.assertEq(laps[1], false, "that lap doesn't count")
+    h.assertTrue(afterOff.clean, "the next lap starts clean")
+    h.assertEq(afterOff.spoils, 1, "said once, not every step on the grass")
+    h.assertEq(afterReset, 2)
+    h.assertEq(spoils[2], "reset")
+    h.assertEq(afterCut, 2, "the lap was already spoiled")
+  end)
+
+  h.it("open rules count every lap", function()
+    local spoils, laps, afterOff, afterReset, afterCut = infractions("open")
+    h.assertEq(#spoils, 0)
+    h.assertEq(laps[1], true, "the grass doesn't void it")
+    h.assertTrue(afterOff.clean and afterReset == 0 and afterCut == 0)
+  end)
+
+  h.it("a cut is called a cut on a clean lap", function()
+    local track = Track.new(catalog.builtin()[1].def)
+    local reason
+    local race = Race.new({ mode = "trial", track = track, laps = 9999, opponents = 0, seed = 3, startDelay = 0.1,
+      onSpoil = function(_, r) reason = r end })
+    run(race, 0.2)
+    local car = race.player
+    local n = track.count
+    for i = 1, 10 do
+      local p = track.samples[i]
+      car:teleport(p.x, p.y, 0)
+      race:step(DT)
+    end
+    local far = track.samples[math.floor(n * 0.8)]
+    car:teleport(far.x, far.y, 0)
+    race:step(DT)
+    h.assertEq(reason, "cut", "rules default to clean")
+    race:destroy()
+  end)
+
   h.it("standings put the leader first", function()
     local track = Track.new(catalog.builtin()[2].def)
     local race = Race.new({ mode = "race", track = track, laps = 2, opponents = 2, seed = 5, startDelay = 0.1 })
@@ -657,8 +733,9 @@ h.describe("race", function()
   local function fenceRace(spec, opts)
     opts = opts or {}
     local track = Track.new(catalog.builtin()[1].def)
-    local race = Race.new({ mode = "race", track = track, laps = 2, opponents = opts.opponents or 0, seed = 3,
-      startDelay = 0.1, spec = spec, onCrash = opts.onCrash, onRecover = opts.onRecover })
+    local race = Race.new({ mode = opts.mode or "race", track = track, laps = 2, opponents = opts.opponents or 0, seed = 3,
+      startDelay = 0.1, spec = spec, onCrash = opts.onCrash, onRecover = opts.onRecover,
+      rules = opts.rules, onSpoil = opts.onSpoil })
     race.player.driver = { update = function(_, c) c.input.throttle = 1 end }
     run(race, 0.2)
     return race, race.player
@@ -689,6 +766,31 @@ h.describe("race", function()
     h.assertTrue(car.input.throttle > 0 and car.input.brake == 0, "the driver has it back")
     h.assertEq(car.model.reverse, false)
     race:destroy()
+  end)
+
+  h.it("a wreck is one void lap on clean rules and none on open", function()
+    for _, rules in ipairs({ "clean", "open" }) do
+      local spoils = {}
+      local race, car
+      race, car = fenceRace(garage[3], {
+        mode = "trial", rules = rules, onSpoil = function(_, reason) spoils[#spoils + 1] = reason end,
+        -- Getting to the fence takes a jump and the verge: only the wreck counts here.
+        onCrash = function() spoils, car.lapClean = {}, true end,
+      })
+      aimAtFence(race, car, 60, 45)
+      run(race, 0.5, function() return car.wreck end)
+      h.assertTrue(car.wreck, rules .. ": should be wrecked")
+      run(race, Race.WRECK_TIME + 0.2, function() return not car.wreck end)
+      if rules == "clean" then
+        h.assertEq(#spoils, 1, "the restart doesn't say it again")
+        h.assertEq(spoils[1], "wreck")
+        h.assertTrue(not car.lapClean)
+      else
+        h.assertEq(#spoils, 0)
+        h.assertTrue(car.lapClean, "open rules keep the lap")
+      end
+      race:destroy()
+    end
   end)
 
   h.it("a wreck gives back the road it slid along", function()
