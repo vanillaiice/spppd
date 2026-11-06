@@ -859,8 +859,9 @@ sound or vibration.
 2. Use the `Track` passed in, or build one. The menu passes the one its preview
    built, and the editor passes its own. Nothing changes a `Track` once it's built.
 3. `Race.new`, which loads the Box2D world and spawns cars.
-4. Build the scene with `track_renderer.load` (or `loadApron` for freestyle), the
-   minimap, particle systems and the skid mesh.
+4. Build the scene with `track_renderer.load` (or `loadApron` for freestyle) and the
+   minimap. The particle systems and the skid mesh are made for the first race and
+   emptied for each one after.
 5. Set each car's lights from the time of day, and generate sprites.
 6. Make a view per driver at the screen (see below) and attach their drivers:
    `playerDriver`, a reader's driver for each of two, or an AI for the demo. Time trial
@@ -1026,6 +1027,9 @@ WRONG WAY.
 | NIGHT | Blue, 0.3 | Yes | Low beam, 74 m | Floodlight every 55 m |
 | MIDNIGHT | Near black, 0.08 | No | High beam by default, 72 m (low 48 m) | Beams end on screen, so the road runs out into the dark. Road studs, amber left and white right, sit in the lightmap every 15 m. Only the start line has a lamp |
 
+The lamps never move, so the first lit frame bakes them, floodlights or pools of
+light, into one sprite batch, as the studs are.
+
 Each of the three themes (meadow, desert, marina) sets ground and road colours, the
 scenery type and barrier colours.
 
@@ -1045,6 +1049,10 @@ because its wheels show.
 and pitch, slipstream wisps and the boost warp. `car_view.updateFx` emits tyre smoke,
 dust, skid marks and backfires per frame.
 
+`rm.drawScene` works out each car's pose for the frame once. A car further from the
+middle of a view than half its diagonal plus 20 m isn't drawn there (plus 125 m for
+its beams in the lightmap), so the boost warp trailing behind a car still shows.
+
 ### Particles and skids
 
 | System | Buffer | Used for |
@@ -1054,8 +1062,10 @@ dust, skid marks and backfires per frame.
 | Sparks | 400 | Impacts |
 | Pop | 60 | Backfires on upshift |
 
-Skid marks are a ring buffer of 6000 quads in a single streaming mesh, so thousands of
-marks cost one draw call.
+Skid marks are a ring buffer of 6000 quads in a single mesh, so thousands of marks
+cost one draw call. It's a `dynamic` mesh, not `stream`: LÖVE 11 sends a stream
+mesh's whole buffer (480 kB) whenever any of it changes, and a dynamic one only the
+range that changed. Only the quads written this race are drawn.
 
 ---
 
@@ -1230,7 +1240,9 @@ once. Each axis is independent, so full lock costs no brake.
 
 The on-screen buttons press the same keyboard bindings through `input.press`, so a
 touch is just another pair of hands. Their hit radius is 25% larger than drawn, and
-the nearest button wins.
+the nearest button wins. Each look of a button (its colour, held or not, size and
+opacity) is drawn once into a canvas and kept, because redrawing the circles each
+frame cost the A04 more than the rest of the HUD.
 
 With AUTO GAS on, the car accelerates by itself and the stick only brakes. Stick up
 revs at the lights, past a deadzone of 0.3. Touch always forces the automatic gearbox,
@@ -1950,11 +1962,30 @@ drops below playable.
 
 `love . --perf` drives an AI around nine cases covering day to midnight, low and high
 effects, and sustained boost including a 60 s heat test. Each prints fps, frame time
-percentiles, draw calls, garbage and time per subsystem.
+percentiles, draw calls, garbage and time per subsystem. That includes the HUD's
+parts (`text`, `panel`, `touchui`, `minimap`) and the simulation's (`sim`, holding
+`tyres`, `surfaces`, `ai`, `slip`, `progress` and `box2d`, then `audio`, `carfx`,
+`particles`). The parts are also inside their parents' figures, and each timed call
+costs a little, so they add up to a bit more than the parents.
 
 Measured on the A04 on 2026-11-01, before the horn was added: every case held about
 59.6 fps, with update about 4 ms and draw about 7 ms on high effects. LuaJIT's compiler
 is off there, which is LÖVE's state on that phone, and it was never turned on.
+
+On 2026-11-06, the `perf-pass` branch took draw calls down by 20 to 36 a frame, and
+the draw time down as below. Every one-driver case now holds about 59.5 fps:
+
+| Case | fps before | fps after | Draw ms before | Draw ms after |
+| --- | --- | --- | --- | --- |
+| mirage-midnight-boost-high | 54.0 | 59.2 | 10.3 | 8.1 |
+| highlands-dusk-high | 57.6 | 58.8–59.5 | 8.9 | 8.1 |
+| mirage-night-boost-high | 58.8 | 59.5 | 8.3 | 7.0 |
+| harbour-night-low | 59.6 | 59.7 | 6.9 | 6.0 |
+| split-harbour-night-high | 38.7 | 41.4 | 16.1 | 15.0 |
+
+Where a race frame goes on the A04, high effects: update about 3.9 ms (tyres 1.0,
+wheel surfaces 0.6, AI 0.5, audio 0.3), HUD about 2 ms (text 0.8, touch controls 0.6,
+minimap 0.3–0.5), glow 1.6–2.4 ms, ground 0.8 ms.
 
 The choices that matter most: the static world baked into meshes, a single skid mesh,
 and half-size lightmap and glow canvases with a quarter-size blur.
