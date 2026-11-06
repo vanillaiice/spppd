@@ -1,6 +1,6 @@
 # Privacy policy
 
-Last updated 2026-11-03. The rules for using the server are in [TERMS.md](TERMS.md).
+Last updated 2026-11-06. The rules for using the server are in [TERMS.md](TERMS.md).
 
 This covers the official SPPPD online server at `spppd.xyz`, and the
 website at the same address, both run by vanillaiice. If you play through a server
@@ -40,6 +40,11 @@ counts, and say nothing about anyone.
 
 Only the operator can see the log and the dashboard. The dashboard isn't reachable
 from the internet, and it needs an admin login.
+
+The server's database (bans, admin logins and the statistics below) is backed up
+to rented storage, so it survives the server failing. The backup holds copies from
+the last 7 days, so anything deleted from the server is gone from the backup 7 days
+later. The key that IP hashes are made with isn't backed up.
 
 ## Statistics
 

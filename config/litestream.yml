@@ -1,0 +1,21 @@
+# Litestream copies the relay's database to an S3-style bucket a few seconds after
+# each change, so the server can die without taking accounts, bans and analytics
+# with it. It runs as the "backup" accessory in config/deploy.yml, and fills in the
+# ${...} values from its environment, which bin/backup-deploy loads from .env.
+# LITESTREAM_ACCESS_KEY_ID and LITESTREAM_SECRET_ACCESS_KEY are read without being
+# named here.
+
+# A full copy every day, kept for a week, so a mistake noticed days later can still
+# be undone. Between them, changes go up within seconds.
+snapshot:
+  interval: 24h
+  retention: 168h
+
+dbs:
+  - path: /data/relay.db
+    replica:
+      type: s3
+      bucket: ${SPPPD_BACKUP_BUCKET}
+      path: relay
+      endpoint: ${SPPPD_BACKUP_ENDPOINT}
+      region: ${SPPPD_BACKUP_REGION}

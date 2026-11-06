@@ -1728,10 +1728,15 @@ mode, with temporary data in memory, because the container's root is read-only.
 | `bans` | IP, when, and which dashboard user |
 | `users` | Name, bcrypt hash, when added |
 | `sessions` | SHA-256 of each login token, its user, expiry (7 days) |
-| `meta` | The analytics key |
+| `meta` | Nothing now. Older relays kept the analytics key here; it's moved out on start and the row is wiped with `secure_delete` |
 | `daily` | One row of totals per UTC day, `backs` included since the relay that added getting back in. `migrate` adds the column to an older database |
 | `visitors` | Day and keyed IP hash, deleted after `-analytics-days` |
 | `races` | Start, end, drivers and protocol of each room that raced |
+
+The analytics key is in a file of its own next to the database, `relay.db.key`
+(mode 0600), so a backup of the database can't be used to undo the IP hashes.
+Losing it costs nothing that matters: a new key is made, and visitors are counted
+per day.
 
 Nothing touches the disk while the relay holds `mu`. `Ban` changes the map under the
 lock and saves after it; `AttachStore` loads the bans at startup.
@@ -1743,7 +1748,7 @@ memory, and the relay's hot paths only bump integers:
 
 | Counted | Where |
 | --- | --- |
-| Visitor | `register`, for any host or join, as HMAC-SHA-256 of the IP with a random key from `meta` |
+| Visitor | `register`, for any host or join, as HMAC-SHA-256 of the IP with the random key in `relay.db.key` |
 | Room, join | `register`, once seated |
 | Refusal | `refuse` |
 | Seat taken back | `rejoin` |
@@ -1828,6 +1833,30 @@ make deploy-relay                                          # first run makes the
 ssh -L 9090:127.0.0.1:9090 $SPPPD_SSH_USER@$SPPPD_HOST     # then http://localhost:9090
 kamal relay-users                                          # list the dashboard users
 ```
+
+#### Backups
+
+Litestream (`config/litestream.yml`) runs as a second accessory, `backup`, and copies
+`relay.db` to an S3-style bucket within seconds of each change, with a full copy daily
+kept for 7 days. It shares the relay's data folder and user, and the bucket's details
+and key come from `.env` (`SPPPD_BACKUP_*`, `LITESTREAM_*`). It's off unless `.env`
+has `SPPPD_BACKUP=on`. Then `make deploy-backup` starts it, and `make deploy-relay`
+starts it first. Turning it off doesn't stop a running backup; `kamal accessory
+remove backup` does.
+
+The first time, deploy the relay before turning backups on: an older relay kept the
+analytics key in the database, and the new one moves it out on start, before
+Litestream ever copies the file.
+
+The order matters on a new server. A fresh, empty database started under Litestream
+is backed up over the good copy, so the backup container first restores the database
+if there's none (`restore -if-db-not-exists -if-replica-exists`) and only then starts
+copying, and `bin/backup-deploy` waits for it to say `replicating to` before the relay
+is started. If the restore fails, nothing is copied and the relay isn't touched.
+
+To restore by hand, with the relay stopped and the bad database moved aside, start
+the backup again with `make deploy-backup`. The key file isn't backed up, so a
+restored server makes a new one.
 
 The server's details come from `.env` in the repository root, which isn't in git:
 `SPPPD_HOST`, `SPPPD_SSH_USER` and `SPPPD_DOMAIN`, and optionally `SPPPD_OLD_DOMAINS`:

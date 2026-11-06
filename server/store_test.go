@@ -146,6 +146,45 @@ func TestAnalyticsKeyIsKept(t *testing.T) {
 	}
 }
 
+// The key stays out of the database, so a backup of it can't undo the hashes,
+// and a key an older relay put there is moved out and wiped.
+func TestAnalyticsKeyStaysOutOfTheDatabase(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "relay.db")
+	old := bytes.Repeat([]byte{0xA7, 0x5C}, 16)
+	store := fileStore(t, path)
+	if _, err := store.db.Exec(`INSERT INTO meta (key, value) VALUES ('analytics_key', ?)`, old); err != nil {
+		t.Fatal(err)
+	}
+	store.Close()
+
+	store = fileStore(t, path)
+	key, err := store.AnalyticsKey()
+	if err != nil || !bytes.Equal(key, old) {
+		t.Fatalf("moving it out changed the key: %v", err)
+	}
+	var rows int
+	store.db.QueryRow(`SELECT COUNT(*) FROM meta WHERE key = 'analytics_key'`).Scan(&rows)
+	store.Close()
+	if rows != 0 {
+		t.Fatal("the key is still in the database")
+	}
+	info, err := os.Stat(path + ".key")
+	if err != nil || info.Mode().Perm() != 0o600 {
+		t.Fatalf("key file: %v %v", err, info)
+	}
+	for _, f := range []string{path, path + "-wal"} {
+		if raw, err := os.ReadFile(f); err == nil && bytes.Contains(raw, old) {
+			t.Fatalf("%s still holds the key's bytes", filepath.Base(f))
+		}
+	}
+
+	store = fileStore(t, path)
+	defer store.Close()
+	if again, _ := store.AnalyticsKey(); !bytes.Equal(again, old) {
+		t.Fatal("the key file wasn't read back")
+	}
+}
+
 func analyticsRelay(t *testing.T) (*Relay, *Store, *time.Time) {
 	t.Helper()
 	relay, _, now := setup()

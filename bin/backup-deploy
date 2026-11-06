@@ -1,0 +1,38 @@
+#!/usr/bin/env bash
+set -euo pipefail
+cd "$(dirname "$0")/.."
+
+# Starts or restarts Litestream, which backs the relay's database up to an S3-style
+# bucket, and waits until it's backing up. On a server with no database it restores
+# the backup first. bin/relay-deploy runs this before it starts the relay.
+env_file="${SPPPD_ENV:-.env}"
+[ -f "$env_file" ] || { echo "$env_file is missing. It needs SPPPD_HOST, SPPPD_SSH_USER and SPPPD_DOMAIN." >&2; exit 1; }
+set -a; . "$env_file"; set +a
+# Backups are off unless .env turns them on. Turning them off later doesn't stop a
+# running backup: kamal accessory remove backup does.
+[ "${SPPPD_BACKUP:-off}" = on ] || { echo "Backups are off. Set SPPPD_BACKUP=on in $env_file to turn them on." >&2; exit 1; }
+: "${SPPPD_HOST:?is not set in $env_file}" "${SPPPD_SSH_USER:?is not set in $env_file}" "${SPPPD_DOMAIN:?is not set in $env_file}"
+: "${SPPPD_BACKUP_BUCKET:?is not set in $env_file}" "${SPPPD_BACKUP_ENDPOINT:?is not set in $env_file}" "${SPPPD_BACKUP_REGION:?is not set in $env_file}"
+: "${LITESTREAM_ACCESS_KEY_ID:?is not set in $env_file}" "${LITESTREAM_SECRET_ACCESS_KEY:?is not set in $env_file}"
+
+# It runs as the deploy user, like the relay, since it shares the relay's data folder.
+if [ -z "${SPPPD_RELAY_USER:-}" ]; then
+  SPPPD_RELAY_USER="$(ssh "$SPPPD_SSH_USER@$SPPPD_HOST" 'echo "$(id -u):$(id -g)"')"
+  export SPPPD_RELAY_USER
+fi
+
+# Made here as the deploy user, so Docker doesn't make it as root on a new server.
+ssh "$SPPPD_SSH_USER@$SPPPD_HOST" 'mkdir -p spppd-relay/data'
+
+"${KAMAL_BIN:-kamal}" accessory reboot backup "$@"
+
+# Litestream says "replicating to" once any restore is done and it's backing up.
+for _ in $(seq 60); do
+  if ssh "$SPPPD_SSH_USER@$SPPPD_HOST" 'docker logs spppd-backup 2>&1 | grep -q "replicating to"'; then
+    echo "Backups are running."
+    exit 0
+  fi
+  sleep 2
+done
+echo "Litestream hasn't started backing up after 2 minutes. See: kamal accessory logs backup" >&2
+exit 1

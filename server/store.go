@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"crypto/rand"
 	"crypto/sha256"
 	"database/sql"
@@ -9,6 +10,9 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"io/fs"
+	"os"
+	"path/filepath"
 	"regexp"
 	"strconv"
 	"time"
@@ -73,8 +77,10 @@ func migrate(db *sql.DB) error {
 // logins, and analytics when they're on. It's one SQLite file, or memory.
 type Store struct {
 	db    *sql.DB
+	path  string // the database file, or "" in memory
 	cost  int    // bcrypt cost; tests turn it down
 	dummy []byte // compared against when a name doesn't exist, so timing doesn't tell
+	key   []byte // the analytics key, once read
 }
 
 // OpenStore opens the database at path, creating it if needed. An empty path keeps
@@ -101,7 +107,7 @@ func OpenStore(path string) (*Store, error) {
 		db.Close()
 		return nil, fmt.Errorf("updating %s: %w", path, err)
 	}
-	s := &Store{db: db, cost: bcrypt.DefaultCost}
+	s := &Store{db: db, path: path, cost: bcrypt.DefaultCost}
 	s.dummy, _ = bcrypt.GenerateFromPassword([]byte("not a real password"), s.cost)
 	return s, nil
 }
@@ -290,22 +296,96 @@ func (s *Store) EndSession(token string) {
 // Analytics --------------------------------------------------------------------
 
 // AnalyticsKey is the secret that IP addresses are hashed with, made on first use.
-// Without it, a hash can't be matched back to an address by trying them all.
+// Without it, a hash can't be matched back to an address by trying them all, so it
+// lives in a file of its own next to the database (relay.db.key), which backups of
+// the database don't copy. Losing it only means a new one, since players are
+// counted day by day. Older relays kept it in the database: it's moved out.
 func (s *Store) AnalyticsKey() ([]byte, error) {
-	var key []byte
-	err := s.db.QueryRow(`SELECT value FROM meta WHERE key = 'analytics_key'`).Scan(&key)
-	if err == nil {
-		return key, nil
+	if s.key != nil {
+		return s.key, nil
 	}
-	if !errors.Is(err, sql.ErrNoRows) {
+	var old []byte
+	err := s.db.QueryRow(`SELECT value FROM meta WHERE key = 'analytics_key'`).Scan(&old)
+	if err != nil && !errors.Is(err, sql.ErrNoRows) {
 		return nil, err
 	}
-	key = make([]byte, 32)
-	if _, err := rand.Read(key); err != nil {
-		return nil, err
+	key := old
+	if s.path != "" {
+		switch read, err := os.ReadFile(s.path + ".key"); {
+		case err == nil && len(read) == 32:
+			key = read
+		case err == nil:
+			return nil, fmt.Errorf("%s.key holds %d bytes, not 32", s.path, len(read))
+		case !errors.Is(err, fs.ErrNotExist):
+			return nil, err
+		}
 	}
-	_, err = s.db.Exec(`INSERT INTO meta (key, value) VALUES ('analytics_key', ?)`, key)
-	return key, err
+	if key == nil {
+		key = make([]byte, 32)
+		if _, err := rand.Read(key); err != nil {
+			return nil, err
+		}
+	}
+	if s.path != "" {
+		if err := writeKeyFile(s.path+".key", key); err != nil {
+			return nil, err
+		}
+	}
+	if old != nil {
+		if err := s.forgetOldKey(); err != nil {
+			return nil, err
+		}
+	}
+	s.key = key
+	return key, nil
+}
+
+// writeKeyFile writes the key where only the relay's user can read it, whole or
+// not at all.
+func writeKeyFile(path string, key []byte) error {
+	if read, err := os.ReadFile(path); err == nil && string(read) == string(key) {
+		return nil
+	}
+	tmp, err := os.CreateTemp(filepath.Dir(path), ".key-*")
+	if err != nil {
+		return err
+	}
+	defer os.Remove(tmp.Name())
+	if _, err := tmp.Write(key); err != nil {
+		tmp.Close()
+		return err
+	}
+	if err := tmp.Sync(); err != nil {
+		tmp.Close()
+		return err
+	}
+	if err := tmp.Close(); err != nil {
+		return err
+	}
+	return os.Rename(tmp.Name(), path)
+}
+
+// forgetOldKey deletes the key an older relay kept in the database, zeroing it
+// rather than leaving it in a free page, and writes that back into the file at
+// once, so a backup started afterwards never sees it.
+func (s *Store) forgetOldKey() error {
+	ctx := context.Background()
+	conn, err := s.db.Conn(ctx)
+	if err != nil {
+		return err
+	}
+	defer conn.Close()
+	if _, err := conn.ExecContext(ctx, `PRAGMA secure_delete = ON`); err != nil {
+		return err
+	}
+	defer conn.ExecContext(ctx, `PRAGMA secure_delete = OFF`)
+	if _, err := conn.ExecContext(ctx, `DELETE FROM meta WHERE key = 'analytics_key'`); err != nil {
+		return err
+	}
+	if s.path != "" {
+		_, err = conn.ExecContext(ctx, `PRAGMA wal_checkpoint(TRUNCATE)`)
+	}
+	return err
 }
 
 // WriteTally adds counts gathered in memory to the day they belong to.

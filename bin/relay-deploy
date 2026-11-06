@@ -22,5 +22,12 @@ make relay-linux
 SPPPD_RELAY_USER="$(ssh "$SPPPD_SSH_USER@$SPPPD_HOST" 'echo "$(id -u):$(id -g)"')"
 export SPPPD_RELAY_USER
 
+# With SPPPD_BACKUP=on in .env, Litestream goes first. On a new server it restores
+# the database before the relay can make an empty one, which it would back up over
+# the good copy. If that fails, the relay isn't touched.
+if [ "${SPPPD_BACKUP:-off}" = on ]; then
+  ./bin/backup-deploy
+fi
+
 # Reboot works for a first deploy too. Anyone racing is told the server is restarting.
 exec "${KAMAL_BIN:-kamal}" accessory reboot relay "$@"

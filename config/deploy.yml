@@ -9,7 +9,9 @@
 #
 # The server's details come from .env, which isn't in git: SPPPD_HOST, SPPPD_SSH_USER,
 # SPPPD_DOMAIN and SPPPD_DASHBOARD_TOKEN, and optionally SPPPD_OLD_DOMAINS: earlier
-# names, comma-separated, that the website redirects to SPPPD_DOMAIN. Each script loads it and deploys only its own
+# names, comma-separated, that the website redirects to SPPPD_DOMAIN. Backups are
+# off unless SPPPD_BACKUP=on, and then need SPPPD_BACKUP_BUCKET, SPPPD_BACKUP_ENDPOINT, SPPPD_BACKUP_REGION,
+# LITESTREAM_ACCESS_KEY_ID and LITESTREAM_SECRET_ACCESS_KEY. Each script loads it and deploys only its own
 # part. Use them, not kamal directly; for the aliases below, load .env first:
 #   set -a; . ./.env; set +a
 service: spppd
@@ -88,6 +90,42 @@ accessories:
         # used while there are no users, so changing it later on the dashboard
         # sticks across deploys.
         - SPPPD_DASHBOARD_TOKEN
+
+  backup:
+    # Litestream copies the relay's database to an S3-style bucket a few seconds after
+    # each change (config/litestream.yml). Deploy it with `make deploy-backup`
+    # (bin/backup-deploy). Off unless .env has SPPPD_BACKUP=on; then a relay deploy
+    # restarts it first.
+    image: litestream/litestream:0.5.17
+    host: <%= ENV.fetch('SPPPD_HOST') %>
+    # On a server with no database yet, it first restores the backup. That has to
+    # happen before the relay starts: a new, empty database would otherwise be backed
+    # up over the good copy. If the restore fails, it never starts backing up, and
+    # bin/relay-deploy stops without starting the relay.
+    cmd: "-c 'litestream restore -if-db-not-exists -if-replica-exists /data/relay.db && exec litestream replicate'"
+    files:
+      - config/litestream.yml:/etc/litestream.yml:ro
+    # The relay's own data folder, not a folder of its own.
+    volumes:
+      - $PWD/spppd-relay/data:/data
+    options:
+      entrypoint: /bin/sh
+      restart: unless-stopped
+      log-opt: max-size=10m
+      # The same user as the relay, so the files it adds there stay the relay's.
+      user: "<%= ENV.fetch('SPPPD_RELAY_USER', 'nobody') %>"
+      cap-drop: ALL
+      security-opt: no-new-privileges:true
+      memory: 256m
+      pids-limit: 128
+    env:
+      clear:
+        SPPPD_BACKUP_BUCKET: "<%= ENV.fetch('SPPPD_BACKUP_BUCKET', '') %>"
+        SPPPD_BACKUP_ENDPOINT: "<%= ENV.fetch('SPPPD_BACKUP_ENDPOINT', '') %>"
+        SPPPD_BACKUP_REGION: "<%= ENV.fetch('SPPPD_BACKUP_REGION', '') %>"
+      secret:
+        - LITESTREAM_ACCESS_KEY_ID
+        - LITESTREAM_SECRET_ACCESS_KEY
 
 aliases:
   site-logs: app logs -f
