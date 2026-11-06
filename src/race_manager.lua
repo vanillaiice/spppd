@@ -810,11 +810,10 @@ function rm.update(dt)
   end
 
   if not session.demo then
-    for _, view in ipairs(session.views) do
-      local car = view.car
-      -- The cheats are this machine's, so both drivers here have them.
-      car.neon, car.hornTune = settings.neon, settings.tuneHorn
-    end
+    -- The codes are typed on the keyboard, which is P1's, so with two at the
+    -- screen they go on P1's car alone.
+    local car = session.views[1].car
+    car.neon, car.hornTune = settings.neon, settings.tuneHorn
     for _, car in ipairs(race.cars) do audio.hornStep(car, dt) end
     if rm.resultsAge() then
       audio.fadeOut(dt)

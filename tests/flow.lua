@@ -563,6 +563,7 @@ local function steps()
     expect(state.screen == "race" and rm.isSplit(), "START with two players splits the screen")
     expect(#race.players == 2 and race.players[2].name == "P2", "with a second driver on the grid")
     expect(race.players[2].input.manual and not race.players[1].input.manual, "each with their own gearbox")
+    flow.neon, settings.neon = settings.neon, true
     love.keypressed("w", "w", false)
     flow.pad.axes.triggerright = 1
   end)
@@ -570,6 +571,8 @@ local function steps()
     local p1, p2 = rm.race().players[1], rm.race().players[2]
     expect(p1.model.rpm > p1.spec.redline * 0.85, "W revs P1 at the lights")
     expect(p2.model.rpm > p2.spec.redline * 0.85, "the second pad's trigger revs P2")
+    expect(p1.neon and not p2.neon, "a code goes on P1's car alone")
+    settings.neon = flow.neon
     love.keyreleased("w")
     flow.pad.axes.triggerright = 0
   end)
