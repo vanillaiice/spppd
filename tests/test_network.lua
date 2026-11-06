@@ -766,6 +766,7 @@ h.describe("network", function()
     local code = codeFor("N")
     a.FEATURES = network.FEATURES + 1
     a.connect(host, port, "host", code, { car = "rocket", paint = 1 }, race)
+    h.assertTrue(pump({ a }, 2, function() return a.status == "lobby" end), "room")
     b.connect(host, port, "join", code, { car = "rocket", paint = 2 }, nil)
     h.assertTrue(pump({ a, b }, 4, function() return b.status == "error" end), "the older game should be told")
     h.assertTrue(b.message:find("newer version"), b.message)
