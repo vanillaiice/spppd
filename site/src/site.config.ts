@@ -6,6 +6,7 @@ export default {
   repo: 'https://github.com/vanillaiice/spppd',
   // GitHub links go to the profile while the repo is private. Set back to repo once it's public.
   github: 'https://github.com/vanillaiice',
+  itch: 'https://vanillaiice.itch.io/spppd?ref=spppd.xyz',
   author: { name: 'vanillaiice', url: 'https://vanillaiice.xyz' },
   // Self-hosted Umami (cookieless), deployed from ~/Projects/stats.hblabs.xyz. The ID is
   // public by design. It only counts visits on the real domain, never in dev or preview.

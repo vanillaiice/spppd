@@ -2,6 +2,7 @@
 import type { Download } from '../lib/repo';
 import { megabytes } from '../lib/repo';
 import { formatDate } from '../lib/dates';
+import site from '../site.config';
 
 interface Props {
   files: Download[];
@@ -42,6 +43,13 @@ const about: Record<Download['id'], { name: string; how: string }> = {
         </li>
       ))
     }
+    <li class="panel itch">
+      <div>
+        <h3>itch.io</h3>
+        <p>The same game, for a few dollars if you'd like to chip in.</p>
+      </div>
+      <a class="button" href={site.itch} data-umami-event="itch">Open itch.io</a>
+    </li>
   </ul>
   <p class="muted small">
     Online races need everyone on the same version. Racing offline sends nothing anywhere; what the online server keeps
@@ -69,6 +77,16 @@ const about: Record<Download['id'], { name: string; how: string }> = {
     justify-content: space-between;
     gap: 1rem 2rem;
     padding: 1.25rem 1.5rem;
+  }
+
+  .itch {
+    opacity: 0.6;
+    transition: opacity 0.2s;
+  }
+
+  .itch:hover,
+  .itch:focus-within {
+    opacity: 1;
   }
 
   li div {
