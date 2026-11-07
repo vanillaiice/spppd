@@ -8,26 +8,39 @@
 local settings = require("src/settings")
 
 local cheats = {
+  -- Keyed by the word's hash, so the words aren't spelled out here.
   CODES = {
-    BLITZ = "flames",   -- fire from the exhaust, once
-    TOOTY = "tuneHorn", -- the horn plays a tune
-    LUX = "neon",       -- a glow under the car
+    [2311943435] = "flames",   -- fire from the exhaust, once
+    [2333404357] = "tuneHorn", -- the horn plays a tune
+    [1556052575] = "neon",     -- a glow under the car
   },
-  FLAME_TIME = 3,       -- seconds of fire
+  LENGTHS = { 3, 5 },  -- the word lengths there are codes for
+  FLAME_TIME = 3,      -- seconds of fire
   flamesArmed = false,
 }
 
-local MEMORY = 8  -- letters kept, as long as the longest word
+local MEMORY = 8  -- letters kept, at least as long as the longest word
 local typed = ""
+
+-- djb2 over a salted, upper-cased word. Only there to keep the words out of sight.
+function cheats.hash(word)
+  word = "spppd:" .. word:upper()
+  local h = 5381
+  for i = 1, #word do h = (h * 33 + word:byte(i)) % 4294967296 end
+  return h
+end
 
 -- Takes one typed character. Returns the effect when it finishes a code word.
 function cheats.type(char)
   if not char:match("^%a$") then return nil end
   typed = (typed .. char:upper()):sub(-MEMORY)
-  for word, effect in pairs(cheats.CODES) do
-    if typed:sub(-#word) == word then
-      typed = ""
-      return effect
+  for _, length in ipairs(cheats.LENGTHS) do
+    if #typed >= length then
+      local effect = cheats.CODES[cheats.hash(typed:sub(-length))]
+      if effect then
+        typed = ""
+        return effect
+      end
     end
   end
   return nil
@@ -35,7 +48,7 @@ end
 
 -- A whole word, as entered in the menu.
 function cheats.enter(word)
-  return cheats.CODES[word:upper()]
+  return cheats.CODES[cheats.hash(word)]
 end
 
 local TOGGLES = { tuneHorn = "TUNE HORN", neon = "NEON" }
