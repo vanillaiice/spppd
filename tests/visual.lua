@@ -84,6 +84,24 @@ local function splitSetup()
   ui.focus.setup = 2
 end
 
+-- PROFILE without a driver, or with one and its recovery code showing. Nothing
+-- is sent: the driver is written straight to a file of the scene's own.
+local function profile(signedIn)
+  local account = require("src/account")
+  account.FILE = "visual-account.lua"
+  love.filesystem.remove(account.FILE)
+  if signedIn then
+    love.filesystem.write(account.FILE, "return " .. settings.serialize({ [settings.server] = {
+      id = 1042, name = "SPEED_DEMON1", key = account.base64url(account.randomBytes(16)),
+      recovery = account.base64url(account.randomBytes(16)) } }))
+  end
+  account.load()
+  account.profile = signedIn and { since = "2026-11-07", devices = 2 } or nil
+  menu.enter()
+  menu.showCode = signedIn
+  menu.go("profile")
+end
+
 local SCENES = {
   split = split,
   splitsetup = splitSetup,
@@ -226,6 +244,10 @@ local SCENES = {
   phonepad = function() phone() menu.enter() menu.go("pad") end,
   phoneonline = function() phone() menu.enter() settings.mode = "race" menu.go("online") end,
   phonehost = function() phone() menu.enter() settings.mode = "race" menu.go("host") end,
+  profile = function() profile(false) end,
+  profiledriver = function() profile(true) end,
+  phoneprofile = function() phone() profile(false) end,
+  phoneprofiledriver = function() phone() profile(true) end,
   pause = function() race({ track = "mirage", time = "day" }) autopilot() end,
   -- Freestyle's pause menu, with its CAR and PAINT rows: on the lot, on a phone,
   -- and two at a screen (SPPPD_MODE=freestyle).

@@ -15,6 +15,7 @@ local socket = require("socket")
 local config = require("src/config")
 local catalog = require("src/tracks/catalog")
 local wire = require("src/tracks/wire")
+local account = require("src/account")
 
 local network = {
   status = "idle",  -- idle | connecting | lobby | loading | racing | error
@@ -237,11 +238,12 @@ end
 
 -- Asks the relay for a seat: a new one to host or join, a quick match, or my own
 -- one back. The relay answers the first ask with a cookie, and seats whoever
--- repeats it. After the token: FEATURES, then ACCOUNT and PROOF, empty until
--- there are drivers, and for a quick match MODE and DATA.
+-- repeats it. After the token: FEATURES, then ACCOUNT and PROOF, which sign the
+-- seat in as this game's driver if it has one, and for a quick match MODE and DATA.
 local function register(intent)
-  local text = string.format("event|%s|%d|%s|%s|%s|%d|||", intent, network.PROTOCOL,
-    intent == "queue" and "" or network.roomCode, network.cookie or "", network.token or "", network.FEATURES)
+  local id, proof = account.seatFields(intent, network.cookie)
+  local text = string.format("event|%s|%d|%s|%s|%s|%d|%s|%s|", intent, network.PROTOCOL,
+    intent == "queue" and "" or network.roomCode, network.cookie or "", network.token or "", network.FEATURES, id, proof)
   if intent == "queue" then text = text .. (network.mode or "quick") .. "||" end
   -- Padded, so the relay's answer to someone who isn't listening is never bigger
   -- than what was sent to it.
@@ -523,6 +525,7 @@ local function reset()
   network.matchHash = nil
   network.kicking = nil
   network.votedOut = {}
+  network.names = {}
   network.locked = false
 end
 
@@ -645,6 +648,11 @@ local function onRoom(rest)
 
   local away = {}
   for seat in (fields[6] or ""):gmatch("%d+") do away[tonumber(seat)] = true end
+  -- The seats that signed in as drivers, from a 3.2 relay: "2:BOB,3:AL".
+  local names = {}
+  for seat, name in (fields[7] or ""):gmatch("(%d+):([%w_%-]+)") do names[tonumber(seat)] = name end
+  network.names = names
+  if names[network.slot] then account.renamedTo(names[network.slot]) end
 
   local present, leader = {}, nil
   for seat in seats:gmatch("%d+") do
@@ -983,6 +991,11 @@ function network.update(dt)
   elseif silent > TIMEOUT then
     connectionLost("Lost the connection to the server")
   end
+end
+
+-- A driver's name, or P and their seat when they didn't sign in.
+function network.nameOf(slot)
+  return network.names[slot] or ("P" .. slot)
 end
 
 -- Whether this game is trying to get back into its room.

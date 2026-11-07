@@ -123,6 +123,7 @@ src/
   ai_controller.lua       AI driver
   race_manager.lua        The running session
   network_manager.lua     Client side of the relay protocol
+  account.lua             Drivers: keys, proofs, recovery codes, PROFILE's requests
 
   render/post.lua         Canvases, night lightmap, glow, final grade
   render/track_renderer.lua  Track to meshes; road, ground and gravel shaders
@@ -154,13 +155,15 @@ src/
 server/
   main.go                 Relay: rooms, forwarding, limits, sweeps, bans
   match.go                Quick match: rooms the relay makes, its race, votes
+  drivers.go              Drivers: names, device keys, proofs, recovery
+  blocked_names.txt       Words a driver name can't hold, embedded
   dashboard.go, .html     Admin page
   htmx.min.js             htmx 2.0.4 (0BSD), embedded in the binary
-  *_test.go               33 tests
+  *_test.go               138 tests
 
 tests/
   run.lua, harness.lua    Headless runner
-  test_*.lua              Nine suites
+  test_*.lua              Fourteen suites
   flow.lua                Plays the real game through real input handlers
   flow_online.lua         The same online, against bots and a real relay
   visual.lua              Scripted screenshots and audio recording
@@ -513,6 +516,14 @@ While active, the pedal is at least 0.75, and the car gets a force of
 `boostPower / 22` N directly on the chassis. It bypasses the tyres because traction
 control would otherwise cut it exactly where it's wanted, in low gears and out of
 corners.
+
+It also carries the car where its nose points, which is what saves a slide. A second
+force acts across the direction of travel, towards the nose, swinging the travel round
+at 4 times the slip angle per second, up to 0.9 g, without changing the speed. It
+never turns the nose itself, so a turn on grip, where nose and travel already agree,
+is barely tighter (the test allows 12%), and the driver still has to point the car
+somewhere. Grass and gravel drag is halved under boost. Not removed, or a boosted cut
+across the grass would cost nothing.
 
 ### Stability control and drifting
 
@@ -1429,7 +1440,8 @@ already holds what's needed to race again. A lobby is different: the race is the
 to set, so the relay closes the room if the host leaves before the first start. A quick
 match's lobby isn't: its race is the relay's, so the next seat leads (see Quick match).
 
-Grid order is seat order with the gaps closed. Other drivers show as P1 to P4.
+Grid order is seat order with the gaps closed. Other drivers show by their driver
+name (see Drivers), or as P1 to P4 if they have none.
 
 ### Nothing waits for an answer
 
@@ -1445,7 +1457,7 @@ forwards with the sender's seat, as `2|sync|...`, so a client can't pose as anot
 
 | Packet | Direction | Purpose |
 | --- | --- | --- |
-| `event\|host\|5\|CODE\|cookie\|\|features\|account\|proof\|padding` | Client to relay | Create a room. Repeated until answered. Padded to 64 bytes. `account` and `proof` are empty until there are drivers |
+| `event\|host\|5\|CODE\|cookie\|\|features\|account\|proof\|padding` | Client to relay | Create a room. Repeated until answered. Padded to 64 bytes. `account` and `proof` sign the seat in as a driver, and are empty without one |
 | `event\|join\|5\|CODE\|cookie\|\|features\|account\|proof\|padding` | Client to relay | Join a room. The same |
 | `event\|back\|5\|CODE\|cookie\|token\|features\|account\|proof\|padding` | Client to relay | Take my own seat back, from whatever address I have now |
 | `event\|queue\|5\|\|cookie\|\|features\|account\|proof\|mode\|data\|padding` | Client to relay | Find me a race. `mode` is `quick`. `data` is empty, kept for ranked |
@@ -1453,7 +1465,7 @@ forwards with the sender's seat, as `2|sync|...`, so a client can't pose as anot
 | `event\|lock\|` | Client to relay | The race has started, so take nobody new |
 | `event\|leave\|` | Client to relay | Leaving |
 | `event\|cookie\|cookie` | Relay to client | Ask again with this. The answer to a request without a good cookie |
-| `event\|room\|seat\|CODE\|seats\|locked\|token\|away` | Relay to client | Your seat, who's here, your token, and which seats are away. On any change, and every second |
+| `event\|room\|seat\|CODE\|seats\|locked\|token\|away\|names` | Relay to client | Your seat, who's here, your token, which seats are away, and `seat:NAME,…` for seats signed in as drivers (3.2 relays on). On any change, and every second |
 | `event\|match\|kind\|track\|laps\|time\|startIn\|online\|votes` | Relay to client | After each `room` in a quick match: the relay's race, whole seconds until it stops filling (`-1` while alone), drivers on the relay, and `seat:count,…` votes |
 | `event\|error\|reason` | Relay to client | Refused entry, or refused a seat back |
 | `event\|closed\|reason` | Relay to client | Removed: a closed room, a ban, a restart |
@@ -1803,7 +1815,62 @@ forged source gets the same rate limit, which caps that at under 20 kB/s. A forg
 `host` gets one answer, not one a second, because the sweep only repeats rooms to
 addresses still sending. So the relay isn't worth abusing as a reflector.
 
-Players have no accounts. Only the dashboard has users.
+### Drivers
+
+`server/drivers.go` and `src/account.lua`. A driver is a name, with no email and no
+password. Picking one on PROFILE makes two random 16-byte keys: a device key and a
+recovery key. Both go to the relay once, in the sign-up, and the game keeps them in
+`account.lua` in the save folder, one driver per server address. After that it
+proves it holds a key without sending it:
+
+```
+proof = base64url(HMAC-SHA-256(key, intent .. "|" .. cookie))[1..22]
+```
+
+The cookie is the relay's: bound to the address and a 30 s window, and only that
+address sees it, so a proof can't be replayed from elsewhere or later. `host`, `join`,
+`back` and `queue` carry `account` and `proof`, and a good proof puts the driver's
+name on the seat. A missing or wrong one only leaves the seat unnamed, and a banned
+driver is refused. The Go and Lua tests share one test vector, so the two HMACs can't
+drift apart. Random keys come from `/dev/urandom` where there is one (Linux,
+Android), and elsewhere from clocks, table addresses and timing jitter stirred
+through SHA-256.
+
+The recovery code is the driver's number and the recovery key in base32,
+`1042-K7Q2M-…`. Typed into PROFILE on another device, it signs that device in with a
+device key of its own; the proof covers the new key, so it can't add a different one.
+Ten devices at most: past that, the one used least recently is dropped.
+
+| Packet | Direction | Purpose |
+| --- | --- | --- |
+| `event\|signup\|5\|cookie\|NAME\|key\|recovery\|label\|padding` | Client to relay | Make a driver. `label` is `love.system.getOS()`. Asked again with the same name and keys, it answers again |
+| `event\|recover\|5\|cookie\|id\|key\|label\|proof\|padding` | Client to relay | Add this device. The proof is made with the recovery key over `recover\|cookie\|key` |
+| `event\|profile\|5\|cookie\|id\|proof\|padding` | Client to relay | My name, since when, and how many devices |
+| `event\|rename\|5\|cookie\|id\|proof\|NAME\|padding` | Client to relay | A new name, once every 30 days |
+| `event\|signout\|5\|cookie\|id\|proof\|padding` | Client to relay | Remove this device's key |
+| `event\|forget\|5\|cookie\|id\|proof\|padding` | Client to relay | Delete the driver |
+| `event\|driver\|id\|NAME` | Relay to client | You're driver `id` (sign-up, recover, rename) |
+| `event\|profile\|NAME\|since\|devices\|id` | Relay to client | The answer to `profile` |
+| `event\|signedout\|id`, `event\|nodriver\|id` | Relay to client | This device isn't signed in to `id`, or there's no such driver. The game forgets it |
+| `event\|denied\|intent\|reason` | Relay to client | Turned down: a taken or refused name, a rename too soon, too many tries |
+
+Requests go from their own socket, so a refusal can't end a race, and are repeated
+four times a second until answered, like everything else.
+
+Names are 3 to 12 of `A–Z 0–9 - _`, in capitals, unique. The relay refuses a short
+reserved list, `DRIVER` and a number (what the dashboard renames someone to), and the
+words in `blocked_names.txt` anywhere in the name once look-alikes are folded. The game
+checks only the shape.
+
+The relay holds every driver and key in memory (`accounts`, `names`), so checking a
+proof never touches the disk. Changes are made in memory under the lock and handed to
+one writer goroutine on a buffered channel (`driverWrites`, 256). When it's full, the
+request is dropped unanswered and the game asks again. Numbers start at 1001 and are
+never given twice, deleted or not (`AUTOINCREMENT`). Sign-ups are limited to 3 an hour
+from one address; recovery tries to 10 an hour from an address and 10 for a driver.
+
+The dashboard's Drivers section finds a driver by name or number, shows each device's
+label and days, and can reset a name to `DRIVER` and the number, ban or unban.
 
 ### The store
 
@@ -1818,9 +1885,11 @@ mode, with temporary data in memory, because the container's root is read-only.
 | `users` | Name, bcrypt hash, when added |
 | `sessions` | SHA-256 of each login token, its user, expiry (7 days) |
 | `meta` | Nothing now. Older relays kept the analytics key here; it's moved out on start and the row is wiped with `secure_delete` |
-| `daily` | One row of totals per UTC day, `backs` included since the relay that added getting back in, and `quick_races` since quick match. `migrate` adds the columns to an older database |
+| `daily` | One row of totals per UTC day, `backs` included since the relay that added getting back in, `quick_races` since quick match, and `signups` since drivers. `migrate` adds the columns to an older database |
 | `visitors` | Day and keyed IP hash, deleted after `-analytics-days` |
 | `races` | Start, end, drivers, protocol and `kind` (`quick` or empty) of each room that raced |
+| `drivers` | Number, name, recovery key, made, last day seen, last rename, banned |
+| `driver_keys` | Each device's key, label ("Android") and the days it was added and last seen |
 
 The analytics key is in a file of its own next to the database, `relay.db.key`
 (mode 0600), so a backup of the database can't be used to undo the IP hashes.

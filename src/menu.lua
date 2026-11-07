@@ -16,6 +16,7 @@ local audio = require("src/audio")
 local radio = require("src/radio")
 local music = require("src/music")
 local network = require("src/network_manager")
+local account = require("src/account")
 local dynamics = require("src/sim/dynamics")
 local cheats = require("src/cheats")
 local input = require("src/input")
@@ -751,6 +752,10 @@ local function onlineRows()
     handlingRow("HANDLING", "assists"),
     stepper("GEARBOX", function() return settings.gearbox end, function(v) settings.gearbox = v end,
       { "auto", "manual" }, { auto = "AUTO", manual = "MANUAL" }),
+    { label = "PROFILE", value = function()
+        local driver = account.driver()
+        return driver and driver.name or "NO NAME"
+      end, activate = function() menu.openProfile() end },
     { label = "QUICK MATCH", activate = function() menu.quickMatch() end },
     { label = "HOST A ROOM", activate = function() menu.go("host") end },
     room,
@@ -760,6 +765,94 @@ local function onlineRows()
   }
 end
 menu.onlineRows = onlineRows
+
+-- PROFILE: the name the others see online. A driver is kept by the server in
+-- SETTINGS, and this device holds a key to it.
+local confirming = nil   -- a row waiting for its second press
+
+function menu.openProfile()
+  confirming, menu.showCode = nil, false
+  account.message = ""
+  if account.driver() then account.refresh() end
+  menu.go("profile")
+end
+
+local function editRow(label, field, value, pattern, max, done)
+  return { label = label, disabled = account.busy ~= nil, value = function()
+      if ui.editing and ui.editing.field == field then return ui.editing.value .. "_" end
+      return value and value() or ""
+    end, activate = function()
+      ui.startEditing("", function(v) if v ~= "" then done(v) end end, pattern, max)
+      ui.editing.field = field
+    end }
+end
+
+-- A row that does something hard to undo asks for a second press.
+local function confirmRow(label, again, run)
+  return { label = confirming == label and again or label, disabled = account.busy ~= nil, activate = function()
+    if confirming == label then
+      confirming = nil
+      run()
+    else
+      confirming = label
+    end
+  end }
+end
+
+local function profileRows()
+  local back = { label = "BACK", activate = function()
+    account.cancel()
+    menu.go("online")
+  end }
+  local driver = account.driver()
+  if not driver then
+    return {
+      editRow("PICK A NAME", "name", nil, "^[%w_%-]$", 12, account.signUp),
+      editRow("I HAVE A RECOVERY CODE", "code", nil, "^[%w%-]$", 48, account.recover),
+      back,
+    }
+  end
+  return {
+    editRow("NAME", "rename", function() return driver.name end, "^[%w_%-]$", 12, account.rename),
+    { label = menu.showCode and "HIDE RECOVERY CODE" or "SHOW RECOVERY CODE", activate = function()
+      menu.showCode = not menu.showCode
+    end },
+    confirmRow("SIGN OUT OF THIS DEVICE", "PRESS AGAIN TO SIGN OUT", account.signOut),
+    confirmRow("DELETE DRIVER", "PRESS AGAIN TO DELETE", account.forget),
+    back,
+  }
+end
+menu.profileRows = profileRows
+
+-- What goes under the list: the code when it's asked for, then whatever the
+-- server last said, or what a driver is for.
+function menu.profileText()
+  local driver = account.driver()
+  if account.busy then return "WAITING FOR THE SERVER..." end
+  local lines = {}
+  if driver and menu.showCode then
+    lines[#lines + 1] = account.recoveryCode()
+    lines[#lines + 1] = "Type it into PROFILE on another device to race as " .. driver.name
+      .. " there. Anyone with it can. Lose it and every device, and the driver is gone."
+  end
+  if account.message ~= "" then lines[#lines + 1] = account.message end
+  if #lines == 0 then
+    if driver then
+      local profile = account.profile
+      lines[1] = profile and string.format("Since %s, on %d %s.", profile.since, profile.devices,
+        profile.devices == 1 and "device" or "devices") or ""
+      if confirming == "SIGN OUT OF THIS DEVICE" then
+        lines[1] = "You'll need your recovery code to get " .. driver.name .. " back on this device."
+      elseif confirming == "DELETE DRIVER" then
+        lines[1] = driver.name .. " goes from every device, for good."
+      end
+    else
+      lines[1] = "Pick a name and the others see it online, instead of P2. No email, no password: "
+        .. "this device holds a key, and a recovery code moves it to another."
+    end
+  end
+  return table.concat(lines, "\n\n")
+end
 
 local function hostRows()
   return {
@@ -819,6 +912,7 @@ local SCREENS = {
   keys = { rows = keyRows },
   pad = { rows = padRows },
   online = { rows = onlineRows },
+  profile = { rows = profileRows },
   host = { rows = hostRows },
 }
 
@@ -945,7 +1039,7 @@ local function drawLobby(sw, sh, boardW, s)
       love.graphics.setColor(paint and paint.color or spec.color)
       love.graphics.rectangle("fill", x + 6 * s, ry + s, 3 * s, 14 * s)
     end
-    ui.text("P" .. driver.slot .. "  " .. (spec and spec.name or "..."), x + 13 * s, ry + 2 * s, 6 * s,
+    ui.text(network.nameOf(driver.slot) .. "  " .. (spec and spec.name or "..."), x + 13 * s, ry + 2 * s, 6 * s,
       driver.you and colors.marshal or colors.paint)
     if driver.car then
       ui.text(setupText(driver.handling, driver.gearbox) or "ARCADE", x + 13 * s, ry + 10 * s, 5 * s, colors.muted)
@@ -1016,7 +1110,7 @@ function menu.draw(sw, sh)
   local s = ui.scale(sw, sh)
 
   local titles = {
-    setup = MODES[settings.mode], settings = "SETTINGS", online = "ONLINE", host = "HOST A ROOM",
+    setup = MODES[settings.mode], settings = "SETTINGS", online = "ONLINE", host = "HOST A ROOM", profile = "PROFILE",
     controls = "CONTROLS", buttons = "BUTTON LIST", credits = "CREDITS", keys = "KEYBOARD", pad = "PAD",
   }
   local title, titleColor = titles[menu.screen], nil
@@ -1041,7 +1135,8 @@ function menu.draw(sw, sh)
       -- nothing to go back to
     else
       if menu.screen == "online" then network.disconnect() end
-      local up = { host = "online", buttons = "controls", keys = "controls", pad = "controls" }
+      if menu.screen == "profile" then account.cancel() end
+      local up = { host = "online", profile = "online", buttons = "controls", keys = "controls", pad = "controls" }
       menu.go(up[menu.screen] or "main")
     end
   end
@@ -1070,6 +1165,9 @@ function menu.draw(sw, sh)
         ui.text(splitHint(), 14 * s, sh - 34 * s, 5 * s, colors.muted, "left", w - 28 * s)
       end
     end
+    if menu.screen == "profile" then
+      ui.text(menu.profileText(), 14 * s, y + #rows * rowH + 8 * s, 6 * s, colors.marshal, "left", w - 28 * s)
+    end
     if menu.screen == "online" and not failed then
       ui.text(network.statusText(), 14 * s, y + #rows * rowH + 8 * s, 6 * s, colors.marshal, "left", w - 28 * s)
     end
@@ -1084,6 +1182,7 @@ end
 
 function menu.update(dt)
   updateRemap(dt)
+  account.update(dt)
   rm.update(dt)
   if menu.screen == "online" then menu.updateOnline(dt) end
 end
@@ -1111,7 +1210,7 @@ function menu.startOnline()
     local spec = garage.byId(peer.car)
     local paint = PAINTS[peer.paint or 1]
     peers[#peers + 1] = {
-      slot = peer.slot, spec = spec, color = paint and paint.color or spec.color,
+      slot = peer.slot, name = network.names[peer.slot], spec = spec, color = paint and paint.color or spec.color,
       state = network.stateOf(peer.slot), setup = setupText(peer.handling, peer.gearbox) or "ARCADE",
     }
   end
@@ -1162,7 +1261,7 @@ local function voteRows()
     local spec = peer.car and garage.byId(peer.car)
     local voted = network.hasVotedOut(peer.slot)
     rows[#rows + 1] = {
-      label = "P" .. peer.slot .. "  " .. (spec and spec.name or "..."),
+      label = network.nameOf(peer.slot) .. "  " .. (spec and spec.name or "..."),
       value = voted and function() return "VOTED" end or nil,
       disabled = voted,
       activate = function()

@@ -134,7 +134,7 @@ function Race.new(opts)
     self.player.setupText = online.setup
     for _, driver in ipairs(online.peers) do
       local px, py, pa, pi = self.track:gridSlot(gridPlace(online, driver.slot))
-      local peer = Car.new(driver.spec, px, py, pa, { name = "P" .. driver.slot, color = driver.color })
+      local peer = Car.new(driver.spec, px, py, pa, { name = driver.name or ("P" .. driver.slot), color = driver.color })
       peer.remote = true
       peer.slot = driver.slot
       peer.setupText = driver.setup

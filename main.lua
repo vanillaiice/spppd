@@ -65,6 +65,7 @@ function love.load(args)
   love.graphics.setDefaultFilter("linear", "linear")
   love.keyboard.setKeyRepeat(false)
   settings.load()
+  require("src/account").load()
   if not input.setBindings(settings.keys, settings.padButtons) then
     settings.keys, settings.padButtons = input.keyChanges(), input.buttonChanges()
   end

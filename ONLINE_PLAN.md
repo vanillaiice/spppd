@@ -1,7 +1,14 @@
 # Plan: quick match, drivers, ranked races, email sign-in
 
 Written 2026-11-07 against `master` at `ac18fd1`, then revised the same day with the
-decisions in §1. This is a plan only. Nothing here is built.
+decisions in §1.
+
+**Progress.** Phase 1 shipped in 3.1.0. Phase 2 is built on branch `drivers`, as
+planned here except: answers the plan left open are `event|denied|INTENT|REASON`,
+`event|signedout|ID` and `event|nodriver|ID`; the room event's names are a field of
+their own, `2:BOB,3:AL`; the game checks only a name's shape and the relay alone
+holds the blocklist; and the dashboard's HIDE waits for the boards in phase 3, where
+it means something. Phases 3 and 4 aren't started.
 
 It covers the two `ROADMAP.md` items about strangers:
 

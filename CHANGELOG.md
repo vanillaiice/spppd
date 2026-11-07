@@ -1,5 +1,26 @@
 # Changelog
 
+## Unreleased
+
+Driver names need a server from this version on. The official one will be updated
+first. Everything else still races 3.0 and 3.1.
+
+### Online
+
+- PROFILE on the ONLINE screen picks a driver name, which the others see in the lobby,
+  the race and the results instead of P2. There's no email and no password: the game
+  keeps a key on this device and proves it holds it. SHOW RECOVERY CODE gives a code
+  that signs another device in as you. Rename once every 30 days, sign a device out, or
+  delete the driver. The privacy policy and terms say what the server keeps, and the
+  name rules.
+
+### Driving
+
+- Boost carries the car where its nose points. Point it away from trouble and boost
+  pulls a slide straight: in a one-second save, the car slides 6.0 m sideways instead
+  of 8.4 m on tarmac, and 7.1 m instead of 10.4 m on grass, and keeps its speed. It
+  doesn't turn the car any tighter on grip. Grass and gravel drag is halved under boost.
+
 ## 3.1.0 (2026-11-07)
 
 3.1 still races 3.0 in rooms by code. Quick match needs 3.1, and a server from 3.1

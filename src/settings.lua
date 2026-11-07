@@ -86,6 +86,7 @@ local function serialize(value, indent)
   return nil
 end
 settings.serialize = serialize
+settings.loadTable = loadTable
 
 function settings.load()
   local data = loadTable(FILE)

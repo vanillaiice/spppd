@@ -11,6 +11,14 @@ local press, expect = flow.press, flow.expect
 
 local online = {}
 
+-- Where a row is on the ONLINE screen, so new rows don't move what a step presses.
+local function onlineRow(label)
+  for i, row in ipairs(menu.onlineRows()) do
+    if row.label == label then return i end
+  end
+  error("no " .. label .. " row")
+end
+
 local function newBot()
   return love.filesystem.load("src/network_manager.lua")()
 end
@@ -108,7 +116,7 @@ local function steps()
   end)
   step(5, function() shot("notice") end)
   step(3, function()
-    ui.focus.online = 7
+    ui.focus.online = onlineRow("HOST A ROOM")
     press("return")
   end)
   step(3, function()
@@ -249,7 +257,7 @@ local function steps()
   end)
   step(3, function()
     network.roomCode = botRoom
-    ui.focus.online = 9
+    ui.focus.online = onlineRow("JOIN A ROOM")
     press("return")
   end)
   step(1, function()
@@ -295,7 +303,7 @@ local function steps()
   end)
   step(3, function()
     expect(menu.screen == "online", "back on ONLINE")
-    ui.focus.online = 6
+    ui.focus.online = onlineRow("QUICK MATCH")
     press("return")
   end)
   step(1, function()

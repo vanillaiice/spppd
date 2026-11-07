@@ -15,8 +15,9 @@ Questions, or a request to see or delete what's held about you:
   your device.
 - Online, the server sees your IP address, because it can't send you anything without
   it. Other drivers never see it.
-- There are no player accounts, names, emails, device IDs, ads or third-party
-  trackers.
+- A driver name is optional. Pick one and the server keeps the name, a key for each
+  device you race on and a recovery key, and nothing else: no email, password, device
+  ID or IP address with it. There are no ads or third-party trackers.
 - The server counts players for statistics, but stores a keyed hash of each IP
   address, never the address itself, and deletes the hashes after 30 days.
 - The website counts visits and downloads with Umami, on the operator's own server.
@@ -31,10 +32,28 @@ Questions, or a request to see or delete what's held about you:
 | The room code | To put you in the right room | Until the room empties, kept like your address |
 | A random token for your seat, which only your game is told | To let you back into your seat if your connection drops, or the server restarts | Until you leave the room, kept like your address |
 | A cookie worked out from your IP address and port, which only your game is told | To check that packets asking for a seat really come from your address | Not at all. It's worked out again when it's checked |
-| Log lines: host, join, quick match, leave, away, back, voted out and time-out events, with IP address, port and room code | To run the server, fix problems and deal with abuse | In the server's log, about 10 MB of it, until newer lines overwrite them or the server is updated, whichever comes first |
+| Log lines: host, join, quick match, leave, away, back, voted out and time-out events, with IP address, port and room code. A new driver, and a driver signing in on another device, with the name, number, IP address and port | To run the server, fix problems and deal with abuse | In the server's log, about 10 MB of it, until newer lines overwrite them or the server is updated, whichever comes first |
 | Recent activity on the admin dashboard: the same events, plus refused connections | Same as the log | The last 200 events, on the server's disk so they outlast a restart, and none older than 7 days |
 | An IP address voted out of a quick match, and the addresses of the drivers who voted | To stop that address looking for a race for a while, and to keep it out of the voters' races | In memory only, never on disk: up to an hour for the wait, 30 minutes for keeping you apart, and the count of times that day until the day (UTC) is over. A restart forgets them |
 | A banned IP address, when it was banned, and which admin banned it | To keep out someone who abused the server | Until the ban is lifted |
+| If you pick one: your driver name and number, the day you made it, the day you last raced with it, when you last renamed it, and whether it's banned | To show your name to the others in every room you race in | Until you delete the driver |
+| For each device signed in as that driver: a random key your game made, the kind of device it said it was ("Android", "Linux"), and the days it was added and last used | To check it's really you when you take a seat. Your game proves it holds the key without sending it again | Until you sign that device out, delete the driver, or sign in on more than 10 devices, when the one used least recently is dropped |
+| Your driver's recovery key | To sign another device in when you type the recovery code | Until you delete the driver |
+
+### Drivers
+
+Your IP address is never stored with your driver. The server knows which address
+holds which seat only while you're connected, as it does without a driver, and only
+the sign-up and sign-in lines in the log put a name next to an address.
+
+Each key crosses the network once, when your game makes it. The server has to keep
+the keys to check your game's proofs, so if its database or a backup leaked, someone
+could race under your name. Nothing else is in it: no email, no password you use
+anywhere else.
+
+DELETE DRIVER on the PROFILE screen deletes your driver and all its keys from the
+server at once, and frees the name. The backups lose it within 7 days. SIGN OUT OF
+THIS DEVICE deletes only that device's key.
 
 The status page shows how many drivers are online and races running. Those are
 counts, and say nothing about anyone.
@@ -42,7 +61,8 @@ counts, and say nothing about anyone.
 Only the operator can see the log and the dashboard. The dashboard isn't reachable
 from the internet, and it needs an admin login.
 
-The server's database (bans, admin logins and the statistics below) is backed up
+The server's database (bans, drivers and their keys, admin logins and the statistics
+below) is backed up
 to rented storage, so it survives the server failing. The backup holds copies from
 the last 7 days, so anything deleted from the server is gone from the backup 7 days
 later. The key that IP hashes are made with isn't backed up, and nor are the rooms
@@ -58,8 +78,8 @@ The official server runs with statistics turned on. It keeps:
   address. Hashes are deleted after 30 days. What stays is how many different
   addresses played that day.
 - **Daily totals:** rooms hosted, joins, races started, drivers in them, refused
-  connections, seats taken back after a lost connection, quick match races, the most
-  players at once, and traffic in and out.
+  connections, seats taken back after a lost connection, quick match races, new
+  drivers, the most players at once, and traffic in and out.
 - **Races:** when each room started racing and when it emptied, how many drivers it
   had, the game's protocol version, and whether it was a quick match. No addresses,
   room codes or names.
@@ -99,11 +119,15 @@ kept as small as they can be and hashed, for the same interest in keeping the se
 running. The website's visit counts rely on the same interest: knowing whether anyone
 uses the game, without cookies or tracking you elsewhere.
 
+A driver is different: it's kept because you asked for one, to give you what you
+asked for, a name the others see. You can delete it whenever you like.
+
 ## Your rights
 
-You can ask what's held about you, and ask for it to be corrected or deleted. Because
-the server keeps no names, include your IP address and roughly when you played, so it
-can be found. A hash can only be matched by computing it again from your address on
+You can ask what's held about you, and ask for it to be corrected or deleted. For
+your driver, give its name or number, or delete it yourself on the PROFILE screen.
+For anything else, include your IP address and roughly when you played, so it can be
+found, because nothing else ties it to you. A hash can only be matched by computing it again from your address on
 the server. You can also complain to your data protection authority.
 
 ## Where it's stored

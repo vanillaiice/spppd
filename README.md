@@ -140,6 +140,12 @@ many are online. FIND ANOTHER on the results looks for the next one. In a quick 
 of three or more, VOTE OUT in the pause menu removes a driver who spoils it, once two
 others agree. They can't look for another race for a few minutes.
 
+PROFILE gives you a driver name that everyone sees online, instead of P2. There's no
+email and no password: the game keeps a key on your device. SHOW RECOVERY CODE gives a
+code that signs another device in as you; keep it safe, because without it and your
+devices the name can't be got back. You can rename every 30 days, sign a device out,
+or delete the driver.
+
 Everyone needs the same version of the game. The ONLINE screen lists what else to
 expect: it's new, you can't rejoin after leaving, and nobody checks results.
 
