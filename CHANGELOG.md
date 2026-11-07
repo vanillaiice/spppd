@@ -1,9 +1,9 @@
 # Changelog
 
-## Unreleased
+## 3.1.0 (2026-11-07)
 
-Needs the server updated first: an older one answers nothing to QUICK MATCH, and the
-game says so.
+3.1 still races 3.0 in rooms by code. Quick match needs 3.1, and a server from 3.1
+on: the official one is. On an older one the game says it may not have quick match.
 
 ### Online
 
