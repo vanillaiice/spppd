@@ -1,6 +1,6 @@
 # Terms of use
 
-Last updated 2026-11-03. What the server keeps is in [PRIVACY.md](PRIVACY.md).
+Last updated 2026-11-07. What the server keeps is in [PRIVACY.md](PRIVACY.md).
 
 These terms cover the official SPPPD online server at `spppd.xyz`, run by
 vanillaiice. The game itself is free software under the GNU General Public License,
@@ -21,6 +21,9 @@ Don't:
 - use it for anything other than playing SPPPD
 - use a changed game to cheat or to spoil other people's races
 - try to find out other players' addresses, or interfere with their connection
+
+In a quick match, two other drivers can vote you out of the race. Your address then
+can't look for another quick match for a while, from 2 minutes up to an hour.
 
 The operator can ban an IP address, close a room or remove a player at any time, with
 or without a reason, and without notice.

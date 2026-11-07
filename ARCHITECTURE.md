@@ -153,6 +153,7 @@ src/
 
 server/
   main.go                 Relay: rooms, forwarding, limits, sweeps, bans
+  match.go                Quick match: rooms the relay makes, its race, votes
   dashboard.go, .html     Admin page
   htmx.min.js             htmx 2.0.4 (0BSD), embedded in the binary
   *_test.go               33 tests
@@ -387,8 +388,11 @@ Set in `dynamics.ASSISTS`. `steer` and `caster` are real effects. Everything fro
 | `tow` (slipstream pull, m/s²) | 0.9 | 0 | 0 | 0 |
 
 FULL exists for the AI and the demo race. AI cars use ARCADE when the player does and
-FULL otherwise, because arcade grip is much higher and the grid wouldn't match. Online
-races always use ARCADE.
+FULL otherwise, because arcade grip is much higher and the grid wouldn't match. Online,
+each driver uses their own tier and gearbox: another driver's car runs no tyre model on
+this screen (see Remote cars), so their handling changes nothing for anyone else, and
+slipstream `tow` follows the handling of the car being pulled. 3.0 games still force
+ARCADE on themselves.
 
 ### Surfaces
 
@@ -1422,7 +1426,8 @@ whoever is in the lowest seat, and it's the one with a job to do: it publishes t
 hands out the track, answers clock pings and calls each start. If the host leaves a
 race, the next seat becomes the leader and everything carries on, because everyone
 already holds what's needed to race again. A lobby is different: the race is the host's
-to set, so the relay closes the room if the host leaves before the first start.
+to set, so the relay closes the room if the host leaves before the first start. A quick
+match's lobby isn't: its race is the relay's, so the next seat leads (see Quick match).
 
 Grid order is seat order with the gaps closed. Other drivers show as P1 to P4.
 
@@ -1440,16 +1445,19 @@ forwards with the sender's seat, as `2|sync|...`, so a client can't pose as anot
 
 | Packet | Direction | Purpose |
 | --- | --- | --- |
-| `event\|host\|5\|CODE\|cookie\|\|padding` | Client to relay | Create a room. Repeated until answered. Padded to 64 bytes |
-| `event\|join\|5\|CODE\|cookie\|\|padding` | Client to relay | Join a room. The same |
-| `event\|back\|5\|CODE\|cookie\|token\|padding` | Client to relay | Take my own seat back, from whatever address I have now |
+| `event\|host\|5\|CODE\|cookie\|\|features\|account\|proof\|padding` | Client to relay | Create a room. Repeated until answered. Padded to 64 bytes. `account` and `proof` are empty until there are drivers |
+| `event\|join\|5\|CODE\|cookie\|\|features\|account\|proof\|padding` | Client to relay | Join a room. The same |
+| `event\|back\|5\|CODE\|cookie\|token\|features\|account\|proof\|padding` | Client to relay | Take my own seat back, from whatever address I have now |
+| `event\|queue\|5\|\|cookie\|\|features\|account\|proof\|mode\|data\|padding` | Client to relay | Find me a race. `mode` is `quick`. `data` is empty, kept for ranked |
+| `event\|kick\|seat\|` | Client to relay | My vote to remove the driver in `seat` from a quick match |
 | `event\|lock\|` | Client to relay | The race has started, so take nobody new |
 | `event\|leave\|` | Client to relay | Leaving |
 | `event\|cookie\|cookie` | Relay to client | Ask again with this. The answer to a request without a good cookie |
 | `event\|room\|seat\|CODE\|seats\|locked\|token\|away` | Relay to client | Your seat, who's here, your token, and which seats are away. On any change, and every second |
+| `event\|match\|kind\|track\|laps\|time\|startIn\|online\|votes` | Relay to client | After each `room` in a quick match: the relay's race, whole seconds until it stops filling (`-1` while alone), drivers on the relay, and `seat:count,…` votes |
 | `event\|error\|reason` | Relay to client | Refused entry, or refused a seat back |
 | `event\|closed\|reason` | Relay to client | Removed: a closed room, a ban, a restart |
-| `hello\|car\|paint\|have\|ready\|vote\|features` | Everyone | Who I am, whether I hold the track, the round I'm ready for, the round I've asked for, and my `FEATURES` |
+| `hello\|car\|paint\|have\|ready\|vote\|features\|handling\|gearbox` | Everyone | Who I am, whether I hold the track, the round I'm ready for, the round I've asked for, my `FEATURES`, and the handling and gearbox I drive with (3.0 stops after `features`) |
 | `setup\|round\|hash\|chunks\|laps\|time\|startAt\|title\|needs` | Leader | The race, when it starts, and the `FEATURES` it needs |
 | `ping\|t`, `pong\|seat\|t\|leaderTime` | Clients and leader | Finding the leader's clock |
 | `need\|hash\|1,2,3`, `chunk\|hash\|n\|text` | Clients and leader | Fetching a track |
@@ -1482,6 +1490,14 @@ changing `PROTOCOL`, by these rules:
   only what that allows. A race that needs more sets `needs` in its setup: the host
   can't start it until every driver's `FEATURES` reaches it, and an older game that
   hears it fails with "The host's race needs a newer version of the game".
+
+A field made only of `.` is an older game's padding, and the relay reads it as empty.
+So a 3.0 game's `host` reads as `features` 0.
+
+| `FEATURES` | Adds |
+| --- | --- |
+| 0 | 3.0 |
+| 1 | Quick match, and each driver's own handling and gearbox online |
 
 **Change `PROTOCOL` only for a break those rules can't cover**, which is a new major
 version.
@@ -1661,6 +1677,40 @@ token, so the relay drops them after 5 s, as before.
 - 6 s of hearing nothing at all means a game before protocol 5 has lost the relay.
   Later ones try to get back in first.
 
+### Quick match
+
+QUICK MATCH on the ONLINE screen sends `queue` instead of `host` or `join`, with no
+code. `server/match.go` seats the driver in the oldest room still filling that has a
+free seat, the same protocol, nobody this address is kept apart from, and nobody gone
+quiet for over 2 s; otherwise it makes a room with an 8-character code (the game's are
+6, so they never clash) and picks its race: a built-in track, skipping the last two
+picked, laps for about three minutes from the AI's ARCADE lap times, and a random time
+of day. `join` with that code is refused: sharing it lets nobody in.
+
+The second driver starts a 15 s countdown (`-quick-fill`; the online tests use 2 s),
+which a full grid of four cuts to 3 s, and `match` carries it. The leader builds the
+setup from the match, on its own copy of the built-in track, so nobody downloads
+anything, and when the countdown runs out calls `startRace` itself once `canStart` holds.
+Every game ignores a setup whose hash isn't the match track's, so a leader can't swap
+it. The leader repeats `lock` until the room event shows it, because past its fill time
+a room leaves the filling list, and one still unlocked a minute later is closed with
+"The race didn't start". A game hearing that before its first race queues again by
+itself. Dropping back to one driver before the start stops the countdown, and the room
+fills again.
+
+REMATCH works as in any room. FIND ANOTHER on the results leaves and queues again with
+the same car and setup.
+
+**Voting out.** In a quick match of three or more, VOTE OUT in the pause menu lists the
+others, and `kick` is repeated for up to 3 s until the count in `match` goes up. Every
+game, the target's too, shows `P3 MAY BE VOTED OUT (1/2)`. Two votes remove the target
+with `event|closed|The other drivers voted you out`; in a room of two there's no vote,
+because one driver could remove the other. The target's IP then can't queue for
+2 minutes, doubled for each vote-out that UTC day up to an hour, and each voter's IP is
+kept apart from it in matching for 30 minutes, unless they share an IP, which would bar
+that address from every room with itself in it. Neither map outlasts a restart, and both
+are capped at 65536 entries, evicting at random.
+
 ### The relay
 
 `server/main.go` holds this state behind one mutex:
@@ -1673,6 +1723,8 @@ token, so the relay drops them after 5 s, as before.
 | `perIP` | Connections from each IP |
 | `buckets` | Rate limit state for each IP |
 | `events` | Last 200 lines for the dashboard |
+| `filling` | Quick match rooms still taking drivers, by kind, oldest first |
+| `cooldown`, `avoid` | IPs voted out, and pairs of IPs kept apart after a vote |
 | `total`, `perSecond`, `dropped` | Traffic counters |
 
 **`Handle(data, addr)`** runs for every packet:
@@ -1684,10 +1736,11 @@ token, so the relay drops them after 5 s, as before.
  refresh LastSeen, and if it was away, it's back: tell the room
  not an event?         stamp with the seat and forward to the rest of the room,
                        except anyone away
- unknown client?       register if it's host, join or back, otherwise ignore
+ unknown client?       register if it's host, join, back or queue, otherwise ignore
  event|leave           remove the client and tell the room
  event|lock            lock the room
- event|host/join/back  resend the room (the answer may have been lost)
+ event|kick            count a vote in a quick match
+ event|host/join/back/queue  resend the room (the answer may have been lost)
 ```
 
 **`register`** checks a request from an unknown address. From protocol 5:
@@ -1698,6 +1751,8 @@ token, so the relay drops them after 5 s, as before.
  older than -min-proto, bad code, too many from this IP?   refuse
  back                  give the seat whose token matches its new address, or refuse
  host or join          as before, with a new token for the seat
+ queue                 unknown mode, FEATURES under 1, cooling down?   refuse
+                       otherwise seat it in a quick match (see Quick match)
 ```
 
 The cookie is HMAC-SHA-256 of the address and port and the current 30 s window, cut
@@ -1715,7 +1770,9 @@ up, so a flood can't push everything else off the activity list.
 **`Sweep`** runs once a second: it computes traffic rates, marks clients in a shared
 room away after 5 s of silence and drops them 30 s later (games before protocol 5 go at
 5 s), drops anyone alone in a room after 60 s, repeats each room to the clients heard
-from in the last 2 s, sums up the refusals, and clears old rate buckets. A game sends at
+from in the last 2 s, takes quick matches past their fill time off the filling list and
+closes those a minute past it, sums up the refusals, and clears old rate buckets,
+cooldowns and pairs kept apart. A game sends at
 least four times a second, so only an address that has stopped sending, or never
 was, misses the repeat.
 
@@ -1761,9 +1818,9 @@ mode, with temporary data in memory, because the container's root is read-only.
 | `users` | Name, bcrypt hash, when added |
 | `sessions` | SHA-256 of each login token, its user, expiry (7 days) |
 | `meta` | Nothing now. Older relays kept the analytics key here; it's moved out on start and the row is wiped with `secure_delete` |
-| `daily` | One row of totals per UTC day, `backs` included since the relay that added getting back in. `migrate` adds the column to an older database |
+| `daily` | One row of totals per UTC day, `backs` included since the relay that added getting back in, and `quick_races` since quick match. `migrate` adds the columns to an older database |
 | `visitors` | Day and keyed IP hash, deleted after `-analytics-days` |
-| `races` | Start, end, drivers and protocol of each room that raced |
+| `races` | Start, end, drivers, protocol and `kind` (`quick` or empty) of each room that raced |
 
 The analytics key is in a file of its own next to the database, `relay.db.key`
 (mode 0600), so a backup of the database can't be used to undo the IP hashes.
@@ -1783,7 +1840,7 @@ aren't worth backing up, and the backup only copies `relay.db`.
 | Table | Holds |
 | --- | --- |
 | `events` | Seq, time and text of each activity line. Clean-up keeps the newest 200, none older than 7 days |
-| `rooms` | One row: the rooms from protocol 5 on, as JSON (code, protocol, times, locked, racers, and each seat's slot, address and token), and when they were saved |
+| `rooms` | One row: the rooms from protocol 5 on, as JSON (code, protocol, times, locked, racers, a quick match's kind, race and fill time, and each seat's slot, address, token and `FEATURES`), and when they were saved. Votes aren't kept |
 
 The relay never waits on it. `record` hands each line to a channel of 1024 without
 blocking, and counts a line it can't hand over in `tempLost` rather than wait. One
@@ -1812,7 +1869,7 @@ memory, and the relay's hot paths only bump integers:
 | Room, join | `register`, once seated |
 | Refusal | `refuse` |
 | Seat taken back | `rejoin` |
-| Race, racers | `lock`, the first time a room locks |
+| Race, racers | `lock`, the first time a room locks, and a quick race if the relay made it |
 | Finished race | `dropRoom`, when a locked room empties or closes |
 | Peak players | `seat` and `Sweep` |
 | Traffic | `Sweep`, from the per-second rates |
@@ -1831,7 +1888,8 @@ every 2 s and swaps in fresh tables. Recent activity polls `/activity` on its ow
 the page adds only lines with a higher `Seq`, so the list keeps its scroll position.
 Neither redraws while text is selected, because that would lose the selection, and the
 header says it's paused. Ctrl+A over the list selects just the list. Analytics, when
-on, poll `/analytics` every minute.
+on, poll `/analytics` every minute. A quick match carries a QUICK badge, and the time
+left to fill until it starts.
 
 | Route | Method | Action |
 | --- | --- | --- |
@@ -1937,7 +1995,8 @@ racing is told. Bans, users, logins and analytics survive it.
 
 `spppd.xyz/status/` tells players whether the official relay is up, with how many
 drivers are online and races running. `-status addr` serves those counts as JSON at
-`GET /api/status`; if it answers, the relay is up. On the official server it listens
+`GET /api/status`, with `looking`, the drivers in quick matches that haven't started;
+if it answers, the relay is up. On the official server it listens
 on `:8081` on the kamal network only, and the website's Caddy passes `/api/status` to
 `spppd-relay:8081`, so a stopped relay shows as down. In `make site-dev`, Vite passes
 it to `127.0.0.1:8081` (`SPPPD_STATUS` to change that).

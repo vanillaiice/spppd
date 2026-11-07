@@ -15,8 +15,6 @@ Last updated 2026-11-07.
 - **Cop chases:** a pursuit mode with roadblocks and a heat level that rises the
   longer you run. It's the biggest job on this list, because the cops have to drive
   well enough to be fun to escape.
-- **Quick match online:** a button that puts you in a race with other players, with no
-  room code to share. It will come with a way to vote out a driver who spoils it.
 - **Ranked races and profiles:** accounts, rankings and a profile that keeps your
   record. These need the server to check race results, which it doesn't do today.
 - **Drift combos in freestyle:** chain slides for a multiplier, with a best score kept

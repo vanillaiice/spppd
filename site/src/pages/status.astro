@@ -12,6 +12,7 @@ import site from '../site.config';
     <dl data-numbers hidden>
       <div><dt>Drivers online</dt><dd data-players></dd></div>
       <div><dt>Races running</dt><dd data-races></dd></div>
+      <div><dt>Looking for a race</dt><dd data-looking></dd></div>
     </dl>
     <p class="error" data-error hidden></p>
     <p class="muted">Updated every 15 seconds.</p>
@@ -21,7 +22,7 @@ import site from '../site.config';
 </Page>
 
 <script>
-  type Status = { up: boolean; players: number; races: number };
+  type Status = { up: boolean; players: number; races: number; looking?: number };
 
   const card = document.getElementById('official')!;
   const part = (name: string) => card.querySelector<HTMLElement>(`[data-${name}]`)!;
@@ -38,6 +39,9 @@ import site from '../site.config';
     }
     part('players').textContent = String(s.players);
     part('races').textContent = String(s.races);
+    // A relay from before quick match doesn't say.
+    part('looking').parentElement!.hidden = s.looking === undefined;
+    part('looking').textContent = String(s.looking ?? 0);
   }
 
   async function refresh() {

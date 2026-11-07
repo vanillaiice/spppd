@@ -31,8 +31,9 @@ Questions, or a request to see or delete what's held about you:
 | The room code | To put you in the right room | Until the room empties, kept like your address |
 | A random token for your seat, which only your game is told | To let you back into your seat if your connection drops, or the server restarts | Until you leave the room, kept like your address |
 | A cookie worked out from your IP address and port, which only your game is told | To check that packets asking for a seat really come from your address | Not at all. It's worked out again when it's checked |
-| Log lines: host, join, leave, away, back and time-out events, with IP address, port and room code | To run the server, fix problems and deal with abuse | In the server's log, about 10 MB of it, until newer lines overwrite them or the server is updated, whichever comes first |
+| Log lines: host, join, quick match, leave, away, back, voted out and time-out events, with IP address, port and room code | To run the server, fix problems and deal with abuse | In the server's log, about 10 MB of it, until newer lines overwrite them or the server is updated, whichever comes first |
 | Recent activity on the admin dashboard: the same events, plus refused connections | Same as the log | The last 200 events, on the server's disk so they outlast a restart, and none older than 7 days |
+| An IP address voted out of a quick match, and the addresses of the drivers who voted | To stop that address looking for a race for a while, and to keep it out of the voters' races | In memory only, never on disk: up to an hour for the wait, 30 minutes for keeping you apart, and the count of times that day until the day (UTC) is over. A restart forgets them |
 | A banned IP address, when it was banned, and which admin banned it | To keep out someone who abused the server | Until the ban is lifted |
 
 The status page shows how many drivers are online and races running. Those are
@@ -57,10 +58,11 @@ The official server runs with statistics turned on. It keeps:
   address. Hashes are deleted after 30 days. What stays is how many different
   addresses played that day.
 - **Daily totals:** rooms hosted, joins, races started, drivers in them, refused
-  connections, seats taken back after a lost connection, the most players at once,
-  and traffic in and out.
+  connections, seats taken back after a lost connection, quick match races, the most
+  players at once, and traffic in and out.
 - **Races:** when each room started racing and when it emptied, how many drivers it
-  had, and the game's protocol version. No addresses, room codes or names.
+  had, the game's protocol version, and whether it was a quick match. No addresses,
+  room codes or names.
 
 The totals are kept with no time limit, because nothing in them points to anyone.
 They're used only to see how much the game is played and to plan the server. They're

@@ -1,5 +1,26 @@
 # Changelog
 
+## Unreleased
+
+Needs the server updated first: an older one answers nothing to QUICK MATCH, and the
+game says so.
+
+### Online
+
+- QUICK MATCH on the ONLINE screen puts you in a race with whoever else is looking, with
+  no room code to share. The server picks a built-in track, laps for about three
+  minutes, and the time of day. The race starts by itself 15 seconds after a second
+  driver arrives, or 3 seconds after a fourth. Alone, it waits and shows how many are
+  online. FIND ANOTHER on the results looks for the next race in one press.
+- VOTE OUT in the pause menu of a quick match of three or more removes a driver who
+  spoils the race once two others agree. Everyone sees the votes coming, the driver
+  they're about too. Whoever is voted out can't look for a race for 2 minutes, longer
+  each time that day, and isn't matched with the voters for half an hour.
+- Every online race uses each driver's own handling and gearbox, set on the ONLINE
+  screen, instead of ARCADE for everyone. The lobby and the results show how each
+  driver set up.
+- The status page shows how many drivers are looking for a race.
+
 ## 3.0.0 (2026-11-07)
 
 3.0 is the version the rest of 3.x builds on. Every 3.x version races every other one

@@ -62,7 +62,8 @@ phone, BUTTON LIST shows the touch controls.
   speed. Glancing off one is fine, and so is being shoved into one by another car.
 - **Handling** is set in race setup. Arcade is the default, with big grip and a held
   drift on the handbrake. Sport adds realistic grip with driver aids, and Sim has no
-  aids at all. Online races always use Arcade.
+  aids at all. Online, everyone drives with their own handling and gearbox, and you
+  can set both on the ONLINE screen.
 - **Boost** fills on its own, and three times faster while the car is sliding.
 - **Slipstream**: sit close behind a car at speed for less drag, then pull out and
   slingshot past.
@@ -130,6 +131,13 @@ Two to four players race through a relay server. One player picks HOST A ROOM, s
 track, laps and time of day, and reads out the room code. The others enter it and join,
 and only the host needs the track. REMATCH runs the race again once everyone asks.
 
+QUICK MATCH needs no code: it puts you in a race with whoever else is looking, on a
+track the server picks. The race starts by itself 15 seconds after a second driver
+arrives, or sooner once four are in. If nobody else is looking, it waits and shows how
+many are online. FIND ANOTHER on the results looks for the next one. In a quick match
+of three or more, VOTE OUT in the pause menu removes a driver who spoils it, once two
+others agree. They can't look for another race for a few minutes.
+
 Everyone needs the same version of the game. The ONLINE screen lists what else to
 expect: it's new, you can't rejoin after leaving, and nobody checks results.
 
@@ -154,8 +162,10 @@ relay takes at once, and the dashboard shows both against their limits.
 Statistics are off unless you start the relay with `-analytics`. They count unique IPs
 as keyed hashes, plus rooms, races and traffic, and the dashboard exports them as CSV.
 If you turn them on, tell your players, as `PRIVACY.md` does for the official server.
-`-status :8081` serves how many drivers are online and races running as JSON at
-`/api/status`, which <https://spppd.xyz/status/> shows for the official server.
+`-status :8081` serves how many drivers are online, races running and drivers looking
+for a quick match as JSON at `/api/status`, which <https://spppd.xyz/status/> shows for
+the official server. `-quick-fill` (15s) is how long a quick match waits for more
+drivers once a second has joined.
 
 `make deploy-relay` deploys the official server, and `make check-relay` checks it answers
 without showing in its stats. See `ARCHITECTURE.md`.
