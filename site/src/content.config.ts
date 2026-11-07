@@ -58,7 +58,7 @@ const releases = defineCollection({
   schema: z.object({ version: z.string(), date: z.date(), order: z.number() }),
 });
 
-// README.md, PRIVACY.md and TERMS.md, as they are in the repository.
+// README.md, ROADMAP.md, PRIVACY.md and TERMS.md, as they are in the repository.
 function repoDocs(names: Record<string, string>): Loader {
   return {
     name: 'repo-docs',
@@ -81,7 +81,7 @@ function repoDocs(names: Record<string, string>): Loader {
 }
 
 const docs = defineCollection({
-  loader: repoDocs({ readme: 'README.md', privacy: 'PRIVACY.md', terms: 'TERMS.md' }),
+  loader: repoDocs({ readme: 'README.md', roadmap: 'ROADMAP.md', privacy: 'PRIVACY.md', terms: 'TERMS.md' }),
   schema: z.object({ title: z.string(), updated: z.string().optional() }),
 });
 

@@ -8,7 +8,7 @@ const rendered = await Promise.all(releases.map(async (r) => ({ ...r, Content: (
 ---
 
 <Page title="Changelog" description="What changed in each version of SPPPD.">
-  <p slot="lede" class="muted">What changed in each version, newest first.</p>
+  <p slot="lede" class="muted">What changed in each version, newest first. What's next is on the <a href="/roadmap/">roadmap</a>.</p>
   {
     rendered.map(({ data, Content }) => (
       <article class="release prose" id={`v${data.version}`}>

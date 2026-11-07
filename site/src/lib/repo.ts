@@ -56,6 +56,7 @@ const PAGES: Record<string, { href: string; name: string }> = {
   'PRIVACY.md': { href: '/privacy/', name: 'privacy policy' },
   'TERMS.md': { href: '/terms/', name: 'terms of use' },
   'CHANGELOG.md': { href: '/changelog/', name: 'changelog' },
+  'ROADMAP.md': { href: '/roadmap/', name: 'roadmap' },
 };
 
 export function siteLinks(markdown: string): string {
