@@ -1,6 +1,7 @@
 // Relay server for SPPPD online races. A host opens a room, up to three others
 // join with its code, and from then on every packet goes to the rest of the
 // room, stamped with the seat it came from. The relay reads nothing it forwards.
+// It also makes rooms of its own for quick match, in match.go.
 package main
 
 import (
@@ -66,10 +67,13 @@ type Client struct {
 	// Away is a driver gone quiet in a shared room. The seat waits for them, and
 	// nothing is forwarded to them, until they come back or run out of time.
 	Away bool
+	// Features is the FEATURES level the game said it has. 0 before 3.1.
+	Features int
 }
 
 // Room is a group of up to four drivers. Seat 1 is the host. A locked room has
 // started racing and takes nobody new. Its code stays taken until it empties.
+// The relay makes rooms of its own for quick match, and picks their race.
 type Room struct {
 	Code   string
 	Proto  string
@@ -78,6 +82,11 @@ type Room struct {
 	Raced  time.Time // when it locked
 	Racers int       // seats taken when it locked
 	Seats  [maxRoomPlayers]*Client
+
+	Kind   string               // "" for a room someone hosted, "quick" for one the relay made
+	FillBy time.Time            // when a relay-made room stops taking drivers; zero while it has one
+	Race   MatchRace            // the race the relay picked
+	Votes  map[int]map[int]bool // target seat -> the seats voting it out
 }
 
 func (room *Room) members() []*Client {
@@ -158,6 +167,12 @@ type Relay struct {
 
 	tempEvents chan<- Event // to the temporary file's writer, nil when there's none
 	tempLost   uint64       // events left unwritten because it was behind
+
+	filling  map[string][]*Room    // by kind, oldest first: relay-made rooms still taking drivers
+	cooldown map[string]coolDown   // IP -> when it may queue again, after a vote-out
+	avoid    map[pairKey]time.Time // two IPs kept apart after a vote, until then
+	recent   []string              // the last two tracks quick match picked
+	fillTime time.Duration         // how long a relay-made room fills from its second driver
 }
 
 func NewRelay(send Sender) *Relay {
@@ -173,6 +188,10 @@ func NewRelay(send Sender) *Relay {
 		banned:     make(map[string]Ban),
 		perIP:      make(map[string]int),
 		buckets:    make(map[string]*rateBucket),
+		filling:    make(map[string][]*Room),
+		cooldown:   make(map[string]coolDown),
+		avoid:      make(map[pairKey]time.Time),
+		fillTime:   15 * time.Second,
 		rate:       300,
 		maxPlayers: 2000,
 		started:    time.Now(),
@@ -327,7 +346,7 @@ func (r *Relay) Handle(data []byte, addr *net.UDPAddr) {
 		return
 	}
 
-	parts := strings.SplitN(string(data), "|", 8)
+	parts := strings.SplitN(string(data), "|", 12)
 	if client == nil {
 		r.register(parts, len(data), addr)
 		return
@@ -338,7 +357,9 @@ func (r *Relay) Handle(data []byte, addr *net.UDPAddr) {
 		r.remove(client)
 	case "lock":
 		r.lock(client.Room)
-	case "host", "join", "back":
+	case "kick":
+		r.vote(client, parts)
+	case "host", "join", "back", "queue":
 		// The answer may have been lost, so repeat it.
 		r.tell(client)
 	}
@@ -352,18 +373,23 @@ func (r *Relay) lock(room *Room) {
 	room.Locked = true
 	room.Raced = r.now()
 	room.Racers = len(room.members())
+	r.unfill(room)
 	if r.tally != nil {
 		r.tally.Races++
 		r.tally.Racers += room.Racers
+		if room.Kind == quickKind {
+			r.tally.QuickRaces++
+		}
 	}
 }
 
 // dropRoom forgets an empty or closed room, and counts it if it raced.
 func (r *Relay) dropRoom(room *Room) {
 	delete(r.rooms, room.Code)
+	r.unfill(room)
 	if room.Locked && r.tally != nil {
 		r.tally.Finished = append(r.tally.Finished, RaceRecord{
-			Started: room.Raced, Ended: r.now(), Players: room.Racers, Proto: room.Proto,
+			Started: room.Raced, Ended: r.now(), Players: room.Racers, Proto: room.Proto, Kind: room.Kind,
 		})
 	}
 }
@@ -385,7 +411,8 @@ func (r *Relay) forward(from *Client, data []byte) {
 // tell sends one client the room as it stands: its own seat, the room's code,
 // the seats taken, and whether it has locked. From protocol 5 it adds the
 // client's own token and the seats that are away. Fields are only ever added
-// at the end, and games ignore any they don't know.
+// at the end, and games ignore any they don't know. A relay-made room's race
+// follows in a match event.
 func (r *Relay) tell(client *Client) {
 	room := client.Room
 	seats := make([]string, 0, maxRoomPlayers)
@@ -405,6 +432,9 @@ func (r *Relay) tell(client *Client) {
 		text += "|" + client.Token + "|" + strings.Join(away, ",")
 	}
 	r.send([]byte(text), client.Addr)
+	if room.Kind != "" {
+		r.send([]byte(r.matchEvent(room)), client.Addr)
+	}
 }
 
 func (r *Relay) announce(room *Room) {
@@ -490,22 +520,25 @@ func (r *Relay) validCookie(cookie string, addr *net.UDPAddr) bool {
 		hmac.Equal([]byte(cookie), []byte(r.cookieAt(addr, window-1)))
 }
 
-// register handles a host, join or back from an unknown address. Stragglers from
-// a race that just ended aren't asking for a room, and get no answer.
+// register handles a host, join, back or queue from an unknown address.
+// Stragglers from a race that just ended aren't asking for a room, and get no
+// answer.
 //
-// From protocol 5 the request is event|INTENT|PROTO|CODE|COOKIE|TOKEN|padding,
-// and anything after TOKEN is ignored, so later games can add to it.
+// From protocol 5 the request is event|INTENT|PROTO|CODE|COOKIE|TOKEN|padding.
+// From 3.1 FEATURES|ACCOUNT|PROOF| follow TOKEN, and a queue adds MODE|DATA|.
+// Anything after what's known is ignored, so later games can add to it, and a
+// field of only dots is an older game's padding, read as empty.
 func (r *Relay) register(parts []string, size int, addr *net.UDPAddr) {
 	if len(parts) < 3 {
 		return
 	}
 	intent := parts[1]
-	if intent != "host" && intent != "join" && intent != "back" {
+	if intent != "host" && intent != "join" && intent != "back" && intent != "queue" {
 		return
 	}
 	// Clients from before protocol 2 send event|host|CODE, and show this.
 	if len(parts) == 3 {
-		if intent != "back" {
+		if intent == "host" || intent == "join" {
 			r.visit(addr.IP.String())
 			r.refuse(outOfDate, addr)
 		}
@@ -526,7 +559,7 @@ func (r *Relay) register(parts []string, size int, addr *net.UDPAddr) {
 			return
 		}
 		given = parts[5]
-	} else if intent == "back" {
+	} else if intent == "back" || intent == "queue" {
 		return
 	}
 	// Past here the address has shown it's real, from protocol 5 on.
@@ -540,7 +573,9 @@ func (r *Relay) register(parts []string, size int, addr *net.UDPAddr) {
 		// Older games end the request with the code, so a | is part of it.
 		code = strings.Join(parts[3:], "|")
 	}
-	if !validCode(code) {
+	if intent == "queue" {
+		code = "" // the relay picks the room
+	} else if !validCode(code) {
 		r.refuse("Room codes are 1 to 16 letters or numbers", addr)
 		return
 	}
@@ -561,8 +596,11 @@ func (r *Relay) register(parts []string, size int, addr *net.UDPAddr) {
 	if version >= cookieProto {
 		token = newToken()
 	}
+	features := featuresOf(parts)
 
 	switch intent {
+	case "queue":
+		r.queue(field(parts, 9), features, proto, addr, token)
 	case "host":
 		if _, taken := r.rooms[code]; taken {
 			r.refuse("That room code is taken", addr)
@@ -574,7 +612,9 @@ func (r *Relay) register(parts []string, size int, addr *net.UDPAddr) {
 		}
 		room := &Room{Code: code, Proto: proto, Since: r.now()}
 		r.rooms[code] = room
-		r.tell(r.seat(room, 1, addr, token))
+		client := r.seat(room, 1, addr, token)
+		client.Features = features
+		r.tell(client)
 		if r.tally != nil {
 			r.tally.Rooms++
 		}
@@ -583,6 +623,11 @@ func (r *Relay) register(parts []string, size int, addr *net.UDPAddr) {
 		room, found := r.rooms[code]
 		if !found {
 			r.refuse("No room with that code", addr)
+			return
+		}
+		// Sharing a quick match's code doesn't let anyone in.
+		if room.Kind != "" {
+			r.refuse("That room is for quick match", addr)
 			return
 		}
 		if room.Proto != proto {
@@ -595,7 +640,7 @@ func (r *Relay) register(parts []string, size int, addr *net.UDPAddr) {
 		}
 		for slot := 1; slot <= maxRoomPlayers; slot++ {
 			if room.Seats[slot-1] == nil {
-				r.seat(room, slot, addr, token)
+				r.seat(room, slot, addr, token).Features = features
 				if r.tally != nil {
 					r.tally.Joins++
 				}
@@ -652,17 +697,25 @@ func (r *Relay) closeRoom(room *Room, reason string) {
 
 // remove takes one client out. A lobby can't go on without its host, because
 // the race is the host's to set. A locked room can: everything needed to race
-// again is already with the others.
+// again is already with the others. So can a relay-made one, whose race is the
+// relay's: the next seat leads. Left alone before the start, a driver in one
+// waits for others again.
 func (r *Relay) remove(client *Client) {
 	room := client.Room
 	r.forget(client)
-	if client.Slot == 1 && !room.Locked {
+	room.dropVotes(client.Slot)
+	if client.Slot == 1 && !room.Locked && room.Kind == "" {
 		r.closeRoom(room, "The host left the room")
 		return
 	}
-	if len(room.members()) == 0 {
+	members := room.members()
+	if len(members) == 0 {
 		r.dropRoom(room)
 		return
+	}
+	if room.Kind != "" && !room.Locked && len(members) == 1 {
+		room.FillBy = time.Time{}
+		r.fill(room)
 	}
 	r.announce(room)
 }
@@ -711,6 +764,7 @@ func (r *Relay) Sweep(racing, waiting time.Duration) {
 			r.tell(client)
 		}
 	}
+	r.sweepMatches()
 	r.reportRefusals()
 	for ip, bucket := range r.buckets {
 		if now.Sub(bucket.last) > 10*time.Second {
@@ -811,6 +865,9 @@ type RoomView struct {
 	Drivers []Driver
 	First   string // any address in the room, which is what /close takes
 	Age     time.Duration
+	Kind    string        // "" for a hosted room, "quick" for one the relay made
+	Filling bool          // a relay-made room counting down to its start
+	FillIn  time.Duration // how long until it stops filling
 }
 
 // Snapshot is a copy of the relay's state, safe to read without the lock.
@@ -845,7 +902,10 @@ func (r *Relay) Snapshot() Snapshot {
 		Dropped:    r.dropped,
 	}
 	for code, room := range r.rooms {
-		view := RoomView{Code: code, Age: now.Sub(room.Since)}
+		view := RoomView{Code: code, Age: now.Sub(room.Since), Kind: room.Kind}
+		if room.Kind != "" && !room.Locked && !room.FillBy.IsZero() {
+			view.Filling, view.FillIn = true, max(room.FillBy.Sub(now), 0)
+		}
 		for _, member := range room.members() {
 			view.Drivers = append(view.Drivers, Driver{Slot: member.Slot, Addr: member.Addr.String(), IP: member.Addr.IP.String(), Away: member.Away})
 		}
@@ -879,6 +939,7 @@ func main() {
 	minProto := flag.Int("min-proto", 2, "tell games older than this protocol to update; 5 turns away everything without cookies")
 	players := flag.Int("max-players", 2000, "players the relay takes at once")
 	rooms := flag.Int("max-rooms", 0, "rooms open at once, waiting or racing; 0 for no limit beyond -max-players")
+	quickFill := flag.Duration("quick-fill", 15*time.Second, "how long a quick match takes drivers once a second has joined")
 	dashboard := flag.String("dashboard", "", "HTTP address for the dashboard (off if empty)")
 	statusAddr := flag.String("status", "", "HTTP address for the public status at /api/status (off if empty)")
 	dbPath := flag.String("db", "spppd-relay.db", "SQLite file for bans, dashboard users and analytics; empty keeps them in memory")
@@ -942,6 +1003,7 @@ func main() {
 	relay.minProto = *minProto
 	relay.maxPlayers = *players
 	relay.maxRooms = *rooms
+	relay.fillTime = *quickFill
 	if err := relay.AttachStore(store); err != nil {
 		log.Fatalf("Failed to load bans: %v", err)
 	}

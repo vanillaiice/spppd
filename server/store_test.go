@@ -246,7 +246,7 @@ func TestAnalyticsCountWhatHappens(t *testing.T) {
 	var out bytes.Buffer
 	store.ExportRaces(&out)
 	lines := strings.Split(strings.TrimSpace(out.String()), "\n")
-	if len(lines) != 2 || lines[1] != "1970-01-01T00:16:40Z,1970-01-01T00:18:10Z,90,3,2" {
+	if len(lines) != 2 || lines[1] != "1970-01-01T00:16:40Z,1970-01-01T00:18:10Z,90,3,2," {
 		t.Fatalf("races %q", lines)
 	}
 	// Two writes in a day don't count someone twice.

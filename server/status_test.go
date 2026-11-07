@@ -15,7 +15,7 @@ func TestTheStatusPage(t *testing.T) {
 
 	out := httptest.NewRecorder()
 	page.ServeHTTP(out, httptest.NewRequest(http.MethodGet, "/api/status", nil))
-	if got := out.Body.String(); got != `{"up":true,"players":3,"races":1}`+"\n" {
+	if got := out.Body.String(); got != `{"up":true,"players":3,"races":1,"looking":0}`+"\n" {
 		t.Fatalf("got %q", got)
 	}
 	if out.Header().Get("Content-Type") != "application/json" {

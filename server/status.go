@@ -13,7 +13,8 @@ import (
 type Status struct {
 	Up      bool `json:"up"`
 	Players int  `json:"players"`
-	Races   int  `json:"races"` // rooms that are racing
+	Races   int  `json:"races"`   // rooms that are racing
+	Looking int  `json:"looking"` // drivers in quick matches that haven't started
 }
 
 func (r *Relay) Status() Status {
@@ -23,6 +24,8 @@ func (r *Relay) Status() Status {
 	for _, room := range r.rooms {
 		if room.Locked {
 			out.Races++
+		} else if room.Kind != "" {
+			out.Looking += len(room.members())
 		}
 	}
 	return out

@@ -18,6 +18,7 @@ type RaceRecord struct {
 	Started, Ended time.Time
 	Players        int
 	Proto          string
+	Kind           string // "" for a hosted room, "quick" for quick match
 }
 
 // Tally is one UTC day's analytics, gathered in memory until they're written.
@@ -26,6 +27,7 @@ type Tally struct {
 	Visitors                             map[[32]byte]struct{} // keyed hashes of IPs, never the IPs
 	Rooms, Joins, Races, Racers, Refused int
 	Backs                                int // seats taken back from a new address
+	QuickRaces                           int // races in rooms quick match made
 	Peak                                 int
 	BytesIn, BytesOut                    uint64
 	Finished                             []RaceRecord

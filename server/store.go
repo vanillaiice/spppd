@@ -49,27 +49,34 @@ CREATE TABLE IF NOT EXISTS daily (
 	racers INTEGER NOT NULL DEFAULT 0, refused INTEGER NOT NULL DEFAULT 0,
 	peak_players INTEGER NOT NULL DEFAULT 0,
 	bytes_in INTEGER NOT NULL DEFAULT 0, bytes_out INTEGER NOT NULL DEFAULT 0,
-	backs INTEGER NOT NULL DEFAULT 0);
+	backs INTEGER NOT NULL DEFAULT 0, quick_races INTEGER NOT NULL DEFAULT 0);
 CREATE TABLE IF NOT EXISTS visitors (
 	day TEXT NOT NULL, ip_hash BLOB NOT NULL, PRIMARY KEY (day, ip_hash)) WITHOUT ROWID;
 CREATE TABLE IF NOT EXISTS races (
 	id INTEGER PRIMARY KEY, started INTEGER NOT NULL, ended INTEGER NOT NULL,
-	players INTEGER NOT NULL, proto TEXT NOT NULL);
+	players INTEGER NOT NULL, proto TEXT NOT NULL, kind TEXT NOT NULL DEFAULT '');
 `
 
 // migrate brings a database from an older relay up to date. Each step checks
 // for itself, so running it twice does nothing.
 func migrate(db *sql.DB) error {
-	var backs int
-	if err := db.QueryRow(`SELECT COUNT(*) FROM pragma_table_info('daily') WHERE name = 'backs'`).Scan(&backs); err != nil {
-		return err
+	columns := []struct{ table, name, def string }{
+		{"daily", "backs", "INTEGER NOT NULL DEFAULT 0"},
+		{"daily", "quick_races", "INTEGER NOT NULL DEFAULT 0"},
+		{"races", "kind", "TEXT NOT NULL DEFAULT ''"},
 	}
-	if backs == 0 {
-		if _, err := db.Exec(`ALTER TABLE daily ADD COLUMN backs INTEGER NOT NULL DEFAULT 0`); err != nil {
+	for _, c := range columns {
+		var found int
+		if err := db.QueryRow(`SELECT COUNT(*) FROM pragma_table_info(?) WHERE name = ?`, c.table, c.name).Scan(&found); err != nil {
 			return err
 		}
+		if found == 0 {
+			if _, err := db.Exec(`ALTER TABLE ` + c.table + ` ADD COLUMN ` + c.name + ` ` + c.def); err != nil {
+				return err
+			}
+		}
 	}
-	_, err := db.Exec(`PRAGMA user_version = 2`)
+	_, err := db.Exec(`PRAGMA user_version = 3`)
 	return err
 }
 
@@ -410,15 +417,17 @@ func (s *Store) WriteTally(t *Tally) error {
 	}
 	_, err = tx.Exec(`UPDATE daily SET unique_ips = unique_ips + ?, rooms = rooms + ?, joins = joins + ?,
 		races = races + ?, racers = racers + ?, refused = refused + ?,
-		peak_players = MAX(peak_players, ?), bytes_in = bytes_in + ?, bytes_out = bytes_out + ?, backs = backs + ?
+		peak_players = MAX(peak_players, ?), bytes_in = bytes_in + ?, bytes_out = bytes_out + ?, backs = backs + ?,
+		quick_races = quick_races + ?
 		WHERE day = ?`,
-		fresh, t.Rooms, t.Joins, t.Races, t.Racers, t.Refused, t.Peak, int64(t.BytesIn), int64(t.BytesOut), t.Backs, t.Day)
+		fresh, t.Rooms, t.Joins, t.Races, t.Racers, t.Refused, t.Peak, int64(t.BytesIn), int64(t.BytesOut), t.Backs,
+		t.QuickRaces, t.Day)
 	if err != nil {
 		return err
 	}
 	for _, race := range t.Finished {
-		if _, err := tx.Exec(`INSERT INTO races (started, ended, players, proto) VALUES (?, ?, ?, ?)`,
-			race.Started.Unix(), race.Ended.Unix(), race.Players, race.Proto); err != nil {
+		if _, err := tx.Exec(`INSERT INTO races (started, ended, players, proto, kind) VALUES (?, ?, ?, ?, ?)`,
+			race.Started.Unix(), race.Ended.Unix(), race.Players, race.Proto, race.Kind); err != nil {
 			return err
 		}
 	}
@@ -440,15 +449,16 @@ type Day struct {
 	Day                                    string
 	UniqueIPs, Rooms, Joins, Races, Racers int
 	Refused, PeakPlayers, Backs            int
+	QuickRaces                             int
 	BytesIn, BytesOut                      uint64
 }
 
-const dailyColumns = `day, unique_ips, rooms, joins, races, racers, refused, peak_players, bytes_in, bytes_out, backs`
+const dailyColumns = `day, unique_ips, rooms, joins, races, racers, refused, peak_players, bytes_in, bytes_out, backs, quick_races`
 
 func scanDay(rows *sql.Rows) (Day, error) {
 	var d Day
 	var in, out int64
-	err := rows.Scan(&d.Day, &d.UniqueIPs, &d.Rooms, &d.Joins, &d.Races, &d.Racers, &d.Refused, &d.PeakPlayers, &in, &out, &d.Backs)
+	err := rows.Scan(&d.Day, &d.UniqueIPs, &d.Rooms, &d.Joins, &d.Races, &d.Racers, &d.Refused, &d.PeakPlayers, &in, &out, &d.Backs, &d.QuickRaces)
 	d.BytesIn, d.BytesOut = uint64(in), uint64(out)
 	return d, err
 }
@@ -487,7 +497,7 @@ func (s *Store) ExportDaily(w io.Writer) error {
 	}
 	defer rows.Close()
 	out := csv.NewWriter(w)
-	_ = out.Write([]string{"day", "unique_ips", "rooms", "joins", "races", "racers", "refused", "peak_players", "bytes_in", "bytes_out", "backs"})
+	_ = out.Write([]string{"day", "unique_ips", "rooms", "joins", "races", "racers", "refused", "peak_players", "bytes_in", "bytes_out", "backs", "quick_races"})
 	for rows.Next() {
 		d, err := scanDay(rows)
 		if err != nil {
@@ -495,7 +505,7 @@ func (s *Store) ExportDaily(w io.Writer) error {
 		}
 		_ = out.Write([]string{d.Day, strconv.Itoa(d.UniqueIPs), strconv.Itoa(d.Rooms), strconv.Itoa(d.Joins),
 			strconv.Itoa(d.Races), strconv.Itoa(d.Racers), strconv.Itoa(d.Refused), strconv.Itoa(d.PeakPlayers),
-			strconv.FormatUint(d.BytesIn, 10), strconv.FormatUint(d.BytesOut, 10), strconv.Itoa(d.Backs)})
+			strconv.FormatUint(d.BytesIn, 10), strconv.FormatUint(d.BytesOut, 10), strconv.Itoa(d.Backs), strconv.Itoa(d.QuickRaces)})
 	}
 	out.Flush()
 	if err := rows.Err(); err != nil {
@@ -506,23 +516,23 @@ func (s *Store) ExportDaily(w io.Writer) error {
 
 // ExportRaces writes every finished race as CSV, oldest first, with UTC times.
 func (s *Store) ExportRaces(w io.Writer) error {
-	rows, err := s.db.Query(`SELECT started, ended, players, proto FROM races ORDER BY started, id`)
+	rows, err := s.db.Query(`SELECT started, ended, players, proto, kind FROM races ORDER BY started, id`)
 	if err != nil {
 		return err
 	}
 	defer rows.Close()
 	out := csv.NewWriter(w)
-	_ = out.Write([]string{"started", "ended", "seconds", "players", "protocol"})
+	_ = out.Write([]string{"started", "ended", "seconds", "players", "protocol", "kind"})
 	for rows.Next() {
 		var started, ended int64
 		var players int
-		var proto string
-		if err := rows.Scan(&started, &ended, &players, &proto); err != nil {
+		var proto, kind string
+		if err := rows.Scan(&started, &ended, &players, &proto, &kind); err != nil {
 			return err
 		}
 		_ = out.Write([]string{
 			time.Unix(started, 0).UTC().Format(time.RFC3339), time.Unix(ended, 0).UTC().Format(time.RFC3339),
-			strconv.FormatInt(ended-started, 10), strconv.Itoa(players), proto})
+			strconv.FormatInt(ended-started, 10), strconv.Itoa(players), proto, kind})
 	}
 	out.Flush()
 	if err := rows.Err(); err != nil {

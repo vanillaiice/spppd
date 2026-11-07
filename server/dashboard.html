@@ -33,6 +33,8 @@ tr:last-child td { border-bottom: 0; }
 .mono { font-family: ui-monospace, monospace; font-size: 13px; font-variant-numeric: tabular-nums; }
 .actions { display: flex; gap: 6px; justify-content: flex-end; }
 .driver { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 2px 0; }
+.badge { font-size: 11px; font-weight: 600; letter-spacing: .06em; color: var(--ok); border: 1px solid currentColor; border-radius: 3px; padding: 0 4px; }
+.muted { color: var(--muted); font-size: 12px; }
 .empty { margin: 0; padding: 12px 14px; color: var(--muted); background: var(--panel); border: 1px solid var(--line); border-radius: 6px; }
 form { margin: 0; }
 button, input {
@@ -208,11 +210,11 @@ a { color: var(--accent); }
 {{define "activity"}}{{range .Events}}<div data-seq="{{.Seq}}"><time datetime="{{instant .At}}">{{clock .At}}</time> {{.Text}}</div>{{end}}{{end}}
 
 {{define "room"}}<tr>
-  <td class="mono">{{.Code}}</td>
+  <td class="mono">{{.Code}}{{if .Kind}} <span class="badge">QUICK</span>{{end}}</td>
   <td class="mono">{{range .Drivers}}<div class="driver">P{{.Slot}} {{.Addr}}{{if .Away}} (away){{end}}
     <form hx-post="/ban" hx-target="#live" hx-swap="innerHTML" hx-confirm="Ban {{.IP}}?"><input type="hidden" name="ip" value="{{.IP}}"><button>Ban</button></form>
   </div>{{end}}</td>
-  <td>{{age .Age}}</td>
+  <td>{{age .Age}}{{if .Filling}}<div class="muted">filling {{age .FillIn}}</div>{{end}}</td>
   <td><div class="actions">
     <form hx-post="/close" hx-target="#live" hx-swap="innerHTML"><input type="hidden" name="addr" value="{{.First}}"><button>Close</button></form>
   </div></td>
