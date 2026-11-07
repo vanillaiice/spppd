@@ -1,7 +1,8 @@
 # The website, built from the repository root (see the root .dockerignore):
 #   docker build -f site/Dockerfile .
 # It reads README.md, CHANGELOG.md, PRIVACY.md, TERMS.md and src/config.lua from the repository,
-# and serves the release builds that `make site-downloads` put in site/public/download.
+# and links the release builds on GitHub, with the sizes `make site-downloads` put in
+# site/src/downloads.json.
 FROM node:24-alpine AS build
 WORKDIR /repo
 COPY site/package.json site/package-lock.json site/

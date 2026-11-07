@@ -2,6 +2,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { createHash } from 'node:crypto';
+import site from '../site.config';
 
 // Astro runs in site/, and the repository is one folder up (also in the Docker build).
 export const repoRoot = path.resolve(process.cwd(), '..');
@@ -25,22 +26,26 @@ export interface Download {
   bytes: number;
 }
 
-// `make site-downloads` copies these from dist/ into public/download/.
+// The files come from the GitHub release, so the site's server doesn't carry them.
+// `make site-downloads` writes their sizes from dist/ into src/downloads.json.
 export function downloads(): Download[] {
   const v = gameVersion();
+  const sizes = path.join(process.cwd(), 'src', 'downloads.json');
+  if (!fs.existsSync(sizes)) throw new Error('src/downloads.json is missing. Run make site-downloads.');
+  const list: { version: string; bytes: Record<string, number> } = JSON.parse(fs.readFileSync(sizes, 'utf8'));
+  if (list.version !== v) {
+    throw new Error(`src/downloads.json is for ${list.version}, not ${v}. Run make site-downloads.`);
+  }
   const files: [Download['id'], string][] = [
     ['win64', `spppd-${v}-win64.zip`],
     ['win32', `spppd-${v}-win32.zip`],
     ['apk', `spppd-${v}-android.apk`],
     ['love', `spppd-${v}.love`],
   ];
-  const folder = path.join(process.cwd(), 'public', 'download');
   return files.map(([id, file]) => {
-    const full = path.join(folder, file);
-    if (!fs.existsSync(full)) {
-      throw new Error(`${file} is missing from site/public/download. Run make site-downloads.`);
-    }
-    return { id, file, href: `/download/${file}`, bytes: fs.statSync(full).size };
+    const bytes = list.bytes[file];
+    if (!bytes) throw new Error(`${file} is missing from src/downloads.json. Run make site-downloads.`);
+    return { id, file, href: `${site.repo}/releases/download/v${v}/${file}`, bytes };
   });
 }
 

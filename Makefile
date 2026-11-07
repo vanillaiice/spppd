@@ -66,8 +66,8 @@ check-relay:
 deploy-backup:
 	./bin/backup-deploy
 
-# The website, in site/. It serves this version's release builds, so build those first
-# with make zip win64 win32 apk.
+# The website, in site/. It links this version's release builds on GitHub and shows
+# their sizes, so build those first with make zip win64 win32 apk.
 site_files := $(name)-$(ver)-win64.zip $(name)-$(ver)-win32.zip $(name)-$(ver)-android.apk $(name)-$(ver).love
 
 release-files:
@@ -77,8 +77,9 @@ release-files:
 
 site-downloads: release-files
 	rm -rf site/public/download
-	mkdir -p site/public/download
-	cd dist && cp $(site_files) ../site/public/download/
+	cd dist && printf '{"version":"$(ver)","bytes":{' > ../site/src/downloads.json && \
+	  sep=; for f in $(site_files); do printf '%s"%s":%s' "$$sep" "$$f" "$$(stat -c %s $$f)" >> ../site/src/downloads.json; sep=,; done && \
+	  printf '}}\n' >> ../site/src/downloads.json
 
 site: site-downloads
 	cd site && npm ci && npm run build

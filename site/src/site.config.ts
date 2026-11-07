@@ -7,8 +7,8 @@ export default {
   // /api/status, which Caddy passes to the relay.
   relay: 'spppd.xyz',
   repo: 'https://github.com/vanillaiice/spppd',
-  // GitHub links go to the profile while the repo is private. Set back to repo once it's public.
-  github: 'https://github.com/vanillaiice',
+  releases: 'https://github.com/vanillaiice/spppd/releases',
+  github: 'https://github.com/vanillaiice/spppd',
   itch: 'https://vanillaiice.itch.io/spppd?ref=spppd.xyz',
   author: { name: 'vanillaiice', url: 'https://vanillaiice.xyz' },
   // Self-hosted Umami (cookieless), deployed from ~/Projects/stats.hblabs.xyz. The ID is

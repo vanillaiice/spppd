@@ -1955,9 +1955,10 @@ It has no copy of anything the repository already says. The changelog page is
 the privacy and terms pages are `PRIVACY.md` and `TERMS.md`. The status page is the one
 page with data from outside the build: see Server status. Their links to each other
 become links to the pages (`siteLinks` in `site/src/lib/repo.ts`). The version comes
-from `src/config.lua`. The downloads are this version's builds from `dist/`, which
-`make site-downloads` copies into `site/public/download/`, and the build stops if one is
-missing. Blog posts are Markdown in `site/src/content/blog/`.
+from `src/config.lua`. The downloads link this version's GitHub release, so the site's server
+doesn't carry them. `make site-downloads` writes their sizes from `dist/` into
+`site/src/downloads.json`, and the build stops if one is missing or the file is for
+another version. Caddy redirects old `/download/` links to the release. Blog posts are Markdown in `site/src/content/blog/`.
 
 The clips and stills in `site/public/media/` come from the real game:
 `site/scripts/record-clips.sh` runs `--visual` scenes in a copy of the game, stepped

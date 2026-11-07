@@ -37,7 +37,7 @@ const about: Record<Download['id'], { name: string; how: string }> = {
             <h3>{about[f.id].name}</h3>
             <p>{about[f.id].how}</p>
           </div>
-          <a class="button drive" href={f.href} download data-umami-event="download" data-umami-event-file={f.id}>
+          <a class="button drive" href={f.href} data-umami-event="download" data-umami-event-file={f.id}>
             Download <small>{megabytes(f.bytes)}</small>
           </a>
         </li>
@@ -52,7 +52,8 @@ const about: Record<Download['id'], { name: string; how: string }> = {
     </li>
   </ul>
   <p class="muted small">
-    Online races need everyone on the same version. Racing offline sends nothing anywhere; what the online server keeps
+    Downloads come from the game's <a href={site.releases}>releases on GitHub</a>. Every 3.x version races every
+    other one online. Racing offline sends nothing anywhere; what the online server keeps
     is in the <a href="/privacy/">privacy policy</a>.
   </p>
 </section>

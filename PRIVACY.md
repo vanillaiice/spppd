@@ -1,6 +1,6 @@
 # Privacy policy
 
-Last updated 2026-11-06. The rules for using the server are in [TERMS.md](TERMS.md).
+Last updated 2026-11-07. The rules for using the server are in [TERMS.md](TERMS.md).
 
 This covers the official SPPPD online server at `spppd.xyz`, and the
 website at the same address, both run by vanillaiice. If you play through a server
@@ -85,6 +85,9 @@ only to see how much the game is looked at and downloaded.
 The proxy in front of the website, which also serves the operator's other sites, logs
 each request with your IP address, the page and your browser, to run the server and
 deal with abuse. That log stays on the server.
+
+The downloads come from the game's releases on GitHub, so GitHub sees your IP address
+when you download, under the [GitHub Privacy Statement](https://docs.github.com/site-policy/privacy-policies/github-general-privacy-statement).
 
 ## Why this is allowed
 

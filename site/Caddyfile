@@ -41,14 +41,9 @@
 	@media path /media/* /fonts/*
 	header @media Cache-Control "public, max-age=604800"
 
-	@downloads path /download/*
-	header @downloads Content-Disposition attachment
-
-	@apk path *.apk
-	header @apk Content-Type application/vnd.android.package-archive
-
-	@love path *.love
-	header @love Content-Type application/x-love-game
+	# Downloads come from the GitHub release now. Old links still work.
+	@download path_regexp download ^/download/(spppd-(\d+\.\d+\.\d+)[^/]*)$
+	redir @download https://github.com/vanillaiice/spppd/releases/download/v{re.download.2}/{re.download.1} 302
 
 	file_server
 
