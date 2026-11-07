@@ -1,5 +1,5 @@
--- On-screen driving controls: a stick that appears under the left thumb, or
--- left and right buttons in its place, and buttons under the right. The buttons
+-- On-screen driving controls: a stick that stays put in the bottom left corner,
+-- or left and right buttons in its place, and buttons under the right. The buttons
 -- press the same bindings as the keyboard, so a touch is just another pair of
 -- hands, and button steering winds on as smoothly as the arrow keys.
 local ui = require("src/ui")
@@ -14,6 +14,8 @@ local STICK_RADIUS = 34
 local PEDAL_DEADZONE = 0.3
 -- Thumbs land near a button, not on it.
 local HIT_SLOP = 1.25
+-- How far past the stick's box a thumb can land and still take it, in radii.
+local STICK_REACH = 1.6
 
 -- A stick or a trigger alone hands over to the pad too, past the drift a
 -- resting stick can have.
@@ -161,7 +163,13 @@ function touch.pressed(id, x, y, sw, sh)
   elseif x < sw / 2 and layout.divide then
     hold(id, steerSide(layout, x))
   elseif x < sw / 2 and not touch.stick then
-    touch.stick = { id = id, baseX = x, baseY = y, x = 0, y = 0, radius = layout.radius }
+    -- The box stays where it's drawn, so the thumb has one place to find, and a
+    -- thumb resting elsewhere on the left doesn't steer.
+    local r, base = layout.radius, layout.rest
+    if math.max(math.abs(x - base.x), math.abs(y - base.y)) <= r * STICK_REACH then
+      touch.stick = { id = id, baseX = base.x, baseY = base.y, x = 0, y = 0, radius = r }
+      touch.moved(id, x, y)
+    end
   end
   local action = touch.fingers[id]
   if action == "steerLeft" or action == "steerRight" then
@@ -186,13 +194,8 @@ local function nearestPedal(layout, x, y)
   return best
 end
 
--- Dragged past the edge, the base follows the thumb. Turning back then acts at
--- once instead of crossing a dead stretch of screen first.
-local function follow(base, thumb, radius)
-  local d = thumb - base
-  if d > radius then return thumb - radius end
-  if d < -radius then return thumb + radius end
-  return base
+local function clamp(v)
+  return math.max(-1, math.min(1, v))
 end
 
 function touch.moved(id, x, y)
@@ -211,11 +214,10 @@ function touch.moved(id, x, y)
   local stick = touch.stick
   if not stick or stick.id ~= id then return end
   local r = stick.radius
-  stick.baseX = follow(stick.baseX, x, r)
-  stick.baseY = follow(stick.baseY, y, r)
-  -- Each axis is free of the other, so full lock doesn't cost any brake.
-  stick.x = (x - stick.baseX) / r
-  stick.y = (stick.baseY - y) / r
+  -- Each axis is free of the other, so full lock doesn't cost any brake, and the
+  -- knob goes anywhere in the square box.
+  stick.x = clamp((x - stick.baseX) / r)
+  stick.y = clamp((stick.baseY - y) / r)
 end
 
 function touch.released(id)
