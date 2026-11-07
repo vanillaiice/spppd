@@ -78,8 +78,17 @@ you need 3.0 too: 2.x games can't join its rooms.
 - The online server is harder to flood with forged traffic.
 - Restarting the online server no longer ends races. Your game gets back in on its
   own, as after a lost connection.
-- The website has a server status page, <https://spppd.xyz/status/>: whether the
-  online server is up, and how many drivers are on it.
+- The online server's database (bans, admin logins and statistics) is backed up, and
+  copies are kept for 7 days. [PRIVACY.md](PRIVACY.md) says what's in it and what
+  isn't.
+
+### Website
+
+- A server status page, <https://spppd.xyz/status/>: whether the online server is up,
+  and how many drivers are on it.
+- A [roadmap](https://spppd.xyz/roadmap/) of what's planned next, and what isn't.
+- A link to the game's itch.io page, where buying it supports development. It stays
+  free here.
 
 ## 2.8.0 (2026-11-04)
 
