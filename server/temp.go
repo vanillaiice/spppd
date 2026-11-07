@@ -150,6 +150,7 @@ type savedSeat struct {
 	Addr     string
 	Token    string
 	Features int `json:",omitempty"`
+	Driver   int `json:",omitempty"` // the driver it signed in as
 }
 
 func comesBack(room *Room) bool {
@@ -172,8 +173,11 @@ func (r *Relay) saveRooms() []savedRoom {
 			Kind: room.Kind, Race: room.Race, FillBy: room.FillBy}
 		for _, member := range room.members() {
 			if member.Token != "" {
-				saved.Seats = append(saved.Seats, savedSeat{Slot: member.Slot, Addr: member.Addr.String(),
-					Token: member.Token, Features: member.Features})
+				seat := savedSeat{Slot: member.Slot, Addr: member.Addr.String(), Token: member.Token, Features: member.Features}
+				if member.Account != nil {
+					seat.Driver = member.Account.ID
+				}
+				saved.Seats = append(saved.Seats, seat)
 			}
 		}
 		if len(saved.Seats) > 0 {
@@ -208,7 +212,9 @@ func (r *Relay) RestoreRooms(rooms []savedRoom) (restored, drivers int) {
 				seat.Token == "" || r.clients[addr.String()] != nil {
 				continue
 			}
-			r.seat(room, seat.Slot, addr, seat.Token).Features = seat.Features
+			client := r.seat(room, seat.Slot, addr, seat.Token)
+			// Drivers are loaded first, so a deleted one is simply gone.
+			client.Features, client.Account = seat.Features, r.accounts[seat.Driver]
 			drivers++
 		}
 		if len(room.members()) > 0 {

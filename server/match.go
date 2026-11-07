@@ -186,7 +186,7 @@ func (r *Relay) coolingDown(ip string) time.Duration {
 
 // queue seats a driver looking for a race, in a room that's filling or a new one.
 // The checks every seat goes through have already passed. Callers hold the lock.
-func (r *Relay) queue(mode string, features int, proto string, addr *net.UDPAddr, token string) {
+func (r *Relay) queue(mode string, features int, proto string, addr *net.UDPAddr, token string, account *Account) {
 	if mode != quickKind {
 		r.refuse("This server doesn't have that kind of race", addr)
 		return
@@ -229,7 +229,7 @@ func (r *Relay) queue(mode string, features int, proto string, addr *net.UDPAddr
 		slot++
 	}
 	client := r.seat(room, slot, addr, token)
-	client.Features = features
+	client.Features, client.Account = features, account
 	now := r.now()
 	switch count := len(room.members()); {
 	case count == maxRoomPlayers && (room.FillBy.IsZero() || now.Add(fullFill).Before(room.FillBy)):

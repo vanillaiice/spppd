@@ -28,6 +28,7 @@ type Tally struct {
 	Rooms, Joins, Races, Racers, Refused int
 	Backs                                int // seats taken back from a new address
 	QuickRaces                           int // races in rooms quick match made
+	Signups                              int // drivers made
 	Peak                                 int
 	BytesIn, BytesOut                    uint64
 	Finished                             []RaceRecord

@@ -90,6 +90,7 @@ a { color: var(--accent); }
     <button>Ban</button>
   </form>
   {{if .Analytics}}<section id="analytics" hx-get="/analytics" hx-trigger="every 60s" hx-swap="innerHTML">{{template "analytics" .}}</section>{{end}}
+  <section id="drivers">{{template "drivers" .}}</section>
   <section id="users">{{template "users" .}}</section>
 </div>
 <script src="/htmx.js"></script>
@@ -211,7 +212,7 @@ a { color: var(--accent); }
 
 {{define "room"}}<tr>
   <td class="mono">{{.Code}}{{if .Kind}} <span class="badge">QUICK</span>{{end}}</td>
-  <td class="mono">{{range .Drivers}}<div class="driver">P{{.Slot}} {{.Addr}}{{if .Away}} (away){{end}}
+  <td class="mono">{{range .Drivers}}<div class="driver">P{{.Slot}} {{.Addr}}{{if .Name}} {{.Name}}{{end}}{{if .Away}} (away){{end}}
     <form hx-post="/ban" hx-target="#live" hx-swap="innerHTML" hx-confirm="Ban {{.IP}}?"><input type="hidden" name="ip" value="{{.IP}}"><button>Ban</button></form>
   </div>{{end}}</td>
   <td>{{age .Age}}{{if .Filling}}<div class="muted">filling {{age .FillIn}}</div>{{end}}</td>
@@ -227,15 +228,40 @@ a { color: var(--accent); }
   <div class="stat"><b>{{.Analytics.Window}}</b><span>unique IPs, last {{.Analytics.WindowDays}} days</span></div>
 </div>
 {{if .Analytics.Days}}<div class="table" style="margin-top: 10px"><table>
-  <tr><th>Day (UTC)</th><th class="num">Unique IPs</th><th class="num">Rooms</th><th class="num">Joins</th><th class="num">Races</th><th class="num">Racers</th><th class="num">Peak</th><th class="num">Refused</th><th class="num" title="Seats taken back after a lost connection">Back</th><th class="num">In</th><th class="num">Out</th></tr>
+  <tr><th>Day (UTC)</th><th class="num">Unique IPs</th><th class="num">Rooms</th><th class="num">Joins</th><th class="num">Races</th><th class="num">Racers</th><th class="num">Peak</th><th class="num">Refused</th><th class="num" title="Seats taken back after a lost connection">Back</th><th class="num" title="Drivers made">New drivers</th><th class="num">In</th><th class="num">Out</th></tr>
   {{range .Analytics.Days}}<tr>
     <td class="mono">{{.Day}}</td><td class="num">{{.UniqueIPs}}</td><td class="num">{{.Rooms}}</td><td class="num">{{.Joins}}</td>
-    <td class="num">{{.Races}}</td><td class="num">{{.Racers}}</td><td class="num">{{.PeakPlayers}}</td><td class="num">{{.Refused}}</td><td class="num">{{.Backs}}</td>
+    <td class="num">{{.Races}}</td><td class="num">{{.Racers}}</td><td class="num">{{.PeakPlayers}}</td><td class="num">{{.Refused}}</td><td class="num">{{.Backs}}</td><td class="num">{{.Signups}}</td>
     <td class="num">{{bytes .BytesIn}}</td><td class="num">{{bytes .BytesOut}}</td>
   </tr>{{end}}
 </table></div>{{else}}<p class="empty" style="margin-top: 10px">Nothing counted yet.</p>{{end}}
 <p class="note">The last 14 days. A race is a room that started racing, rematches included.
   Download everything: <a href="/export/daily.csv">daily.csv</a>, <a href="/export/races.csv">races.csv</a>.</p>
+{{end}}
+
+{{define "drivers"}}
+<h2>Drivers</h2>
+<form class="row-form" hx-get="/drivers" hx-target="#drivers">
+  <input name="q" value="{{.DriverQuery}}" placeholder="name or number" aria-label="Find a driver" autocomplete="off">
+  <button>Find</button>
+</form>
+{{if .Drivers}}<div class="table" style="margin-top: 10px"><table>
+  <tr><th class="num">No.</th><th>Name</th><th>Since</th><th>Last seen</th><th>Devices</th><th></th></tr>
+  {{$q := .DriverQuery}}{{range .Drivers}}<tr>
+    <td class="num mono">{{.ID}}</td>
+    <td class="mono">{{.Name}}{{if .Banned}} <span class="badge">BANNED</span>{{end}}</td>
+    <td><time data-date datetime="{{instant .Created}}">{{date .Created}}</time></td>
+    <td class="mono">{{.Seen}}</td>
+    <td>{{range .Devices}}<div>{{.Label}} <span class="muted">{{.Added}} to {{.Seen}}</span></div>{{end}}</td>
+    <td><div class="actions">
+      <form hx-post="/drivers/rename" hx-target="#drivers" hx-confirm="Rename {{.Name}} to DRIVER{{.ID}}?"><input type="hidden" name="id" value="{{.ID}}"><input type="hidden" name="q" value="{{$q}}"><button>Reset name</button></form>
+      {{if .Banned}}<form hx-post="/drivers/unban" hx-target="#drivers"><input type="hidden" name="id" value="{{.ID}}"><input type="hidden" name="q" value="{{$q}}"><button>Unban</button></form>
+      {{else}}<form hx-post="/drivers/ban" hx-target="#drivers" hx-confirm="Ban driver {{.Name}}?"><input type="hidden" name="id" value="{{.ID}}"><input type="hidden" name="q" value="{{$q}}"><button>Ban</button></form>{{end}}
+    </div></td>
+  </tr>{{end}}
+</table></div>{{else}}<p class="empty" style="margin-top: 10px">{{if .DriverQuery}}No driver matches.{{else}}No drivers yet.{{end}}</p>{{end}}
+<p class="note">{{.DriverTotal}} drivers in all. The newest 50 that match are shown. A banned driver can't take a seat anywhere.</p>
+{{if .Error}}<p class="error">{{.Error}}</p>{{end}}
 {{end}}
 
 {{define "users"}}

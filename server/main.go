@@ -69,6 +69,8 @@ type Client struct {
 	Away bool
 	// Features is the FEATURES level the game said it has. 0 before 3.1.
 	Features int
+	// Account is the driver this seat signed in as, or nil.
+	Account *Account
 }
 
 // Room is a group of up to four drivers. Seat 1 is the host. A locked room has
@@ -173,6 +175,15 @@ type Relay struct {
 	avoid    map[pairKey]time.Time // two IPs kept apart after a vote, until then
 	recent   []string              // the last two tracks quick match picked
 	fillTime time.Duration         // how long a relay-made room fills from its second driver
+
+	accounts         map[int]*Account // drivers, all of them, by number
+	names            map[string]int   // driver numbers by name
+	nextDriver       int
+	nextKey          int
+	driverWrites     chan func(*Store) error // to the drivers' writer, nil without a store
+	signups          map[string]*hourCount   // by IP
+	recoversByIP     map[string]*hourCount
+	recoversByDriver map[string]*hourCount
 }
 
 func NewRelay(send Sender) *Relay {
@@ -192,10 +203,18 @@ func NewRelay(send Sender) *Relay {
 		cooldown:   make(map[string]coolDown),
 		avoid:      make(map[pairKey]time.Time),
 		fillTime:   15 * time.Second,
-		rate:       300,
-		maxPlayers: 2000,
-		started:    time.Now(),
-		now:        time.Now,
+		accounts:   make(map[int]*Account),
+		names:      make(map[string]int),
+		nextDriver: firstDriverID,
+		nextKey:    1,
+		signups:    make(map[string]*hourCount),
+
+		recoversByIP:     make(map[string]*hourCount),
+		recoversByDriver: make(map[string]*hourCount),
+		rate:             300,
+		maxPlayers:       2000,
+		started:          time.Now(),
+		now:              time.Now,
 	}
 	r.send = func(data []byte, to *net.UDPAddr) {
 		r.total.PacketsOut++
@@ -347,6 +366,10 @@ func (r *Relay) Handle(data []byte, addr *net.UDPAddr) {
 	}
 
 	parts := strings.SplitN(string(data), "|", 12)
+	if len(parts) > 1 && driverIntents[parts[1]] {
+		r.driverRequest(parts, len(data), addr)
+		return
+	}
 	if client == nil {
 		r.register(parts, len(data), addr)
 		return
@@ -410,7 +433,8 @@ func (r *Relay) forward(from *Client, data []byte) {
 
 // tell sends one client the room as it stands: its own seat, the room's code,
 // the seats taken, and whether it has locked. From protocol 5 it adds the
-// client's own token and the seats that are away. Fields are only ever added
+// client's own token, the seats that are away, and from 3.2 the names of the
+// seats that signed in as drivers. Fields are only ever added
 // at the end, and games ignore any they don't know. A relay-made room's race
 // follows in a match event.
 func (r *Relay) tell(client *Client) {
@@ -429,7 +453,7 @@ func (r *Relay) tell(client *Client) {
 	}
 	text := fmt.Sprintf("event|room|%d|%s|%s|%d", client.Slot, room.Code, strings.Join(seats, ","), locked)
 	if client.Token != "" {
-		text += "|" + client.Token + "|" + strings.Join(away, ",")
+		text += "|" + client.Token + "|" + strings.Join(away, ",") + "|" + room.names()
 	}
 	r.send([]byte(text), client.Addr)
 	if room.Kind != "" {
@@ -526,6 +550,8 @@ func (r *Relay) validCookie(cookie string, addr *net.UDPAddr) bool {
 //
 // From protocol 5 the request is event|INTENT|PROTO|CODE|COOKIE|TOKEN|padding.
 // From 3.1 FEATURES|ACCOUNT|PROOF| follow TOKEN, and a queue adds MODE|DATA|.
+// ACCOUNT and PROOF sign the seat in as a driver from 3.2: a wrong proof only
+// leaves it without a name.
 // Anything after what's known is ignored, so later games can add to it, and a
 // field of only dots is an older game's padding, read as empty.
 func (r *Relay) register(parts []string, size int, addr *net.UDPAddr) {
@@ -593,14 +619,20 @@ func (r *Relay) register(parts []string, size int, addr *net.UDPAddr) {
 		return
 	}
 	token := ""
+	var account *Account
 	if version >= cookieProto {
 		token = newToken()
+		account, _ = r.signedIn(field(parts, 7), field(parts, 8), intent, parts[4])
+	}
+	if account != nil && account.Banned {
+		r.refuse(bannedDriver, addr)
+		return
 	}
 	features := featuresOf(parts)
 
 	switch intent {
 	case "queue":
-		r.queue(field(parts, 9), features, proto, addr, token)
+		r.queue(field(parts, 9), features, proto, addr, token, account)
 	case "host":
 		if _, taken := r.rooms[code]; taken {
 			r.refuse("That room code is taken", addr)
@@ -613,7 +645,7 @@ func (r *Relay) register(parts []string, size int, addr *net.UDPAddr) {
 		room := &Room{Code: code, Proto: proto, Since: r.now()}
 		r.rooms[code] = room
 		client := r.seat(room, 1, addr, token)
-		client.Features = features
+		client.Features, client.Account = features, account
 		r.tell(client)
 		if r.tally != nil {
 			r.tally.Rooms++
@@ -640,7 +672,8 @@ func (r *Relay) register(parts []string, size int, addr *net.UDPAddr) {
 		}
 		for slot := 1; slot <= maxRoomPlayers; slot++ {
 			if room.Seats[slot-1] == nil {
-				r.seat(room, slot, addr, token).Features = features
+				client := r.seat(room, slot, addr, token)
+				client.Features, client.Account = features, account
 				if r.tally != nil {
 					r.tally.Joins++
 				}
@@ -765,6 +798,7 @@ func (r *Relay) Sweep(racing, waiting time.Duration) {
 		}
 	}
 	r.sweepMatches()
+	r.sweepDrivers()
 	r.reportRefusals()
 	for ip, bucket := range r.buckets {
 		if now.Sub(bucket.last) > 10*time.Second {
@@ -857,6 +891,7 @@ type Driver struct {
 	Addr string
 	IP   string
 	Away bool
+	Name string // the driver it signed in as, if it did
 }
 
 // RoomView is a room as the dashboard shows it.
@@ -907,7 +942,11 @@ func (r *Relay) Snapshot() Snapshot {
 			view.Filling, view.FillIn = true, max(room.FillBy.Sub(now), 0)
 		}
 		for _, member := range room.members() {
-			view.Drivers = append(view.Drivers, Driver{Slot: member.Slot, Addr: member.Addr.String(), IP: member.Addr.IP.String(), Away: member.Away})
+			seat := Driver{Slot: member.Slot, Addr: member.Addr.String(), IP: member.Addr.IP.String(), Away: member.Away}
+			if member.Account != nil {
+				seat.Name = member.Account.Name
+			}
+			view.Drivers = append(view.Drivers, seat)
 		}
 		if len(view.Drivers) > 0 {
 			view.First = view.Drivers[0].Addr
@@ -942,7 +981,7 @@ func main() {
 	quickFill := flag.Duration("quick-fill", 15*time.Second, "how long a quick match takes drivers once a second has joined")
 	dashboard := flag.String("dashboard", "", "HTTP address for the dashboard (off if empty)")
 	statusAddr := flag.String("status", "", "HTTP address for the public status at /api/status (off if empty)")
-	dbPath := flag.String("db", "spppd-relay.db", "SQLite file for bans, dashboard users and analytics; empty keeps them in memory")
+	dbPath := flag.String("db", "spppd-relay.db", "SQLite file for bans, drivers, dashboard users and analytics; empty keeps them in memory")
 	tempPath := flag.String("temp-db", "spppd-relay-temp.db", "SQLite file for rooms and recent activity, so a restart doesn't end races; empty for none")
 	analytics := flag.Bool("analytics", false, "count unique IPs (as keyed hashes), rooms, races and traffic")
 	analyticsDays := flag.Int("analytics-days", 30, "days to keep the hashed IPs behind the unique counts; daily totals are kept")
@@ -1006,6 +1045,10 @@ func main() {
 	relay.fillTime = *quickFill
 	if err := relay.AttachStore(store); err != nil {
 		log.Fatalf("Failed to load bans: %v", err)
+	}
+	stopDrivers, err := relay.KeepDrivers(store)
+	if err != nil {
+		log.Fatalf("Failed to load drivers: %v", err)
 	}
 	stopTemp := func() {}
 	if *tempPath != "" {
@@ -1084,6 +1127,7 @@ func main() {
 		<-stop.Done()
 		relay.Shutdown(*tempPath != "")
 		stopTemp()
+		stopDrivers()
 		relay.FlushAnalytics()
 		store.Close()
 		log.Print("Relay server stopped")

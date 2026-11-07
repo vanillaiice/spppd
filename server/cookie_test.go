@@ -62,11 +62,11 @@ func TestASeatNeedsTheCookie(t *testing.T) {
 		t.Fatalf("got %q", reply)
 	}
 	room := enter(t, relay, sent, "host", "ABC234", "", from)
-	if len(room) != 8 || room[1] != "room" || room[2] != "1" || room[3] != "ABC234" || room[4] != "1" || room[5] != "0" {
+	if len(room) != 9 || room[1] != "room" || room[2] != "1" || room[3] != "ABC234" || room[4] != "1" || room[5] != "0" {
 		t.Fatalf("got %v", room)
 	}
-	if len(room[6]) < 20 || room[7] != "" {
-		t.Fatalf("expected a token and nobody away, got %v", room)
+	if len(room[6]) < 20 || room[7] != "" || room[8] != "" {
+		t.Fatalf("expected a token and nobody away or named, got %v", room)
 	}
 }
 

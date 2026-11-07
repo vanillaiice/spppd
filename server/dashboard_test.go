@@ -558,3 +558,41 @@ func TestAHugeFormIsRefused(t *testing.T) {
 		t.Fatalf("status %d: a form past the limit was acted on", out.Code)
 	}
 }
+
+func TestDashboardFindsBansAndRenamesDrivers(t *testing.T) {
+	relay, sent, _ := setup()
+	page, store := dash(t, relay)
+	headers := logIn(t, page, store, "mod")
+	_, key := newKey(1)
+	signUp(t, relay, sent, driverAt(1), "speedy", key, key)
+	_, other := newKey(2)
+	signUp(t, relay, sent, driverAt(2), "zoomer", other, other)
+
+	body := request(page, http.MethodGet, "/", nil, headers).Body.String()
+	if !strings.Contains(body, "SPEEDY") || !strings.Contains(body, "ZOOMER") || !strings.Contains(body, "2 drivers in all") {
+		t.Fatalf("page lacks the drivers")
+	}
+	found := request(page, http.MethodGet, "/drivers?q=zoom", nil, headers).Body.String()
+	if !strings.Contains(found, "ZOOMER") || strings.Contains(found, "SPEEDY") || strings.Contains(found, "<html") {
+		t.Fatalf("search: %s", found)
+	}
+	out := request(page, http.MethodPost, "/drivers/ban", url.Values{"id": {"1002"}, "q": {"zoom"}}, headers)
+	if !strings.Contains(out.Body.String(), "BANNED") || !relay.accounts[1002].Banned {
+		t.Fatalf("ban: %s", out.Body)
+	}
+	request(page, http.MethodPost, "/drivers/unban", url.Values{"id": {"1002"}}, headers)
+	if relay.accounts[1002].Banned {
+		t.Fatalf("still banned")
+	}
+	out = request(page, http.MethodPost, "/drivers/rename", url.Values{"id": {"1001"}}, headers)
+	if !strings.Contains(out.Body.String(), "DRIVER1001") {
+		t.Fatalf("rename: %s", out.Body)
+	}
+	out = request(page, http.MethodPost, "/drivers/ban", url.Values{"id": {"9999"}}, headers)
+	if !strings.Contains(out.Body.String(), "couldn&#39;t be changed") {
+		t.Fatalf("unknown driver: %s", out.Body)
+	}
+	if out := request(page, http.MethodGet, "/drivers", nil, remote()); out.Code == http.StatusOK {
+		t.Fatalf("drivers without a login: %d", out.Code)
+	}
+}

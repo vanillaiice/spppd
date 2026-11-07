@@ -55,6 +55,22 @@ CREATE TABLE IF NOT EXISTS visitors (
 CREATE TABLE IF NOT EXISTS races (
 	id INTEGER PRIMARY KEY, started INTEGER NOT NULL, ended INTEGER NOT NULL,
 	players INTEGER NOT NULL, proto TEXT NOT NULL, kind TEXT NOT NULL DEFAULT '');
+CREATE TABLE IF NOT EXISTS drivers (
+	id INTEGER PRIMARY KEY AUTOINCREMENT, -- so a deleted driver's number is never given again
+	name TEXT NOT NULL UNIQUE,      -- in capitals, so unique ignoring case
+	recovery BLOB NOT NULL,         -- the recovery key
+	created INTEGER NOT NULL,
+	seen TEXT NOT NULL,             -- the day of the last sign-in, not the time
+	renamed INTEGER NOT NULL DEFAULT 0,
+	banned INTEGER NOT NULL DEFAULT 0);
+CREATE TABLE IF NOT EXISTS driver_keys (
+	id INTEGER PRIMARY KEY,
+	driver INTEGER NOT NULL REFERENCES drivers(id) ON DELETE CASCADE,
+	key BLOB NOT NULL,              -- a device key
+	label TEXT NOT NULL,            -- "Android", "Linux"…
+	added TEXT NOT NULL,            -- days, not times
+	seen TEXT NOT NULL);
+CREATE INDEX IF NOT EXISTS driver_keys_driver ON driver_keys (driver);
 `
 
 // migrate brings a database from an older relay up to date. Each step checks
@@ -64,6 +80,7 @@ func migrate(db *sql.DB) error {
 		{"daily", "backs", "INTEGER NOT NULL DEFAULT 0"},
 		{"daily", "quick_races", "INTEGER NOT NULL DEFAULT 0"},
 		{"races", "kind", "TEXT NOT NULL DEFAULT ''"},
+		{"daily", "signups", "INTEGER NOT NULL DEFAULT 0"},
 	}
 	for _, c := range columns {
 		var found int
@@ -76,7 +93,7 @@ func migrate(db *sql.DB) error {
 			}
 		}
 	}
-	_, err := db.Exec(`PRAGMA user_version = 3`)
+	_, err := db.Exec(`PRAGMA user_version = 4`)
 	return err
 }
 
@@ -449,16 +466,16 @@ type Day struct {
 	Day                                    string
 	UniqueIPs, Rooms, Joins, Races, Racers int
 	Refused, PeakPlayers, Backs            int
-	QuickRaces                             int
+	QuickRaces, Signups                    int
 	BytesIn, BytesOut                      uint64
 }
 
-const dailyColumns = `day, unique_ips, rooms, joins, races, racers, refused, peak_players, bytes_in, bytes_out, backs, quick_races`
+const dailyColumns = `day, unique_ips, rooms, joins, races, racers, refused, peak_players, bytes_in, bytes_out, backs, quick_races, signups`
 
 func scanDay(rows *sql.Rows) (Day, error) {
 	var d Day
 	var in, out int64
-	err := rows.Scan(&d.Day, &d.UniqueIPs, &d.Rooms, &d.Joins, &d.Races, &d.Racers, &d.Refused, &d.PeakPlayers, &in, &out, &d.Backs, &d.QuickRaces)
+	err := rows.Scan(&d.Day, &d.UniqueIPs, &d.Rooms, &d.Joins, &d.Races, &d.Racers, &d.Refused, &d.PeakPlayers, &in, &out, &d.Backs, &d.QuickRaces, &d.Signups)
 	d.BytesIn, d.BytesOut = uint64(in), uint64(out)
 	return d, err
 }
@@ -497,7 +514,7 @@ func (s *Store) ExportDaily(w io.Writer) error {
 	}
 	defer rows.Close()
 	out := csv.NewWriter(w)
-	_ = out.Write([]string{"day", "unique_ips", "rooms", "joins", "races", "racers", "refused", "peak_players", "bytes_in", "bytes_out", "backs", "quick_races"})
+	_ = out.Write([]string{"day", "unique_ips", "rooms", "joins", "races", "racers", "refused", "peak_players", "bytes_in", "bytes_out", "backs", "quick_races", "signups"})
 	for rows.Next() {
 		d, err := scanDay(rows)
 		if err != nil {
@@ -505,7 +522,8 @@ func (s *Store) ExportDaily(w io.Writer) error {
 		}
 		_ = out.Write([]string{d.Day, strconv.Itoa(d.UniqueIPs), strconv.Itoa(d.Rooms), strconv.Itoa(d.Joins),
 			strconv.Itoa(d.Races), strconv.Itoa(d.Racers), strconv.Itoa(d.Refused), strconv.Itoa(d.PeakPlayers),
-			strconv.FormatUint(d.BytesIn, 10), strconv.FormatUint(d.BytesOut, 10), strconv.Itoa(d.Backs), strconv.Itoa(d.QuickRaces)})
+			strconv.FormatUint(d.BytesIn, 10), strconv.FormatUint(d.BytesOut, 10), strconv.Itoa(d.Backs), strconv.Itoa(d.QuickRaces),
+			strconv.Itoa(d.Signups)})
 	}
 	out.Flush()
 	if err := rows.Err(); err != nil {
@@ -539,4 +557,146 @@ func (s *Store) ExportRaces(w io.Writer) error {
 		return err
 	}
 	return out.Error()
+}
+
+// Drivers ------------------------------------------------------------------------
+
+// Drivers loads every driver with its device keys, for the relay to hold in memory.
+func (s *Store) Drivers() ([]*Account, error) {
+	rows, err := s.db.Query(`SELECT id, name, recovery, created, seen, renamed, banned FROM drivers`)
+	if err != nil {
+		return nil, err
+	}
+	byID := make(map[int]*Account)
+	var out []*Account
+	for rows.Next() {
+		a := &Account{}
+		var created, renamed int64
+		if err := rows.Scan(&a.ID, &a.Name, &a.Recovery, &created, &a.Seen, &renamed, &a.Banned); err != nil {
+			rows.Close()
+			return nil, err
+		}
+		a.Created = time.Unix(created, 0)
+		if renamed != 0 {
+			a.Renamed = time.Unix(renamed, 0)
+		}
+		byID[a.ID] = a
+		out = append(out, a)
+	}
+	rows.Close()
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	keys, err := s.db.Query(`SELECT id, driver, key, label, added, seen FROM driver_keys ORDER BY id`)
+	if err != nil {
+		return nil, err
+	}
+	defer keys.Close()
+	for keys.Next() {
+		k := &DeviceKey{}
+		var driver int
+		if err := keys.Scan(&k.ID, &driver, &k.Key, &k.Label, &k.Added, &k.Seen); err != nil {
+			return nil, err
+		}
+		if a := byID[driver]; a != nil {
+			a.Keys = append(a.Keys, k)
+		}
+	}
+	return out, keys.Err()
+}
+
+// LastDriverID is the highest driver number ever given, deleted or not.
+func (s *Store) LastDriverID() (int, error) {
+	var last int
+	err := s.db.QueryRow(`SELECT COALESCE(MAX(seq), 0) FROM sqlite_sequence WHERE name = 'drivers'`).Scan(&last)
+	return last, err
+}
+
+func (s *Store) AddDriver(a *Account) error {
+	tx, err := s.db.Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	if _, err := tx.Exec(`INSERT INTO drivers (id, name, recovery, created, seen) VALUES (?, ?, ?, ?, ?)`,
+		a.ID, a.Name, a.Recovery, a.Created.Unix(), a.Seen); err != nil {
+		return err
+	}
+	for _, k := range a.Keys {
+		if err := insertKey(tx, a.ID, k); err != nil {
+			return err
+		}
+	}
+	return tx.Commit()
+}
+
+func insertKey(tx *sql.Tx, driver int, k *DeviceKey) error {
+	_, err := tx.Exec(`INSERT INTO driver_keys (id, driver, key, label, added, seen) VALUES (?, ?, ?, ?, ?, ?)`,
+		k.ID, driver, k.Key, k.Label, k.Added, k.Seen)
+	return err
+}
+
+// AddDeviceKey signs a driver in on another device, dropping the keys it pushed out.
+func (s *Store) AddDeviceKey(driver int, k *DeviceKey, dropped []int, today string) error {
+	tx, err := s.db.Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	if err := insertKey(tx, driver, k); err != nil {
+		return err
+	}
+	for _, id := range dropped {
+		if _, err := tx.Exec(`DELETE FROM driver_keys WHERE id = ?`, id); err != nil {
+			return err
+		}
+	}
+	if _, err := tx.Exec(`UPDATE drivers SET seen = ? WHERE id = ?`, today, driver); err != nil {
+		return err
+	}
+	return tx.Commit()
+}
+
+func (s *Store) SeeDriver(driver, key int, today string) error {
+	if _, err := s.db.Exec(`UPDATE drivers SET seen = ? WHERE id = ?`, today, driver); err != nil {
+		return err
+	}
+	_, err := s.db.Exec(`UPDATE driver_keys SET seen = ? WHERE id = ?`, today, key)
+	return err
+}
+
+func (s *Store) DeleteDeviceKey(id int) error {
+	_, err := s.db.Exec(`DELETE FROM driver_keys WHERE id = ?`, id)
+	return err
+}
+
+func (s *Store) RenameDriver(id int, name string, at time.Time) error {
+	renamed := int64(0)
+	if !at.IsZero() {
+		renamed = at.Unix()
+	}
+	_, err := s.db.Exec(`UPDATE drivers SET name = ?, renamed = ? WHERE id = ?`, name, renamed, id)
+	return err
+}
+
+func (s *Store) BanDriver(id int, banned bool) error {
+	_, err := s.db.Exec(`UPDATE drivers SET banned = ? WHERE id = ?`, banned, id)
+	return err
+}
+
+// DeleteDriver removes a driver and its keys, zeroing them rather than leaving
+// them in a free page of the file.
+func (s *Store) DeleteDriver(id int) error {
+	ctx := context.Background()
+	conn, err := s.db.Conn(ctx)
+	if err != nil {
+		return err
+	}
+	defer conn.Close()
+	if _, err := conn.ExecContext(ctx, `PRAGMA secure_delete = ON`); err != nil {
+		return err
+	}
+	defer conn.ExecContext(ctx, `PRAGMA secure_delete = OFF`)
+	_, err = conn.ExecContext(ctx, `DELETE FROM drivers WHERE id = ?`, id)
+	return err
 }

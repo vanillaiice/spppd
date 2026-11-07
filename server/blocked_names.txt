@@ -1,0 +1,33 @@
+# Words a driver name may not hold anywhere, after look-alikes are folded
+# (0 to O, 1 to I, 3 to E, 4 to A, 5 to S, 7 to T, 8 to B) and - and _ are
+# dropped. Short words that sit inside ordinary ones (ASS in CLASSIC, COCK in
+# COCKPIT, SPIC in SPICY, RAPE in GRAPE, PEDO in
+# TORPEDO, WANK in SWANKY) are left out on purpose.
+FUCK
+SHIT
+CUNT
+NIGGER
+NIGGA
+FAGGOT
+RETARD
+WHORE
+SLUT
+BITCH
+RAPIST
+NAZI
+HITLER
+PENIS
+VAGINA
+PUSSY
+PORN
+KIKE
+CHINK
+TRANNY
+DYKE
+TWAT
+JIZZ
+BOLLOCK
+DILDO
+NONCE
+PAEDO
+MOLEST
