@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 3.0.0 (2026-11-07)
 
 3.0 is the version the rest of 3.x builds on. Every 3.x version races every other one
 online, so an update never splits you from your friends again. To race someone on 3.0,
