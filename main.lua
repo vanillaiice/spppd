@@ -65,6 +65,9 @@ function love.load(args)
   love.graphics.setDefaultFilter("linear", "linear")
   love.keyboard.setKeyRepeat(false)
   settings.load()
+  if not input.setBindings(settings.keys, settings.padButtons) then
+    settings.keys, settings.padButtons = input.keyChanges(), input.buttonChanges()
+  end
   music.setTake(settings.musicTake)
   if settings.fullscreen then love.window.setFullscreen(true, "desktop") end
   loading = coroutine.create(loadGame)
@@ -158,6 +161,8 @@ function love.keypressed(key, scancode, isRepeat)
     editor.keypressed(key)
     return
   end
+  -- A key being set on CONTROLS > KEYBOARD does nothing else.
+  if state.screen == "menu" and menu.takeKey(key, isRepeat) then return end
   ui.keypressed(key)
   if not isRepeat then input.press(key) end
   -- Only in a race: a phone's on-screen keyboard presses keys in the menus.
@@ -169,6 +174,7 @@ function love.keyreleased(key)
 end
 
 function love.textinput(t)
+  if menu.textTaken() then return end
   if state.screen == "editor" then
     editor.textinput(t)
   elseif ui.editing then
@@ -231,6 +237,7 @@ end
 
 function love.gamepadpressed(joystick, button)
   touch.padUsed(joystick)
+  if state.screen == "menu" and menu.takeButton(button, joystick) then return end
   input.gamepadPress(joystick, button)
   ui.gamepadpressed(button)
 end

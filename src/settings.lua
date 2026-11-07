@@ -23,6 +23,8 @@ local settings = {
   touchOpacity = 1,
   autoGas = true,
   vibration = true,
+  keys = {},         -- changed keys and pad buttons, see input.setBindings
+  padButtons = {},
   tuneHorn = false,  -- cheat codes, see src/cheats.lua
   neon = false,
 

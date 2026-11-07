@@ -219,6 +219,11 @@ local SCENES = {
   phonecontrols = function() phone() menu.enter() menu.go("controls") end,
   buttons = function() menu.enter() menu.go("buttons") end,
   phonebuttons = function() phone() menu.enter() menu.go("buttons") end,
+  -- The screens that change keys and pad buttons, with a row waiting on the "wait" ones.
+  keys = function() menu.enter() menu.go("keys") end,
+  keyswait = function() menu.enter() menu.go("keys") menu.startCapture("key", "boost") end,
+  pad = function() menu.enter() menu.go("pad") end,
+  phonepad = function() phone() menu.enter() menu.go("pad") end,
   phoneonline = function() phone() menu.enter() settings.mode = "race" menu.go("online") end,
   phonehost = function() phone() menu.enter() settings.mode = "race" menu.go("host") end,
   pause = function() race({ track = "mirage", time = "day" }) autopilot() end,

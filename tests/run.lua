@@ -1,6 +1,6 @@
 local harness = require("tests/harness")
 
-local SUITES = { "tests/test_track", "tests/test_dynamics", "tests/test_slipstream", "tests/test_feel", "tests/test_race", "tests/test_support", "tests/test_touch", "tests/test_editor", "tests/test_network", "tests/test_cheats", "tests/test_damage", "tests/test_split" }
+local SUITES = { "tests/test_track", "tests/test_dynamics", "tests/test_slipstream", "tests/test_feel", "tests/test_race", "tests/test_support", "tests/test_touch", "tests/test_editor", "tests/test_network", "tests/test_cheats", "tests/test_damage", "tests/test_split", "tests/test_controls" }
 
 return function(filter)
   io.stdout:setvbuf("no")

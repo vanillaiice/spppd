@@ -1,36 +1,14 @@
 -- Keyboard and gamepad, merged into one set of driving controls. Touch sits on
 -- top of this in src/touch.lua. The pad borrows R1 handbrake and L1 boost from
 -- Need for Speed: Most Wanted on PS2, with the triggers kept for partial gas
--- and braking.
+-- and braking. Players can change the keys and buttons on CONTROLS > KEYBOARD
+-- and CONTROLS > PAD (src/menu.lua), and settings.keys and settings.padButtons
+-- keep what they changed.
 local input = {
-  binds = {
-    throttle = { "w", "up" },
-    brake = { "s", "down" },
-    steerLeft = { "a", "left" },
-    steerRight = { "d", "right" },
-    handbrake = { "lshift", "rshift" },
-    boost = { "space" },
-    shiftUp = { "e" },
-    shiftDown = { "q" },
-    lowBeam = { "f" },
-    highBeam = { "g" },
-    respawn = { "r" },
-    camera = { "c" },
-    radio = { "n" },
-    horn = { "h" },
-    pause = { "escape", "p" },
-  },
-  pads = {
-    handbrake = { "rightshoulder" },
-    boost = { "leftshoulder" },
-    shiftUp = { "x" },
-    shiftDown = { "a" },
-    respawn = { "y" },
-    camera = { "back" },
-    radio = { "dpadright" },
-    horn = { "b" },
-    pause = { "start" },
-  },
+  -- Built from the tables below by input.setBindings: every key, then every pad
+  -- button, that does each action.
+  binds = {},
+  pads = {},
   held = {},
   pressedOnce = {},
   gamepad = nil,
@@ -41,14 +19,169 @@ local input = {
   padPressed = {},  -- [joystick] = { [action] = true }
 }
 
-local byKey = {}
-for action, keys in pairs(input.binds) do
-  for _, key in ipairs(keys) do byKey[key] = action end
+-- Every action, in the order the CONTROLS screens list them.
+input.ACTIONS = {
+  "throttle", "brake", "steerLeft", "steerRight", "handbrake", "boost", "shiftUp", "shiftDown",
+  "lowBeam", "highBeam", "respawn", "camera", "radio", "horn", "pause",
+}
+
+-- One key per action, which the player can change.
+input.DEFAULT_KEYS = {
+  throttle = "w", brake = "s", steerLeft = "a", steerRight = "d", handbrake = "lshift",
+  boost = "space", shiftUp = "e", shiftDown = "q", lowBeam = "f", highBeam = "g",
+  respawn = "r", camera = "c", radio = "n", horn = "h", pause = "p",
+}
+-- Second keys that never change, so the arrows always drive and Esc always pauses.
+input.FIXED_KEYS = {
+  throttle = "up", brake = "down", steerLeft = "left", steerRight = "right",
+  handbrake = "rshift", pause = "escape",
+}
+
+-- The pad's buttons, which the player can change too. The stick steers and the
+-- triggers give partial gas and brake whatever is set here; a button for gas or
+-- brake is full on, on top of them.
+input.PAD_ACTIONS = {
+  "throttle", "brake", "handbrake", "boost", "shiftUp", "shiftDown", "respawn", "camera", "radio", "horn",
+  "pause",
+}
+input.DEFAULT_BUTTONS = {
+  handbrake = "rightshoulder", boost = "leftshoulder", shiftUp = "x", shiftDown = "a",
+  respawn = "y", camera = "back", radio = "dpright", horn = "b", pause = "start",
+}
+-- What a pad can be asked for. The guide button belongs to the system.
+input.BUTTONS = {
+  a = true, b = true, x = true, y = true, back = true, start = true, leftstick = true, rightstick = true,
+  leftshoulder = true, rightshoulder = true, dpup = true, dpdown = true, dpleft = true, dpright = true,
+}
+
+-- The current choices: action -> key, and action -> button (or nil for none).
+local keyOf, buttonOf = {}, {}
+local byKey, byButton = {}, {}
+
+local function rebuild()
+  byKey, byButton = {}, {}
+  input.binds, input.pads = {}, {}
+  for _, action in ipairs(input.ACTIONS) do
+    local keys = { keyOf[action], input.FIXED_KEYS[action] }
+    input.binds[action] = keys
+    for _, key in ipairs(keys) do byKey[key] = action end
+    -- The on-screen controls press these, so they work whatever keys are set.
+    byKey["touch:" .. action] = action
+  end
+  for _, action in ipairs(input.PAD_ACTIONS) do
+    input.pads[action] = { buttonOf[action] }
+    if buttonOf[action] then byButton[buttonOf[action]] = action end
+  end
 end
-local byButton = {}
-for action, buttons in pairs(input.pads) do
-  for _, button in ipairs(buttons) do byButton[button] = action end
+
+local fixedKey = {}
+for _, key in pairs(input.FIXED_KEYS) do fixedKey[key] = true end
+
+-- Sets the keys and buttons from what was saved: only the ones that differ from
+-- the defaults, false meaning a pad action has no button. Anything that doesn't
+-- make sense, two actions on one key included, puts that device back to its
+-- defaults. Returns false when that happened.
+function input.setBindings(keys, buttons)
+  local ok = true
+  keyOf, buttonOf = {}, {}
+  local used = {}
+  for _, action in ipairs(input.ACTIONS) do
+    local key = keys and keys[action]
+    if key == nil then key = input.DEFAULT_KEYS[action] end
+    if type(key) ~= "string" or key == "" or #key > 20 or fixedKey[key] or used[key] then
+      ok = false
+      keyOf = nil
+      break
+    end
+    keyOf[action], used[key] = key, true
+  end
+  if not keyOf then
+    keyOf = {}
+    for action, key in pairs(input.DEFAULT_KEYS) do keyOf[action] = key end
+  end
+  used = {}
+  for _, action in ipairs(input.PAD_ACTIONS) do
+    local button = buttons and buttons[action]
+    if button == nil then button = input.DEFAULT_BUTTONS[action] or false end
+    if button ~= false and (not input.BUTTONS[button] or used[button]) then
+      ok = false
+      buttonOf = nil
+      break
+    end
+    buttonOf[action] = button or nil
+    if button then used[button] = true end
+  end
+  if not buttonOf or not buttonOf.pause then
+    if buttonOf then ok = false end
+    buttonOf = {}
+    for action, button in pairs(input.DEFAULT_BUTTONS) do buttonOf[action] = button end
+  end
+  rebuild()
+  return ok
 end
+
+-- What to save: only the choices that differ from the defaults.
+function input.keyChanges()
+  local out = {}
+  for action, key in pairs(keyOf) do
+    if key ~= input.DEFAULT_KEYS[action] then out[action] = key end
+  end
+  return out
+end
+
+function input.buttonChanges()
+  local out = {}
+  for _, action in ipairs(input.PAD_ACTIONS) do
+    local button = buttonOf[action] or false
+    if button ~= (input.DEFAULT_BUTTONS[action] or false) then out[action] = button end
+  end
+  return out
+end
+
+function input.keyFor(action) return keyOf[action] end
+function input.fixedKeyFor(action) return input.FIXED_KEYS[action] end
+function input.buttonFor(action) return buttonOf[action] end
+
+-- Puts a key on an action. The action that had it takes this one's old key, so
+-- every action keeps one. Returns false and why when the key can't be used.
+function input.rebindKey(action, key)
+  if fixedKey[key] then return false, "fixed" end
+  local old = keyOf[action]
+  if old == key then return true end
+  for other, k in pairs(keyOf) do
+    if k == key then keyOf[other] = old end
+  end
+  keyOf[action] = key
+  rebuild()
+  return true
+end
+
+-- The same for a pad button. Pause always keeps a button, so a pad can always
+-- get out of a race.
+function input.rebindButton(action, button)
+  if not input.BUTTONS[button] then return false, "reserved" end
+  local old = buttonOf[action]
+  if old == button then return true end
+  for other, b in pairs(buttonOf) do
+    if b == button then
+      if other == "pause" and not old then return false, "pause" end
+      buttonOf[other] = old
+    end
+  end
+  buttonOf[action] = button
+  rebuild()
+  return true
+end
+
+function input.resetKeys()
+  input.setBindings(nil, input.buttonChanges())
+end
+
+function input.resetButtons()
+  input.setBindings(input.keyChanges(), nil)
+end
+
+input.setBindings()
 
 function input.press(key)
   local action = byKey[key]
@@ -111,10 +244,15 @@ function input.padConnected()
   return pad ~= nil and pad:isConnected()
 end
 
-function input.isDown(action)
+local function keyDown(action)
   for _, key in ipairs(input.binds[action] or {}) do
     if input.held[key] then return true end
   end
+  return input.held["touch:" .. action] == true
+end
+
+function input.isDown(action)
+  if keyDown(action) then return true end
   for _, button in ipairs(input.pads[action] or {}) do
     if input.held["pad:" .. button] then return true end
   end
@@ -210,11 +348,7 @@ function input.reader(keyboard, pad)
 end
 
 function Reader:isDown(action)
-  if self.keyboard then
-    for _, key in ipairs(input.binds[action] or {}) do
-      if input.held[key] then return true end
-    end
-  end
+  if self.keyboard and keyDown(action) then return true end
   local held = self.pad and input.padHeld[self.pad]
   if held then
     for _, button in ipairs(input.pads[action] or {}) do

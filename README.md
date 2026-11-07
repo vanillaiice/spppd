@@ -29,6 +29,11 @@ friends online. There are 12 cars, 10 tracks and four times of day.
 | Horn | H | B / Circle |
 | Pause | Esc or P | Start / Options |
 
+These are the defaults. CONTROLS > KEYBOARD and CONTROLS > PAD change them: pick an
+action, then press its new key or button. The arrows, right Shift and Esc always work
+as above, the stick always steers, and the triggers always give gas and brake, though
+a pad button can be set for those too.
+
 At the start lights, hold the revs on the white bar for a good launch.
 
 **Touch** controls appear on phones and tablets: a stick under your left thumb, DRIFT
@@ -48,7 +53,8 @@ player picks their own car, paint, handling and gearbox.
 
 **CONTROLS** in the main menu holds all of this: touch controls on, off or automatic,
 stick or buttons steering, Auto Gas, the gearbox, the size and opacity of the touch
-controls, and vibration. BUTTON LIST shows the buttons for whatever you're holding.
+controls, vibration, and the KEYBOARD and PAD screens that change keys and buttons. On a
+phone, BUTTON LIST shows the touch controls.
 
 ## Good to know
 

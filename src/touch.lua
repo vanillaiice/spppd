@@ -127,8 +127,9 @@ function touch.layout(sw, sh)
   return layout
 end
 
+-- Its own key per action, so it works whatever keys the player has set.
 local function keyFor(action)
-  return input.binds[action][1]
+  return "touch:" .. action
 end
 
 -- Two thumbs can share an action, so it's only let go when the last one lifts.

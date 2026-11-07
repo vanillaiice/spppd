@@ -11,6 +11,15 @@
   to launch. It works at the start lights too, where the car stays put. Online,
   the others see your smoke.
 
+### Controls
+
+- Change your keys and pad buttons on CONTROLS > KEYBOARD and CONTROLS > PAD: pick an
+  action, then press its new key or button. The arrows, right Shift and Esc always
+  work, the stick always steers and the triggers always give gas and brake, but gas
+  and brake can have a pad button too. RESET KEYS and RESET PAD bring the defaults
+  back.
+- D-pad right now changes the song on a pad, as it always said it would.
+
 ### Freestyle
 
 - Change car and paint from the pause menu, without leaving the drive. The new car

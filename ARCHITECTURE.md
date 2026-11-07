@@ -1213,6 +1213,8 @@ the keyboard, one pad or both, with its own presses (`keyPressed`, `padHeld`,
 sets `keyboard = true` unless an analogue axis is active, which picks the wind-on
 filter in `dynamics`. The stick has a deadzone of 0.08 and a curved response.
 
+These are the defaults:
+
 | Action | Keys | Pad |
 | --- | --- | --- |
 | Steer | A D, arrows | Left stick |
@@ -1231,14 +1233,43 @@ The pad layout borrows R1 handbrake and L1 boost from Need for Speed: Most Wante
 PS2, with the triggers kept for analogue control. The keyboard is deliberately left as
 it always was.
 
+#### Changing keys and buttons
+
+Players change them on CONTROLS > KEYBOARD and CONTROLS > PAD. Each action has one
+key of the player's (`input.DEFAULT_KEYS`) and maybe one fixed key
+(`input.FIXED_KEYS`: the arrows, right Shift and Esc), which can't be taken, so
+nobody can lose the way to drive or pause. On the pad, the stick and triggers are
+fixed, and each action in `input.PAD_ACTIONS` has at most one button
+(`input.DEFAULT_BUTTONS`). Gas and brake have none by default; a button set there is
+full on beside the trigger. The guide button is never offered.
+
+`input.rebindKey` and `input.rebindButton` swap: the action that had the key takes
+the changed action's old one, so no action is left without a key. A pad action can
+be left without a button that way, except pause, which always keeps one.
+`input.setBindings(keys, buttons)` takes what was saved, only the changes from the
+defaults (`false` for a pad action with none), and puts a device back to its
+defaults if anything clashes or isn't a real button. `settings.keys` and
+`settings.padButtons` hold those changes, and `main.lua` applies them at start.
+
+The pad's choices apply to every pad, so both drivers at a split screen get them.
+The keyboard is only ever P1's.
+
+While a row waits, `menu.takeKey` and `menu.takeButton` get the press before
+anything else, so it doesn't also move the menu or type a cheat code
+(`menu.textTaken`). Esc, a click, a tap or six seconds lets go. A keyboard row lets
+go on any pad button. A pad row ignores keys other than Esc, and needs a pad plugged
+in. The screens name a pad's buttons by its family (`menu.padFamily`: PlayStation by
+name, anything else Xbox), or both without one.
+
 ### Touch
 
 `touch.lua` layers over `input`. A touch on the left half places a stick under the
 thumb, and the base follows a thumb dragged past the edge, so turning back acts at
 once. Each axis is independent, so full lock costs no brake.
 
-The on-screen buttons press the same keyboard bindings through `input.press`, so a
-touch is just another pair of hands. Their hit radius is 25% larger than drawn, and
+The on-screen buttons press keys of their own (`touch:<action>`) through
+`input.press`, so a touch is just another pair of hands, whatever keys the player has
+set. Their hit radius is 25% larger than drawn, and
 the nearest button wins. Each look of a button (its colour, held or not, size and
 opacity) is drawn once into a canvas and kept, because redrawing the circles each
 frame cost the A04 more than the rest of the HUD.
@@ -1248,8 +1279,8 @@ revs at the lights, past a deadzone of 0.3. Touch always forces the automatic ge
 because there are no shift buttons.
 
 TOUCH STEERING (`settings.touchSteer`) swaps the stick for buttons. The left and right
-arrows press the keyboard's steering keys, so they wind on through the same filter as
-the arrow keys. A thumb anywhere on the left half steers towards its side of the
+arrows press the steering actions as keys do, so they wind on through the same filter
+as the arrow keys. A thumb anywhere on the left half steers towards its side of the
 line between the arrows, and can rock across without lifting. BRAKE sits above DRIFT,
 out of the dash's row, which is too narrow on 16:9 phones. Without AUTO GAS, GAS takes
 the corner and BOOST moves beside BRAKE. An action held by two fingers is let go only

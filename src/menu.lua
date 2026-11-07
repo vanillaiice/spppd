@@ -164,11 +164,17 @@ local function splitHint()
   return "P1: " .. first .. ".  P2: " .. pads[#pads >= 2 and 2 or 1]:getName():upper() .. "."
 end
 
+-- A row on the keys or pad screen waiting for a press, and a short message said
+-- in place of that screen's title. See "Setting keys and pad buttons" below.
+local capture = nil  -- { kind = "key" or "pad", action =, age = }
+local note = nil     -- { text =, age = }
+
 function menu.go(screen)
   -- The setup screen always opens on P1.
   if screen == "setup" then menu.driver = 1 end
   menu.screen = screen
   ui.focus[screen] = ui.focus[screen] or 1
+  capture, note = nil, nil
 end
 
 function menu.enter()
@@ -465,7 +471,7 @@ local OPACITIES = { 0.25, 0.5, 0.75, 1 }
 local OPACITY_NAMES = { [0.25] = "25%", [0.5] = "50%", [0.75] = "75%", [1] = "100%" }
 
 local function controlsRows()
-  return {
+  local rows = {
     stepper("TOUCH CONTROLS", function() return settings.touch end,
       function(v) settings.touch = v end, { "auto", "on", "off" }, { auto = "AUTO", on = "ON", off = "OFF" }),
     stepper("TOUCH STEERING", function() return settings.touchSteer end,
@@ -478,9 +484,212 @@ local function controlsRows()
     stepper("TOUCH OPACITY", function() return settings.touchOpacity end,
       function(v) settings.touchOpacity = v end, OPACITIES, OPACITY_NAMES),
     toggle("VIBRATION", "vibration"),
-    { label = "BUTTON LIST", activate = function() menu.go("buttons") end },
-    { label = "BACK", activate = function() menu.go("main") end },
   }
+  if not ui.mobile then rows[#rows + 1] = { label = "KEYBOARD", activate = function() menu.go("keys") end } end
+  rows[#rows + 1] = { label = "PAD", activate = function() menu.go("pad") end }
+  if ui.mobile then rows[#rows + 1] = { label = "BUTTON LIST", activate = function() menu.go("buttons") end } end
+  rows[#rows + 1] = { label = "BACK", activate = function() menu.go("main") end }
+  return rows
+end
+
+-- Setting keys and pad buttons ----------------------------------------------------
+-- Picking a row waits for the next key or button, which takes that action over.
+-- Whatever had it before gets the row's old one, so nothing is left without.
+
+local ACTION_LABELS = {
+  throttle = "ACCELERATE", brake = "BRAKE, REVERSE", steerLeft = "STEER LEFT", steerRight = "STEER RIGHT",
+  handbrake = "HANDBRAKE", boost = "BOOST", shiftUp = "SHIFT UP", shiftDown = "SHIFT DOWN",
+  lowBeam = "LOW BEAMS", highBeam = "HIGH BEAMS", respawn = "RESET TO TRACK", camera = "CAMERA",
+  radio = "NEXT SONG", horn = "HORN", pause = "PAUSE",
+}
+menu.ACTION_LABELS = ACTION_LABELS
+
+local KEY_NAMES = {
+  lshift = "L SHIFT", rshift = "R SHIFT", lctrl = "L CTRL", rctrl = "R CTRL", lalt = "L ALT", ralt = "R ALT",
+  lgui = "L SUPER", rgui = "R SUPER", ["return"] = "ENTER", kpenter = "NUM ENTER", escape = "ESC",
+  capslock = "CAPS LOCK", pageup = "PAGE UP", pagedown = "PAGE DOWN", backspace = "BACKSPACE",
+  printscreen = "PRT SC", scrolllock = "SCR LK", numlock = "NUM LK", application = "MENU",
+}
+
+function menu.keyName(key)
+  if KEY_NAMES[key] then return KEY_NAMES[key] end
+  local pad = key:match("^kp(.+)$")
+  if pad then return "NUM " .. pad:upper() end
+  return key:upper()
+end
+
+-- PlayStation names first, then Xbox: a pad shows its own, or both without one.
+local BUTTON_NAMES = {
+  a = { "CROSS", "A" }, b = { "CIRCLE", "B" }, x = { "SQUARE", "X" }, y = { "TRIANGLE", "Y" },
+  back = { "SHARE", "BACK" }, start = { "OPTIONS", "START" }, leftstick = { "L3", "LS" },
+  rightstick = { "R3", "RS" }, leftshoulder = { "L1", "LB" }, rightshoulder = { "R1", "RB" },
+  dpup = "D-PAD UP", dpdown = "D-PAD DOWN", dpleft = "D-PAD LEFT", dpright = "D-PAD RIGHT",
+}
+local TRIGGER_NAMES = { throttle = { "R2", "RT" }, brake = { "L2", "LT" } }
+
+-- 1 for a PlayStation pad, 2 for any other, nil with none plugged in.
+function menu.padFamily(pad)
+  pad = pad or (input.padConnected() and input.gamepad) or input.gamepads()[1]
+  if not pad then return nil end
+  local name = pad:getName():lower()
+  for _, word in ipairs({ "playstation", "dualshock", "dualsense", "ps3", "ps4", "ps5", "sony",
+    "wireless controller" }) do
+    if name:find(word, 1, true) then return 1 end
+  end
+  return 2
+end
+
+function menu.buttonName(button, family)
+  local name = BUTTON_NAMES[button] or TRIGGER_NAMES[button]
+  if type(name) == "string" then return name end
+  if not name then return button:upper() end
+  return family and name[family] or (name[1] .. "/" .. name[2])
+end
+
+local CAPTURE_TIME = 6  -- seconds a row waits for a press
+local NOTE_TIME = 2.5
+local textTaken = false
+
+local function say(text)
+  note = { text = text, age = 0 }
+end
+
+local function startCapture(kind, action)
+  if kind == "pad" and #input.gamepads() == 0 then
+    say("CONNECT A PAD FIRST")
+    return
+  end
+  capture = { kind = kind, action = action, age = 0 }
+  note = nil
+end
+
+menu.startCapture = startCapture
+
+function menu.capturing()
+  return capture
+end
+
+function menu.cancelCapture()
+  capture = nil
+end
+
+-- A key pressed while a row waits. True when it was used up here.
+function menu.takeKey(key, isRepeat)
+  if not capture then return false end
+  textTaken = true
+  if isRepeat then return true end
+  local kind, action = capture.kind, capture.action
+  if key == "escape" or kind ~= "key" then
+    -- A pad row only listens to the pad. Esc lets go of either.
+    if key == "escape" then capture = nil end
+    return true
+  end
+  capture = nil
+  if input.rebindKey(action, key) then
+    settings.keys = input.keyChanges()
+    settings.save()
+    ui.played = "select"
+  else
+    for other, fixed in pairs(input.FIXED_KEYS) do
+      if fixed == key then say(menu.keyName(key) .. " IS KEPT FOR " .. ACTION_LABELS[other]:match("^[^,]+")) end
+    end
+  end
+  return true
+end
+
+-- A pad button pressed while a row waits. On a keyboard row it lets go.
+function menu.takeButton(button)
+  if not capture then return false end
+  local kind, action = capture.kind, capture.action
+  capture = nil
+  if kind ~= "pad" then return true end
+  local ok, why = input.rebindButton(action, button)
+  if ok then
+    settings.padButtons = input.buttonChanges()
+    settings.save()
+    ui.played = "select"
+  elseif why == "pause" then
+    say("PAUSE NEEDS A BUTTON")
+  else
+    say("PICK ANOTHER BUTTON")
+  end
+  return true
+end
+
+-- True when the key that made this text was taken by a waiting row.
+function menu.textTaken()
+  return textTaken
+end
+
+local function updateRemap(dt)
+  textTaken = false
+  if capture then
+    capture.age = capture.age + dt
+    if capture.age > CAPTURE_TIME then capture = nil end
+  end
+  if note then
+    note.age = note.age + dt
+    if note.age > NOTE_TIME then note = nil end
+  end
+end
+
+-- What a keys or pad screen says in place of its title.
+local function remapTitle(plain)
+  if note then return note.text, colors.kerb end
+  if capture then return capture.kind == "key" and "ESC CANCELS" or "ESC OR WAIT TO CANCEL", colors.marshal end
+  return plain, colors.marshal
+end
+
+local function waiting(kind, action)
+  return capture and capture.kind == kind and capture.action == action
+end
+
+local function keyRows()
+  local rows = {}
+  for _, action in ipairs(input.ACTIONS) do
+    rows[#rows + 1] = { label = ACTION_LABELS[action], value = function()
+        if waiting("key", action) then return "PRESS A KEY" end
+        local fixed = input.fixedKeyFor(action)
+        return menu.keyName(input.keyFor(action)) .. (fixed and " / " .. menu.keyName(fixed) or "")
+      end, activate = function() startCapture("key", action) end }
+  end
+  rows[#rows + 1] = { label = "RESET KEYS", activate = function()
+    input.resetKeys()
+    settings.keys = {}
+    settings.save()
+    say("KEYS RESET")
+  end }
+  rows[#rows + 1] = { label = "BACK", activate = function() menu.go("controls") end }
+  return rows
+end
+
+local function padRows()
+  local family = menu.padFamily()
+  local rows = {
+    { label = "STEER", value = "LEFT STICK", disabled = true },
+  }
+  for _, action in ipairs(input.PAD_ACTIONS) do
+    rows[#rows + 1] = { label = ACTION_LABELS[action], value = function()
+        if waiting("pad", action) then return "PRESS A BUTTON" end
+        local button = input.buttonFor(action)
+        local name = button and menu.buttonName(button, family)
+        if TRIGGER_NAMES[action] then
+          local trigger = menu.buttonName(action, family)
+          -- Without a pad both names show, and both triggers too would run long.
+          if name and not family then return "+ " .. name end
+          return name and trigger .. " + " .. name or trigger
+        end
+        return name or "NONE"
+      end, activate = function() startCapture("pad", action) end }
+  end
+  rows[#rows + 1] = { label = "RESET PAD", activate = function()
+    input.resetButtons()
+    settings.padButtons = {}
+    settings.save()
+    say("PAD RESET")
+  end }
+  rows[#rows + 1] = { label = "BACK", activate = function() menu.go("controls") end }
+  return rows
 end
 
 -- Everyone picks their own car here. The race itself is the host's to set, on
@@ -578,11 +787,13 @@ local SCREENS = {
   setup = { rows = setupRows },
   settings = { rows = settingsRows },
   controls = { rows = controlsRows },
+  keys = { rows = keyRows },
+  pad = { rows = padRows },
   online = { rows = onlineRows },
   host = { rows = hostRows },
 }
 
-local function drawBoard(sw, sh, s, title)
+local function drawBoard(sw, sh, s, title, titleColor)
   local w = sw > sh and math.min(sw, math.max(250 * s, sw * 0.4)) or sw
   ui.panel(0, 0, w, sh, 0.9)
   love.graphics.setColor(colors.kerb)
@@ -590,7 +801,7 @@ local function drawBoard(sw, sh, s, title)
   ui.kerb(14 * s, 44 * s, w - 28 * s, 4 * s, s)
   ui.text("SPPPD", 14 * s, 14 * s, 22 * s, colors.marshal)
   if title then
-    ui.text(title, 14 * s, 56 * s, 7 * s, colors.marshal)
+    ui.text(title, 14 * s, 56 * s, 7 * s, titleColor or colors.marshal)
   end
   ui.text("v" .. config.VERSION, 14 * s, sh - 12 * s, 5 * s, colors.muted)
   return w
@@ -707,21 +918,8 @@ local function drawLobby(sw, sh, boardW, s)
   end
 end
 
--- Whatever is in the player's hands: a pad when one is connected, on any
--- platform, then touch on a phone, then the keyboard.
-local KEY_ROWS = {
-  { "STEER", "A D / ARROWS" }, { "ACCELERATE", "W / UP" }, { "BRAKE, REVERSE", "S / DOWN" },
-  { "HANDBRAKE", "SHIFT" }, { "BOOST", "SPACE" }, { "LIGHTS", "F  G" },
-  { "RESET TO TRACK", "R" }, { "CAMERA", "C" }, { "SHIFT GEARS", "Q E" }, { "NEXT SONG", "N" },
-  { "HORN", "H" }, { "PAUSE", "ESC / P" },
-}
-local PAD_ROWS = {
-  { "STEER", "LEFT STICK" }, { "ACCELERATE", "R2 / RT" }, { "BRAKE, REVERSE", "L2 / LT" },
-  { "HANDBRAKE", "R1 / RB" }, { "BOOST", "L1 / LB" }, { "SHIFT GEARS", "SQUARE CROSS / X A" },
-  { "RESET TO TRACK", "TRIANGLE / Y" }, { "CAMERA", "SHARE / BACK" }, { "NEXT SONG", "D-PAD RIGHT" },
-  { "HORN", "CIRCLE / B" }, { "PAUSE", "OPTIONS / START" },
-}
-
+-- The on-screen controls, for a phone. Keys and pad buttons have screens of
+-- their own, where they can be changed.
 local function touchRows()
   local gas = settings.autoGas and "AUTO" or "HOLD GAS"
   local rows
@@ -743,23 +941,17 @@ local function touchRows()
 end
 
 function menu.buttonRows()
-  if input.padConnected() then return PAD_ROWS, "pad" end
-  if ui.mobile then return touchRows(), "touch" end
-  return KEY_ROWS, "keys"
+  return touchRows()
 end
 
 local function drawButtonList(sw, sh, s, w)
-  local rows, kind = menu.buttonRows()
+  local rows = menu.buttonRows()
   local y = 72 * s
   -- Clear of BACK, which sits 34 up from the bottom.
-  local step = math.min(13 * s, (sh - 38 * s - y) / (#rows + (kind ~= "pad" and 2 or 0)))
+  local step = math.min(13 * s, (sh - 38 * s - y) / #rows)
   for i, row in ipairs(rows) do
     ui.text(row[1], 14 * s, y + (i - 1) * step, 6 * s, colors.paint)
     ui.text(row[2], 0, y + (i - 1) * step, 6 * s, colors.marshal, "right", w - 14 * s)
-  end
-  if kind ~= "pad" then
-    ui.text("CONNECT A PAD TO SEE ITS BUTTONS", 14 * s, y + #rows * step + 4 * s, 6 * s, colors.muted, "left",
-      w - 28 * s)
   end
 end
 
@@ -787,11 +979,20 @@ function menu.draw(sw, sh)
 
   local titles = {
     setup = MODES[settings.mode], settings = "SETTINGS", online = "ONLINE", host = "HOST A ROOM",
-    controls = "CONTROLS", buttons = "BUTTON LIST", credits = "CREDITS",
+    controls = "CONTROLS", buttons = "BUTTON LIST", credits = "CREDITS", keys = "KEYBOARD", pad = "PAD",
   }
+  local title, titleColor = titles[menu.screen], nil
+  if menu.screen == "keys" or menu.screen == "pad" then
+    title, titleColor = remapTitle(title)
+    -- A click or tap anywhere lets go of a waiting row, and does nothing else.
+    if capture and ui.clicked then
+      capture = nil
+      ui.clicked = false
+    end
+  end
   -- A failure takes over the title, because the full list leaves no room below it.
   local failed = menu.screen == "online" and network.status == "error"
-  local w = drawBoard(sw, sh, s, not failed and titles[menu.screen] or nil)
+  local w = drawBoard(sw, sh, s, not failed and title or nil, titleColor)
   if failed then ui.text(network.statusText(), 14 * s, 53 * s, 5 * s, colors.kerb, "left", w - 28 * s) end
   local x = 8 * s
   local listW = w - 22 * s
@@ -802,7 +1003,7 @@ function menu.draw(sw, sh)
       -- nothing to go back to
     else
       if menu.screen == "online" then network.disconnect() end
-      local up = { host = "online", buttons = "controls" }
+      local up = { host = "online", buttons = "controls", keys = "controls", pad = "controls" }
       menu.go(up[menu.screen] or "main")
     end
   end
@@ -844,6 +1045,7 @@ function menu.draw(sw, sh)
 end
 
 function menu.update(dt)
+  updateRemap(dt)
   rm.update(dt)
   if menu.screen == "online" then menu.updateOnline(dt) end
 end
