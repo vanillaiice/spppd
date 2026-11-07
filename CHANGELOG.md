@@ -2,6 +2,20 @@
 
 ## Unreleased
 
+3.0 is the version the rest of 3.x builds on. Every 3.x version races every other one
+online, so an update never splits you from your friends again. To race someone on 3.0,
+you need 3.0 too: 2.x games can't join its rooms.
+
+### Two at one screen
+
+- Two players can race at one screen on a desktop: plug in a pad and set PLAYERS to 2
+  in race or freestyle setup. The screen splits side by side, each half with its own
+  camera, dash, pace notes and toasts, and the timing tower and map sit on the seam.
+  With one pad, P1 drives on the keyboard and P2 on the pad; with two, P1 can also use
+  the first. A DRIVER row in setup picks whose car, paint, handling and gearbox the
+  rows change. Each driver hears their own car on their own side and feels their own
+  rumble, either can pause, and the results say who came home ahead.
+
 ### Driving
 
 - Burnouts: hold gas and brake together near a stop. The brakes hold one axle
@@ -11,8 +25,29 @@
   to launch. It works at the start lights too, where the car stays put. Online,
   the others see your smoke.
 
+- Phones draw faster. On a Galaxy A04, MIRAGE at midnight under boost went from 54 to
+  59 frames a second. The first launch after updating takes a little longer, while the
+  game makes its sounds again.
+
+### Time trial
+
+- Every lap counts now. Before, one moment with all four wheels off the road threw the
+  lap away, so a driver who slid wide never set a best lap or got a ghost. SETUP >
+  RULES picks OPEN, the default, or CLEAN, the old rule, which now says the moment a
+  lap is lost and why: off the road, a cut, a reset or a wreck. Each rule keeps its
+  own best laps and ghosts, and the ones you already have count as CLEAN.
+
 ### Controls
 
+- CONTROLS in the main menu is a screen of its own, with everything that used to be
+  in SETTINGS: TOUCH CONTROLS (AUTO, ON or OFF, on phones too), TOUCH STEERING, AUTO
+  GAS, GEARBOX, TOUCH SIZE, TOUCH OPACITY, VIBRATION and BUTTON LIST.
+- A pad works on a phone. Press anything on it, even just the stick, and the touch
+  controls get out of the way; touch the screen to bring them back. If the pad drops
+  out mid-race, the race pauses.
+- Touch can drive a manual gearbox, with DOWN on the left and UP on the right. With
+  buttons steering and AUTO GAS off, GAS and BRAKE sit side by side and one thumb
+  slides between them.
 - Change your keys and pad buttons on CONTROLS > KEYBOARD and CONTROLS > PAD: pick an
   action, then press its new key or button. The arrows, right Shift and Esc always
   work, the stick always steers and the triggers always give gas and brake, but gas
@@ -22,6 +57,12 @@
 
 ### Freestyle
 
+- THE LOT is a playground to drive in: a donut ring round a tyre stack, a slalom of 14
+  cones and three gates, a long wall to slide along, and two blocks of containers.
+  Knock the cones about; they never wreck the car, and they go back to their spots
+  once you drive away.
+- Freestyle setup has a TRACK row: THE LOT, the default, or any circuit, with no lap
+  calls and no WRONG WAY.
 - Change car and paint from the pause menu, without leaving the drive. The new car
   takes the old one's place, standing still. With two at a screen, a DRIVER row picks
   whose car they change.
