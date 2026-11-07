@@ -69,10 +69,9 @@ you need 3.0 too: 2.x games can't join its rooms.
 
 ### Online
 
-- Lose the connection mid-race, switch from Wi-Fi to mobile data, or leave the game
-  for a moment, and it gets you back into your seat. The race goes on meanwhile, and
-  the others see your car as a ghost until you're back. Away for over 30 seconds,
-  you're out of the race, as before.
+- Lose the connection mid-race for a moment, and the game tries to get you back into
+  your seat. The race goes on meanwhile, and the others see your car as a ghost until
+  you're back. Away for over 30 seconds, you're out of the race, as before.
 - Protocol 5. Everyone in a room needs this version, and from now on later 3.x
   versions keep racing it: they add to what's sent without changing it.
 - The online server is harder to flood with forged traffic.
