@@ -624,6 +624,49 @@ h.describe("dynamics", function()
     h.assertTrue(b.vx > a.vx + 1.5, string.format("boost %.1f vs %.1f", b.vx, a.vx))
   end)
 
+  -- A slide set up with the handbrake, then let go and steered straight for a
+  -- second: how far it carries the car sideways, and how fast it ends.
+  local function save(spec, boost, ground)
+    local s = sim(spec, "arcade")
+    s.vx = 32
+    for _ = 1, 0.4 / DT do s:step(input({ throttle = 1, steer = 1 })) end
+    for _ = 1, 0.6 / DT do s:step(input({ throttle = 1, steer = 1, handbrake = true })) end
+    surface(s, ground or "asphalt")
+    local side = 0
+    for _ = 1, 1 / DT do
+      s:step(input({ throttle = 1, boost = boost }))
+      side = side + math.abs(s.vy) * DT
+    end
+    return side, speedOf(s)
+  end
+
+  for _, spec in ipairs(garage) do
+    h.it(spec.name .. " boost takes a slide where the nose points", function()
+      for _, ground in ipairs({ "asphalt", "grass" }) do
+        local side, speed = save(spec, false, ground)
+        local boostSide, boostSpeed = save(spec, true, ground)
+        h.assertTrue(boostSide < side * 0.8,
+          string.format("%s: %.1f m sideways with boost, %.1f without", ground, boostSide, side))
+        h.assertTrue(boostSpeed > speed + 2, string.format("%s: %.1f vs %.1f m/s", ground, boostSpeed, speed))
+      end
+    end)
+  end
+
+  -- The bite swings the travel towards the nose and never turns the nose, so a
+  -- turn on grip, where the two already agree, is hardly any tighter.
+  h.it("boost doesn't make a car corner much harder", function()
+    for _, spec in ipairs(garage) do
+      local function across(boost)
+        local s = sim(spec, "arcade")
+        s.vx = 30
+        for _ = 1, 1 / DT do s:step(input({ throttle = 1, steer = 1, boost = boost })) end
+        return s.y
+      end
+      local plain, boosted = math.abs(across(false)), math.abs(across(true))
+      h.assertTrue(boosted < plain * 1.12, string.format("%s: %.2f m vs %.2f m", spec.name, boosted, plain))
+    end
+  end)
+
   h.it("automatic gearbox shifts up and back down", function()
     local s = sim(garage[1], "sport")
     local topGear = 1

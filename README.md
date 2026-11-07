@@ -64,7 +64,9 @@ phone, BUTTON LIST shows the touch controls.
   drift on the handbrake. Sport adds realistic grip with driver aids, and Sim has no
   aids at all. Online, everyone drives with their own handling and gearbox, and you
   can set both on the ONLINE screen.
-- **Boost** fills on its own, and three times faster while the car is sliding.
+- **Boost** fills on its own, and three times faster while the car is sliding. Lit,
+  it also carries the car where its nose points: point it away from trouble and boost
+  pulls a slide straight and drags you off the grass. It won't turn the car for you.
 - **Slipstream**: sit close behind a car at speed for less drag, then pull out and
   slingshot past.
 - **Pace notes** at the top of the screen show the next corner, how tight it is (1 is a

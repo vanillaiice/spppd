@@ -49,6 +49,13 @@ local LAUNCH_PUSH = 7.5           -- extra pull from a perfect launch (m/s^2), f
 local LAUNCH_TIME = 1.2
 local BOOST_RATED_SPEED = 22    -- speed (m/s) at which the push equals boostPower
 local BOOST_MIN_TANK = 0.25     -- seconds of boost needed to light it again
+-- Boost takes the car where its nose points: the way it's travelling is swung
+-- towards the nose, faster the further apart they are, up to this much
+-- sideways g. Speed is kept, so a slide becomes forward speed, not scrub.
+local BOOST_BITE_RATE = 4       -- per second, times the slip angle
+local BOOST_BITE_MAX = 0.9      -- g
+local BOOST_BITE_MIN_SPEED = 5  -- m/s
+local BOOST_LOOSE = 0.5         -- share of the grass and gravel drag left while boosting
 local SLIDE_REFILL = 3          -- how many times faster the tank fills in a slide
 -- Hard cornering on the racing line reaches 18 degrees; a held drift sits past 25.
 local SLIDE_MIN_BETA = math.rad(20)
@@ -649,6 +656,7 @@ function dynamics.step(c, input, vx, vy, r, dt)
       local forgiven = assist.offroad
       grip = grip + (spec.grip * assist.grip - grip) * forgiven
       local penalty = (1 - forgiven) * spec.looseDrag
+      if boosting then penalty = penalty * BOOST_LOOSE end
       roll = ASPHALT_ROLL + (roll - ASPHALT_ROLL) * penalty
       drag = drag * penalty
     end
@@ -818,6 +826,14 @@ function dynamics.step(c, input, vx, vy, r, dt)
   -- traction control just where it's wanted, in low gears and out of corners.
   if boosting and not c.reverse then
     fxTotal = fxTotal + spec.boostPower / BOOST_RATED_SPEED
+    -- The bite: a push across the direction of travel, towards the nose. It
+    -- leaves the nose alone, so the driver still has to point it somewhere.
+    if vx > 0 and speed > BOOST_BITE_MIN_SPEED then
+      local bite = spec.mass * min(BOOST_BITE_MAX * G, speed * BOOST_BITE_RATE * abs(beta))
+      if beta < 0 then bite = -bite end
+      fxTotal = fxTotal + bite * vy / speed
+      fyTotal = fyTotal - bite * vx / speed
+    end
   end
 
   c.slip = slipSum / accSum
