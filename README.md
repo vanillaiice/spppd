@@ -167,8 +167,8 @@ without showing in its stats. See `ARCHITECTURE.md`.
     make deploy-site          # the website, deployed to spppd.xyz
     make itch                 # the release builds, uploaded to itch.io
 
-`ARCHITECTURE.md` explains how the game works, `REVIEW.md` what falls short, `SOUND.md`
-how it's meant to sound, and `ROADMAP.md` what's next.
+`ARCHITECTURE.md` explains how the game works, `SOUND.md` how it's meant to sound,
+and `ROADMAP.md` what's next.
 
 ## License
 

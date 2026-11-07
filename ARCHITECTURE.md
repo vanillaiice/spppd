@@ -1,8 +1,7 @@
 # SPPPD Architecture
 
 This describes the code as it stands at version 2.8.0 (2026-11-04). It explains how
-the game works and nothing else. `REVIEW.md` holds the review and recommendations, and `ROADMAP.md` holds what's
-agreed but not built.
+the game works and nothing else. `ROADMAP.md` holds what's agreed but not built.
 
 Numbers in the tables were measured from the code at `c88f172` (version 2.1.0) unless
 a section says otherwise.
@@ -1377,7 +1376,7 @@ others:
 - Each client counts its own laps. Nobody works out anyone else's.
 
 There's no shared simulation and no referee. A client could lie about its finish time,
-which is fine between friends and is why ranked play needs more (see `REVIEW.md`).
+which is fine between friends and is why ranked play needs more (see `ROADMAP.md`).
 
 `menu.ONLINE_NOTES` tells players this on the ONLINE screen, along with the other limits
 they can run into: no way back after about 30 s away, late cars on a slow connection, and that
