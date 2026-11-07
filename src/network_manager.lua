@@ -1,6 +1,8 @@
 -- Online racing through the UDP relay in server/. A host opens a room and up to
--- three others join with its code. The seat numbers come from the relay, and
--- the lowest seat in the room is the leader: it sets the race and calls the start.
+-- three others join with its code, or the relay makes a room for whoever is
+-- looking (quick match) and picks its race. The seat numbers come from the relay,
+-- and the lowest seat in the room is the leader: it sets the race and calls the
+-- start, which in a quick match is when the relay's countdown runs out.
 --
 -- Nothing here waits for an answer. Everyone repeats their state four times a
 -- second until it stops mattering, so a lost packet costs a quarter of a second
@@ -26,6 +28,7 @@ local network = {
   ready = false,    -- true when the game should build the race
   lost = nil,       -- why the connection went, if it went during a race
   vote = 0,         -- the round this player asked for from the results
+  match = nil,      -- the relay's race, in a room it made
 }
 
 -- Changes only for a break, which the relay refuses to mix in one room. All of
@@ -34,7 +37,7 @@ network.PROTOCOL = 5
 -- What this game can do on top of protocol 5. A 3.x release that adds something
 -- older 3.x games can't follow raises it, and a race that needs it says so in
 -- the setup's `needs`, so the host only starts it when everyone can.
-network.FEATURES = 0
+network.FEATURES = 1
 network.MAX_PLAYERS = 4
 
 local RESEND = 0.25
@@ -50,6 +53,11 @@ local REGISTER_BYTES = 64   -- what the relay asks for before it answers at all
 local RETRY_AFTER = 2.5     -- silence in a room before trying to get back in
 local RESOCKET = 2          -- a fresh socket this often while trying, in case the network changed
 local BACK_LIMIT = 35       -- the relay keeps a seat for 5 + 30 s
+local KICK_LIMIT = 3        -- seconds to keep asking for a vote to count
+
+-- What the relay says when its countdown ran out and nobody started. The game
+-- looks for another race by itself.
+network.NOT_STARTED = "The race didn't start"
 
 -- What a real car can send. Anything past these is someone's own client, and it
 -- mustn't reach Box2D or a sound's pitch.
@@ -154,10 +162,15 @@ function network.unpackLook(str)
 end
 
 -- Who I am, what I've got and what I want: car, paint, whether I hold the track,
--- the round I'm ready to start, the round I've asked for, and what I can do.
+-- the round I'm ready to start, the round I've asked for, what I can do, and the
+-- handling and gearbox I drive with. 3.0 games stop before the handling, and
+-- drive ARCADE themselves.
+local HANDLINGS = { arcade = true, sport = true, sim = true }
+local GEARBOXES = { auto = true, manual = true }
+
 function network.packHello(h)
-  return string.format("hello|%s|%d|%d|%d|%d|%d", h.car, h.paint, h.have and 1 or 0, h.ready or 0, h.vote or 0,
-    h.features or 0)
+  return string.format("hello|%s|%d|%d|%d|%d|%d|%s|%s", h.car, h.paint, h.have and 1 or 0, h.ready or 0, h.vote or 0,
+    h.features or 0, h.handling or "", h.gearbox or "")
 end
 
 function network.unpackHello(str)
@@ -165,8 +178,27 @@ function network.unpackHello(str)
   if not known then return nil end
   local car, paint, have, ready, vote, features = known:match("^hello|([%w_%-]+)|(%d+)|([01])|(%d+)|(%d+)|(%d+)$")
   if not car then return nil end
+  local parts = split(str)
   return { car = car, paint = tonumber(paint), have = have == "1", ready = tonumber(ready), vote = tonumber(vote),
-    features = tonumber(features) }
+    features = tonumber(features),
+    handling = HANDLINGS[parts[8]] and parts[8] or nil, gearbox = GEARBOXES[parts[9]] and parts[9] or nil }
+end
+
+-- The relay's race in a room it made: event|match|KIND|TRACK|LAPS|TIME|STARTIN|
+-- ONLINE|VOTES, given here without "event|match|". STARTIN is whole seconds until
+-- the room stops filling, or -1 while it has one driver. VOTES is seat:count,...
+function network.unpackMatch(rest)
+  local f = split(rest)
+  if #f < 7 then return nil end
+  local kind, track, laps, time = f[1]:match("^%a+$"), f[2]:match("^[%w_]+$"), tonumber(f[3]), f[4]:match("^%a+$")
+  local startIn, online = tonumber(f[5]), tonumber(f[6])
+  if not kind or not track or not laps or not time or not startIn or not online then return nil end
+  local votes = {}
+  for seat, count in f[7]:gmatch("(%d+):(%d+)") do votes[tonumber(seat)] = tonumber(count) end
+  return {
+    kind = kind, track = track, laps = math.max(config.LAPS_MIN, math.min(config.LAPS_MAX, math.floor(laps))),
+    time = time, startIn = startIn, online = math.max(0, math.floor(online)), votes = votes,
+  }
 end
 
 -- The race, when it starts, and the FEATURES level it needs from everyone.
@@ -199,15 +231,18 @@ local function myHello()
   return {
     car = me.car, paint = me.paint, have = network.def ~= nil,
     ready = network.loaded and network.clockReady() and network.round or 0,
-    vote = network.vote, features = network.FEATURES,
+    vote = network.vote, features = network.FEATURES, handling = me.handling, gearbox = me.gearbox,
   }
 end
 
--- Asks the relay for a seat: a new one to host or join, or my own one back. The
--- relay answers the first ask with a cookie, and seats whoever repeats it.
+-- Asks the relay for a seat: a new one to host or join, a quick match, or my own
+-- one back. The relay answers the first ask with a cookie, and seats whoever
+-- repeats it. After the token: FEATURES, then ACCOUNT and PROOF, empty until
+-- there are drivers, and for a quick match MODE and DATA.
 local function register(intent)
-  local text = string.format("event|%s|%d|%s|%s|%s|", intent, network.PROTOCOL, network.roomCode,
-    network.cookie or "", network.token or "")
+  local text = string.format("event|%s|%d|%s|%s|%s|%d|||", intent, network.PROTOCOL,
+    intent == "queue" and "" or network.roomCode, network.cookie or "", network.token or "", network.FEATURES)
+  if intent == "queue" then text = text .. (network.mode or "quick") .. "||" end
   -- Padded, so the relay's answer to someone who isn't listening is never bigger
   -- than what was sent to it.
   send(text .. string.rep(".", REGISTER_BYTES - #text))
@@ -270,9 +305,34 @@ local function peerList()
 end
 network.peerList = peerList
 
+local function clockText(seconds)
+  seconds = math.max(0, math.ceil(seconds))
+  return string.format("%d:%02d", math.floor(seconds / 60), seconds % 60)
+end
+
+-- Whether this room is one the relay made, for a quick match.
+function network.isMatch()
+  return network.match ~= nil
+end
+
 function network.statusText()
-  if network.status == "connecting" then return "Connecting..." end
+  if network.status == "connecting" then
+    return network.role == "queue" and "Looking for a race..." or "Connecting..."
+  end
   if network.backSince then return "Lost the server. Getting back in..." end
+  if network.status == "lobby" and network.match then
+    local match = network.match
+    if network.download then
+      return string.format("Getting the track: %d%%", 100 * network.download.got / network.download.count)
+    end
+    if not match.startAt then
+      return string.format("Looking for drivers  %s  %d online", clockText(now() - (network.queuedAt or now())),
+        match.online)
+    end
+    local left = match.startAt - now()
+    if left > 0 then return "Starts in " .. clockText(left) end
+    return "Starting when everyone has the track..."
+  end
   if network.status == "lobby" then
     if network.download then
       return string.format("Getting the track: %d%%", 100 * network.download.got / network.download.count)
@@ -306,6 +366,30 @@ function network.canStart()
   return true
 end
 
+-- The countdown to a quick match's start, as a time on this machine.
+local function matchDeadline(match, previous)
+  if match.startIn < 0 then return nil end
+  local deadline = now() + match.startIn
+  -- The relay rounds up to whole seconds, so keep the first reading unless the
+  -- start moved: a full grid starts sooner.
+  if previous and math.abs(deadline - previous) < 1.5 then return previous end
+  return deadline
+end
+
+-- The built-in track a quick match races on, from this game's own copy.
+local function matchEntry(id)
+  for _, entry in ipairs(catalog.builtin()) do
+    if entry.name == id then return entry end
+  end
+  return nil
+end
+
+-- A quick match's title, before the leader's setup says it.
+function network.matchTitle()
+  local entry = network.match and matchEntry(network.match.track)
+  return entry and entry.title
+end
+
 local function beginRound(round)
   network.round = round
   network.startLocal = nil
@@ -324,6 +408,26 @@ function network.startRace()
   send("event|lock|")
   beginRound(1)
   publish()
+end
+
+-- A quick match with three or more drivers can vote one out. Two votes do it.
+function network.canVoteOut()
+  if not network.match then return false end
+  local count = 0
+  for _ in pairs(network.peers) do count = count + 1 end
+  return count >= 2
+end
+
+-- Votes to remove the driver in a seat, repeated until the relay counts it.
+function network.voteOut(seat)
+  if not network.canVoteOut() or not network.peers[seat] then return end
+  network.votedOut[seat] = true
+  network.kicking = { seat = seat, from = network.match.votes[seat] or 0, since = now() }
+  send(string.format("event|kick|%d|", seat))
+end
+
+function network.hasVotedOut(seat)
+  return network.votedOut[seat] == true
 end
 
 -- The race is built and on the grid.
@@ -380,8 +484,8 @@ function network.takeNotices()
   return out
 end
 
-local function notice(kind, slot)
-  network.notices[#network.notices + 1] = { kind = kind, slot = slot }
+local function notice(kind, slot, count)
+  network.notices[#network.notices + 1] = { kind = kind, slot = slot, count = count }
 end
 
 -- Connecting --------------------------------------------------------------
@@ -415,6 +519,11 @@ local function reset()
   network.ready = false
   network.vote = 0
   network.lost = nil
+  network.match = nil
+  network.matchHash = nil
+  network.kicking = nil
+  network.votedOut = {}
+  network.locked = false
 end
 
 function network.fail(message)
@@ -424,9 +533,11 @@ function network.fail(message)
   network.message = message
 end
 
--- `me` is { car, paint }. A host also passes `race`: { def, title, laps, time }.
-function network.connect(host, port, role, code, me, race)
+-- `me` is { car, paint, handling, gearbox }. A host also passes `race`: { def,
+-- title, laps, time }. A quick match connects with the role "queue" and a `mode`.
+function network.connect(host, port, role, code, me, race, mode)
   network.disconnect()
+  network.mode = mode
   if race then
     local text, hash = catalog.fingerprint(race.def)
     if #text > wire.MAX_BYTES or not wire.decode(text) then
@@ -455,8 +566,22 @@ function network.connect(host, port, role, code, me, race)
   network.me = me
   network.status = "connecting"
   network.lastHeard = now()
+  network.queuedAt = now()
   network.resendTimer = 0
   register(role)
+end
+
+-- Looks for a race with whoever else is looking. The relay picks the room and
+-- the race.
+function network.queue(host, port, me, mode)
+  network.connect(host, port, "queue", "", me, nil, mode or "quick")
+end
+
+-- Leaves this room and looks for another race, with the same car and setup.
+function network.findAnother()
+  local address, me, mode = network.address, network.me, network.mode
+  if not address or not me then return end
+  network.queue(address[1], address[2], me, mode)
 end
 
 function network.disconnect()
@@ -509,7 +634,10 @@ local function onRoom(rest)
   local slot, seats = (fields[1] or ""):match("^%d+$"), (fields[3] or ""):match("^[%d,]*$")
   if not slot or not seats or not (fields[4] or ""):match("^[01]$") then return end
   network.slot = tonumber(slot)
+  network.locked = fields[4] == "1"
   if fields[5] and fields[5]:match("^[%w_%-]+$") then network.token = fields[5] end
+  -- A quick match's code is the relay's, and getting back in needs it.
+  if network.role == "queue" and (fields[2] or ""):match("^%w+$") then network.roomCode = fields[2] end
   if network.backSince then
     network.backSince = nil
     notice("back")
@@ -540,14 +668,58 @@ local function onRoom(rest)
   end
   if network.leader and network.leader ~= leader then network.clock = {} end
   network.leader = leader
+  for seat in pairs(network.votedOut) do
+    if not network.peers[seat] then network.votedOut[seat] = nil end
+  end
 
   if network.status == "connecting" then network.status = "lobby" end
+end
+
+-- The leader of a quick match sets its race from the relay's, on the built-in
+-- track every game holds, so nobody downloads anything.
+local function setUpMatch()
+  local match = network.match
+  if not network.isLeader() or (network.setup and network.setup.hash == network.matchHash) then return end
+  local entry = matchEntry(match.track)
+  local text, hash = catalog.fingerprint(entry.def)
+  network.def = entry.def
+  network.setup = {
+    hash = hash, chunks = math.ceil(#text / CHUNK_BYTES), laps = match.laps,
+    time = match.time, title = entry.title, needs = 0,
+  }
+end
+
+local function onMatch(rest)
+  local match = network.unpackMatch(rest)
+  if not match then return end
+  local previous = network.match
+  if not previous or previous.track ~= match.track then
+    local entry = matchEntry(match.track)
+    if not entry then
+      network.fail("Update the game to race on this track")
+      return
+    end
+    network.matchHash = select(2, catalog.fingerprint(entry.def))
+  end
+  match.startAt = matchDeadline(match, previous and previous.startAt)
+  local before = previous and previous.votes or {}
+  for seat, count in pairs(match.votes) do
+    if count > (before[seat] or 0) then notice("vote", seat, count) end
+  end
+  network.match = match
+  local kicking = network.kicking
+  if kicking and (not network.peers[kicking.seat] or (match.votes[kicking.seat] or 0) > kicking.from) then
+    network.kicking = nil
+  end
+  if network.status == "lobby" then setUpMatch() end
 end
 
 local function handleEvent(data)
   local kind, rest = data:match("^event|([^|]+)|?(.*)$")
   if kind == "room" then
     onRoom(rest)
+  elseif kind == "match" then
+    onMatch(rest)
   elseif kind == "cookie" then
     local cookie = rest:match("^[%w_%-]+")
     if not cookie then return end
@@ -561,6 +733,10 @@ local function handleEvent(data)
     -- Refused a seat, or my own seat back. A race goes on alone either way.
     connectionLost(rest ~= "" and rest or "The server refused the connection")
   elseif kind == "closed" then
+    if rest == network.NOT_STARTED and network.match and network.round == 0 then
+      network.findAnother()
+      return
+    end
     connectionLost(rest ~= "" and rest or "The server closed the room")
   end
 end
@@ -661,10 +837,13 @@ local function handlePeer(from, data)
     if hello then
       peer.car, peer.paint, peer.have = hello.car, hello.paint, hello.have
       peer.ready, peer.vote, peer.features = hello.ready, hello.vote, hello.features
+      peer.handling, peer.gearbox = hello.handling, hello.gearbox
     end
   elseif kind == "setup" then
     if from ~= network.leader then return end
     local setup = network.unpackSetup(data)
+    -- A quick match's track is the relay's, and no leader can swap it.
+    if setup and network.match and setup.hash ~= network.matchHash then return end
     if not setup or not adoptSetup(setup) then return end
     if setup.round > network.round then beginRound(setup.round) end
     if setup.round == network.round and setup.startAt > 0 and not network.startLocal then
@@ -716,6 +895,10 @@ local function everyoneVoted()
 end
 
 local function lead()
+  local match = network.match
+  if match and network.status == "lobby" and match.startAt and now() >= match.startAt and network.canStart() then
+    network.startRace()
+  end
   if network.round > 0 and not network.startLocal and network.loaded
     and (everyoneReady() or now() - network.loadingSince > LOAD_LIMIT) then
     network.startLocal = now() + START_LEAD + config.START_DELAY
@@ -743,8 +926,19 @@ local function tick()
     return
   end
   send(network.packHello(myHello()))
+  local kicking = network.kicking
+  if kicking then
+    if now() - kicking.since > KICK_LIMIT then
+      network.kicking = nil
+    else
+      send(string.format("event|kick|%d|", kicking.seat))
+    end
+  end
   if network.isLeader() then
     if network.setup then publish() end
+    -- A quick match that never locks is closed by the relay, so a lost lock is
+    -- asked for again.
+    if network.match and network.round > 0 and not network.locked then send("event|lock|") end
   elseif network.status ~= "racing" or not network.startLocal or network.hasVoted() then
     send(string.format("ping|%.4f", now()))
   end
@@ -771,7 +965,10 @@ function network.update(dt)
 
   local silent = now() - network.lastHeard
   if network.status == "connecting" then
-    if silent > TIMEOUT then network.fail("No answer from the server. Check the address.") end
+    if silent > TIMEOUT then
+      network.fail(network.role == "queue" and "No answer from the server. It may not have quick match yet."
+        or "No answer from the server. Check the address.")
+    end
   elseif network.token then
     -- The relay keeps the seat a while, so try to get back into it: the phone
     -- may have changed networks, or been in the background.

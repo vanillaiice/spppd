@@ -65,6 +65,7 @@ menu.ONLINE_NOTES = {
   "Lose the connection, or leave the game for a moment, and it gets you back in. Away for over 30 seconds, there's no way back in.",
   "Nobody checks results, so a changed game can cheat. Race people you trust.",
   "A slow connection makes cars look late, and contact can look wrong.",
+  "Everyone drives with their own handling. ARCADE grips the most.",
   "Everyone in a room needs the same version of the game.",
   "The server sees your IP address. Other drivers don't. See PRIVACY & TERMS.",
 }
@@ -692,9 +693,24 @@ local function padRows()
   return rows
 end
 
--- Everyone picks their own car here. The race itself is the host's to set, on
--- the next screen, so a joiner never sees choices that wouldn't count. Once
--- connecting, there's nothing left to choose and the status gets the room.
+-- What a driver brings to an online race: car, paint, and the handling and
+-- gearbox they drive with.
+local function onlineSelf()
+  return { car = currentCar().id, paint = settings.hue, handling = settings.assists, gearbox = settings.gearbox }
+end
+
+-- How a driver's car is set up, for the lobby and the results. A 3.0 game
+-- doesn't say, and drives ARCADE.
+local function setupText(handling, gearbox)
+  if not handling then return nil end
+  return ASSIST_NAMES[handling] .. " " .. (gearbox == "manual" and "MANUAL" or "AUTO")
+end
+menu.setupText = setupText
+
+-- Everyone picks their own car and setup here. The race itself is the host's to
+-- set, on the next screen, or the server's in a quick match, so a joiner never
+-- sees choices that wouldn't count. Once connecting, there's nothing left to
+-- choose and the status gets the room.
 local function onlineRows()
   local back = { label = "BACK", activate = function()
     network.disconnect()
@@ -708,6 +724,9 @@ local function onlineRows()
       ui.startEditing(network.roomCode, function(v) network.roomCode = v:upper() end, "^%w$", 6)
       ui.editing.field = "room"
     end }
+  if busy and (network.role == "queue" or network.isMatch()) then
+    return { { label = "CANCEL", activate = function() network.disconnect() end }, back }
+  end
   if busy then
     local rows = { room }
     if network.isLeader() then
@@ -729,6 +748,10 @@ local function onlineRows()
         ui.editing.field = "server"
       end },
     carRow(), paintRow(),
+    handlingRow("HANDLING", "assists"),
+    stepper("GEARBOX", function() return settings.gearbox end, function(v) settings.gearbox = v end,
+      { "auto", "manual" }, { auto = "AUTO", manual = "MANUAL" }),
+    { label = "QUICK MATCH", activate = function() menu.quickMatch() end },
     { label = "HOST A ROOM", activate = function() menu.go("host") end },
     room,
     { label = "JOIN A ROOM", disabled = network.roomCode == "", activate = function() menu.connect("join") end },
@@ -755,12 +778,18 @@ function menu.connect(role)
     local entry = currentEntry()
     race = { def = entry.def, title = entry.title, laps = settings.laps, time = settings.time }
   end
-  local spec = currentCar()
   local host, port = settings.serverAddress()
-  network.connect(host, port, role, network.roomCode,
-    { car = spec.id, paint = settings.hue }, race)
+  network.connect(host, port, role, network.roomCode, onlineSelf(), race)
   menu.go("online")
   ui.focus.online = 2  -- START RACE or CANCEL, once the list has shrunk
+end
+
+-- Looks for a race with whoever else is looking: no code, and the server picks.
+function menu.quickMatch()
+  local host, port = settings.serverAddress()
+  network.queue(host, port, onlineSelf())
+  menu.go("online")
+  ui.focus.online = 1  -- CANCEL
 end
 
 function menu.testDrive(doc, track)
@@ -890,17 +919,22 @@ local function drawLobby(sw, sh, boardW, s)
   local x = boardW + 14 * s
   local w = sw - x - 14 * s
   if w < 120 * s then return end
-  local setup = network.setup
-  local rowH = 15 * s
+  local setup, match = network.setup, network.match
+  local rowH = 20 * s
   ui.panel(x, 14 * s, w, 44 * s + rowH * network.MAX_PLAYERS, 0.82)
-  ui.text(setup and setup.title or "GETTING THE RACE...", x + 6 * s, 21 * s, 8 * s, colors.marshal)
-  if setup then
-    local laps = setup.laps == 1 and "1 LAP" or setup.laps .. " LAPS"
-    ui.text(laps .. "  " .. (TIME_NAMES[setup.time] or "DAY"), x + 6 * s, 35 * s, 6 * s, colors.paint)
+  local title = setup and setup.title or network.matchTitle()
+  ui.text(title or "GETTING THE RACE...", x + 6 * s, 21 * s, 8 * s, colors.marshal)
+  local laps, time = setup and setup.laps or match and match.laps, setup and setup.time or match and match.time
+  if laps then
+    laps = laps == 1 and "1 LAP" or laps .. " LAPS"
+    ui.text(laps .. "  " .. (TIME_NAMES[time] or "DAY"), x + 6 * s, 35 * s, 6 * s, colors.paint)
   end
+  if match then ui.text("QUICK MATCH", x, 35 * s, 6 * s, colors.kerb, "right", w - 6 * s) end
 
   local drivers = network.peerList()
-  table.insert(drivers, { slot = network.slot, car = network.me.car, paint = network.me.paint, have = network.def ~= nil, you = true })
+  local me = network.me
+  table.insert(drivers, { slot = network.slot, car = me.car, paint = me.paint, have = network.def ~= nil, you = true,
+    handling = me.handling, gearbox = me.gearbox })
   table.sort(drivers, function(a, b) return a.slot < b.slot end)
   local y = 52 * s
   for i, driver in ipairs(drivers) do
@@ -909,11 +943,15 @@ local function drawLobby(sw, sh, boardW, s)
     if spec then
       local paint = PAINTS[driver.paint or 1]
       love.graphics.setColor(paint and paint.color or spec.color)
-      love.graphics.rectangle("fill", x + 6 * s, ry + s, 3 * s, 8 * s)
+      love.graphics.rectangle("fill", x + 6 * s, ry + s, 3 * s, 14 * s)
     end
     ui.text("P" .. driver.slot .. "  " .. (spec and spec.name or "..."), x + 13 * s, ry + 2 * s, 6 * s,
       driver.you and colors.marshal or colors.paint)
-    local note = driver.you and "YOU" or (driver.slot == network.leader and "HOST") or (not driver.have and "GETTING TRACK") or ""
+    if driver.car then
+      ui.text(setupText(driver.handling, driver.gearbox) or "ARCADE", x + 13 * s, ry + 10 * s, 5 * s, colors.muted)
+    end
+    local host = not match and driver.slot == network.leader
+    local note = driver.you and "YOU" or (host and "HOST") or (not driver.have and "GETTING TRACK") or ""
     ui.text(note, x, ry + 2 * s, 6 * s, colors.muted, "right", w - 6 * s)
   end
 end
@@ -1074,12 +1112,13 @@ function menu.startOnline()
     local paint = PAINTS[peer.paint or 1]
     peers[#peers + 1] = {
       slot = peer.slot, spec = spec, color = paint and paint.color or spec.color,
-      state = network.stateOf(peer.slot),
+      state = network.stateOf(peer.slot), setup = setupText(peer.handling, peer.gearbox) or "ARCADE",
     }
   end
   menu.startRace({
     entry = entry, laps = cfg.laps, time = TIME_NAMES[cfg.time] and cfg.time or "day",
-    online = { slot = cfg.slot, peers = peers, startIn = network.startIn },
+    online = { slot = cfg.slot, peers = peers, startIn = network.startIn,
+      setup = setupText(settings.assists, settings.gearbox) },
   })
   network.raceLoaded()
 end
@@ -1091,6 +1130,7 @@ local RESULTS_SLIDE = 0.3
 local function quitRace()
   local opts = rm.race() and rm.opts()
   local fromEditor = opts and opts.fromEditor
+  menu.voting = false
   network.disconnect()
   rm.stop()
   ui.nav = {}
@@ -1101,6 +1141,38 @@ local function quitRace()
     menu.demoRunning = false
     menu.enter()
   end
+end
+
+-- Leaves a quick match's results and looks for another race in one press.
+local function findAnother()
+  menu.voting = false
+  network.findAnother()
+  rm.stop()
+  ui.nav = {}
+  menu.demoRunning = false
+  menu.enter()
+  menu.go("online")
+  ui.focus.online = 1
+end
+
+-- The other drivers, to vote one out of a quick match. Two votes remove them.
+local function voteRows()
+  local rows = {}
+  for _, peer in ipairs(network.peerList()) do
+    local spec = peer.car and garage.byId(peer.car)
+    local voted = network.hasVotedOut(peer.slot)
+    rows[#rows + 1] = {
+      label = "P" .. peer.slot .. "  " .. (spec and spec.name or "..."),
+      value = voted and function() return "VOTED" end or nil,
+      disabled = voted,
+      activate = function()
+        network.voteOut(peer.slot)
+        menu.voting = false
+      end,
+    }
+  end
+  rows[#rows + 1] = { label = "BACK", activate = function() menu.voting = false end }
+  return rows
 end
 
 -- Freestyle's car and paint, changed on the road from the pause menu. The
@@ -1127,6 +1199,8 @@ function menu.drawPause(sw, sh)
   love.graphics.setColor(0, 0, 0, 0.55)
   love.graphics.rectangle("fill", 0, 0, sw, sh)
   local fromEditor = rm.opts().fromEditor
+  local canVote = rm.isOnline() and network.canVoteOut()
+  if not canVote then menu.voting = false end
   local rows = {
     { label = "RESUME", activate = function() rm.setPaused(false) end },
   }
@@ -1135,7 +1209,17 @@ function menu.drawPause(sw, sh)
   end
   -- After RESTART, so RESUME and RESTART stay where hands know them.
   local cars = pauseCarRows(rows)
+  if canVote then
+    rows[#rows + 1] = { label = "VOTE OUT", activate = function()
+      menu.voting = true
+      ui.focus.vote = 1
+    end }
+  end
   rows[#rows + 1] = { label = fromEditor and "BACK TO EDITOR" or "QUIT TO MENU", activate = quitRace }
+  local list, heading = "pause", nil
+  if menu.voting then
+    rows, list, heading = voteRows(), "vote", "VOTE OUT"
+  end
   -- Wide enough for "PAINT  < SUNSET ORANGE >".
   local w = (cars and 230 or 190) * s
   local x = (sw - w) / 2
@@ -1143,9 +1227,12 @@ function menu.drawPause(sw, sh)
   ui.panel(x, y, w, 28 * s + #rows * 16 * s, 0.95)
   ui.kerb(x, y, w, 3 * s, s)
   -- An online race can't stop for one player, and their car is coasting.
-  ui.text(rm.isOnline() and "RACE STILL RUNNING" or "PAUSED", x, y + 10 * s, 8 * s, colors.marshal, "center", w)
-  ui.list("pause", rows, x + 8 * s, y + 24 * s, w - 16 * s, 16 * s, 7 * s, s)
-  if ui.consumeBack() then rm.setPaused(false) end
+  ui.text(heading or (rm.isOnline() and "RACE STILL RUNNING" or "PAUSED"), x, y + 10 * s, 8 * s, colors.marshal,
+    "center", w)
+  ui.list(list, rows, x + 8 * s, y + 24 * s, w - 16 * s, 16 * s, 7 * s, s)
+  if ui.consumeBack() then
+    if menu.voting then menu.voting = false else rm.setPaused(false) end
+  end
 end
 
 function menu.drawResults(sw, sh)
@@ -1175,7 +1262,8 @@ function menu.drawResults(sw, sh)
       love.graphics.setColor(colors.marshal[1], colors.marshal[2], colors.marshal[3], 0.18)
       love.graphics.rectangle("fill", x + 6 * s, ry - 2 * s, w - 12 * s, rowH)
     end
-    ui.text(i .. "  " .. car.name, x + 10 * s, ry, 6 * s, colors.paint)
+    local name = car.setupText and (car.name .. "  " .. car.spec.name .. "  " .. car.setupText) or car.name
+    ui.text(i .. "  " .. name, x + 10 * s, ry, 6 * s, colors.paint)
     -- The panel opens with the others still out there: they fill in as they finish.
     local t = car.finished and hud.formatTime(car.finishTime)
       or (car.retired and "LEFT THE RACE")
@@ -1196,6 +1284,9 @@ function menu.drawResults(sw, sh)
       rows[1] = { label = voted > 0 and string.format("REMATCH %d/%d", voted, total) or "REMATCH",
         activate = function() network.voteRematch() end }
     end
+  end
+  if rm.isOnline() and network.isMatch() then
+    rows[#rows + 1] = { label = "FIND ANOTHER", activate = findAnother }
   end
   rows[#rows + 1] = { label = rm.opts().fromEditor and "BACK TO EDITOR" or "QUIT TO MENU", activate = quitRace }
   ui.list("results", rows, x + 8 * s, y + h - 36 * s, w - 16 * s, 15 * s, 7 * s, s)

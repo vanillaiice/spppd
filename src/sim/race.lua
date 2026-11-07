@@ -83,8 +83,9 @@ function Race.new(opts)
   -- Seconds to lights out on the clock everyone shares, or nil until it's called.
   self.startIn = online and online.startIn
   self.gone = {}
-  -- Tiers change how much grip a car has, so an online race has to share one.
-  local handling = online and dynamics.DEFAULT_ASSIST or opts.assist or dynamics.DEFAULT_ASSIST
+  -- Online too, each driver brings their own: another driver's car is placed from
+  -- what their game sends, so their tyres never run here.
+  local handling = opts.assist or dynamics.DEFAULT_ASSIST
   self.handling = handling
   -- A second driver at the same screen. Local only: never online.
   local second = not online and opts.player2 or nil
@@ -129,11 +130,14 @@ function Race.new(opts)
 
   if online then
     self.player.slot = online.slot
+    -- How each driver set their car up, for the results.
+    self.player.setupText = online.setup
     for _, driver in ipairs(online.peers) do
       local px, py, pa, pi = self.track:gridSlot(gridPlace(online, driver.slot))
       local peer = Car.new(driver.spec, px, py, pa, { name = "P" .. driver.slot, color = driver.color })
       peer.remote = true
       peer.slot = driver.slot
+      peer.setupText = driver.setup
       peer.driver = RemoteDriver.new(driver.state)
       peer.trackIndex = pi
       self.cars[#self.cars + 1] = peer

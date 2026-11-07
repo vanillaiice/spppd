@@ -182,6 +182,34 @@ h.describe("network", function()
     h.assertEq(hello.vote, 3)
   end)
 
+  h.it("hello carries the handling and gearbox, and a 3.0 game's says neither", function()
+    local hello = network.unpackHello(network.packHello({ car = "rocket", paint = 1, have = true, ready = 0, vote = 0,
+      features = 1, handling = "sim", gearbox = "manual" }))
+    h.assertEq(hello.handling, "sim")
+    h.assertEq(hello.gearbox, "manual")
+    local old = network.unpackHello("hello|rocket|1|1|0|0|0")
+    h.assertTrue(old and old.handling == nil and old.gearbox == nil, "3.0")
+    local odd = network.unpackHello("hello|rocket|1|1|0|0|1|turbo|paddles")
+    h.assertTrue(odd and odd.handling == nil and odd.gearbox == nil, "only the setups there are")
+  end)
+
+  h.it("match carries the relay's race, the countdown and the votes", function()
+    local match = network.unpackMatch("quick|oasis|2|dusk|15|12|2:1,4:2")
+    h.assertEq(match.kind, "quick")
+    h.assertEq(match.track, "oasis")
+    h.assertEq(match.laps, 2)
+    h.assertEq(match.time, "dusk")
+    h.assertEq(match.startIn, 15)
+    h.assertEq(match.online, 12)
+    h.assertEq(match.votes[2], 1)
+    h.assertEq(match.votes[4], 2)
+    local alone = network.unpackMatch("quick|oasis|99|day|-1|1|")
+    h.assertTrue(alone and alone.startIn == -1 and next(alone.votes) == nil and alone.laps == 20, "alone, clamped")
+    h.assertTrue(network.unpackMatch("quick|oasis|2|dusk|15|12||ranked things|9") ~= nil, "fields added later")
+    h.assertEq(network.unpackMatch("quick|oasis|2|dusk|15"), nil, "but not one short")
+    h.assertEq(network.unpackMatch("quick|../x|2|dusk|15|1|"), nil, "or a track that isn't a name")
+  end)
+
   h.it("setup carries the race, and clamps what it's told", function()
     local setup = network.unpackSetup(network.packSetup({ round = 2, hash = "abc123", chunks = 3, laps = 5, time = "dusk",
       startAt = 123.456, title = "HARBOUR" }))
@@ -333,9 +361,49 @@ h.describe("network", function()
     network.status = "idle"
   end)
 
+  h.it("quick match is one press, with the handling and gearbox that count online", function()
+    local menu = require("src/menu")
+    local function labels(rows)
+      local found = {}
+      for _, row in ipairs(rows) do found[row.label] = row end
+      return found
+    end
+    network.status = "idle"
+    local online = labels(menu.onlineRows())
+    for _, label in ipairs({ "QUICK MATCH", "HANDLING", "GEARBOX" }) do
+      h.assertTrue(online[label], label .. " is missing")
+    end
+    -- In a room the server made, the start is the server's.
+    network.status, network.slot, network.leader = "lobby", 1, 1
+    network.match = network.unpackMatch("quick|oasis|2|dusk|15|3|")
+    network.peers = { [2] = { have = true } }
+    local queued = labels(menu.onlineRows())
+    h.assertTrue(queued.CANCEL and not queued["START RACE"] and not queued["ROOM CODE"], "only CANCEL and BACK")
+    h.assertTrue(network.statusText():find("Looking for drivers"), network.statusText())
+    network.peers, network.slot, network.leader, network.match = {}, nil, nil, nil
+    network.status = "idle"
+  end)
+
+  h.it("a server that doesn't answer a quick match says it may not have one", function()
+    local quiet = socket.udp()
+    quiet:setsockname("127.0.0.1", 0)
+    local _, port = quiet:getsockname()
+    local c = freshClient()
+    c.queue("127.0.0.1", port, { car = "rocket", paint = 1, handling = "arcade", gearbox = "auto" })
+    h.assertEq(c.status, "connecting")
+    h.assertTrue(c.statusText():find("Looking for a race"), c.statusText())
+    local asked = quiet:receive()
+    h.assertTrue(asked and asked:find("^event|queue|5||||1|||quick||") and #asked >= 64, tostring(asked))
+    c.lastHeard = love.timer.getTime() - 7
+    c.update(0.02)
+    h.assertEq(c.status, "error")
+    h.assertTrue(c.message:find("quick match"), c.message)
+    quiet:close()
+  end)
+
   h.it("warns players about what online can't do", function()
     local notes = table.concat(require("src/menu").ONLINE_NOTES, " ")
-    for _, word in ipairs({ "new", "way back in", "cheat", "connection", "same version", "IP address" }) do
+    for _, word in ipairs({ "new", "way back in", "cheat", "connection", "same version", "IP address", "own handling" }) do
       h.assertTrue(notes:find(word, 1, true), "the notes should mention " .. word)
     end
   end)
@@ -779,6 +847,94 @@ h.describe("network", function()
     h.assertTrue(not c[1].canStart(), "not with an older game in the room")
     c[1].peers[2].features = 1
     h.assertTrue(c[1].canStart(), "fine once everyone can")
+    c[1].disconnect()
+    c[2].disconnect()
+  end)
+  -- Queues clients one after another, as drivers who press QUICK MATCH would.
+  local function queueUp(host, port, count)
+    local clients = {}
+    for i = 1, count do
+      clients[i] = freshClient()
+      clients[i].queue(host, port, { car = garage[i].id, paint = i, handling = i == 1 and "sim" or "arcade",
+        gearbox = "manual" })
+      h.assertTrue(pump(clients, 3, function() return clients[i].status == "lobby" and clients[i].match end),
+        "driver " .. i .. " should get a room")
+    end
+    return clients
+  end
+
+  h.it("drivers who queue share a room, and the leader starts it when the countdown ends", function()
+    local host, port = relayAddress()
+    if not host then return end
+    local c = queueUp(host, port, 3)
+    for i = 2, 3 do h.assertEq(c[i].roomCode, c[1].roomCode, "one room") end
+    h.assertEq(#c[1].roomCode, 8, "with a code of the relay's")
+    h.assertTrue(c[1].isLeader() and c[1].match.startAt, "counting down")
+    h.assertTrue(pump(c, 2, function()
+      return c[1].peers[2].handling and c[2].peers[1].handling and c[3].setup
+    end), "everyone hears the others' setup")
+    h.assertEq(c[2].peers[1].handling, "sim")
+    h.assertEq(c[2].peers[1].gearbox, "manual")
+    h.assertEq(c[3].setup.hash, c[3].matchHash, "the track is the relay's")
+    h.assertTrue(not c[3].download, "and nobody downloads a built-in")
+    h.assertEq(c[3].setup.title, c[3].matchTitle())
+    h.assertEq(c[3].setup.laps, c[3].match.laps)
+    h.assertEq(c[1].status, "lobby", "nobody starts early")
+
+    -- A setup with another track is ignored.
+    local fake = network.packSetup({ round = 0, hash = "deadbeefdeadbeef", chunks = 2, laps = 9, time = "day",
+      title = "SWAP", needs = 0 })
+    h.assertTrue(not pump(c, 0.5, function()
+      return c[2].download ~= nil or c[2].setup.hash ~= c[2].matchHash
+    end, function() c[1].udp:send(fake) end), "a swapped track was taken")
+
+    local loaded = loadWhenReady(c)
+    h.assertTrue(pump(c, 6, function()
+      return c[1].startIn() and c[2].startIn() and c[3].startIn()
+    end, loaded), "the race should start by itself")
+    h.assertTrue(pump(c, 2, function() return c[1].locked end), "and the room lock")
+
+    local late = freshClient()
+    late.queue(host, port, { car = "rocket", paint = 1, handling = "arcade", gearbox = "auto" })
+    h.assertTrue(pump({ late }, 3, function() return late.status == "lobby" end), "a late driver gets a room")
+    h.assertTrue(late.roomCode ~= c[1].roomCode, "of their own")
+
+    -- FIND ANOTHER leaves and looks again in one go.
+    c[3].findAnother()
+    h.assertTrue(pump({ c[1], c[2], c[3], late }, 4, function()
+      return c[3].status == "lobby" and c[3].roomCode == late.roomCode and c[1].peers[3] == nil
+    end), "the one who left joins whoever is looking")
+    for _, client in ipairs({ c[1], c[2], c[3], late }) do client.disconnect() end
+  end)
+
+  -- Last: it leaves this address unable to queue for two minutes.
+  h.it("two votes remove a driver from a quick match, and everyone hears them coming", function()
+    local host, port = relayAddress()
+    if not host then return end
+    local c = queueUp(host, port, 3)
+    h.assertTrue(c[1].canVoteOut(), "three can vote")
+    c[1].voteOut(3)
+    h.assertTrue(c[1].hasVotedOut(3))
+    local heard = function(client)
+      for _, n in ipairs(client.takeNotices()) do
+        if n.kind == "vote" and n.slot == 3 and n.count == 1 then return true end
+      end
+      return false
+    end
+    local saw = {}
+    h.assertTrue(pump(c, 3, function()
+      for i = 1, 3 do saw[i] = saw[i] or heard(c[i]) end
+      return saw[1] and saw[2] and saw[3]
+    end), "everyone, the driver it's about too, hears about the vote")
+    h.assertEq(c[3].status, "lobby", "one vote isn't enough")
+    c[2].voteOut(3)
+    h.assertTrue(pump(c, 3, function() return c[3].status == "error" and c[1].peers[3] == nil end), "two are")
+    h.assertTrue(c[3].message:find("voted you out"), c[3].message)
+    h.assertTrue(not c[1].canVoteOut(), "and two can't vote")
+
+    c[3].queue(host, port, { car = "rocket", paint = 1, handling = "arcade", gearbox = "auto" })
+    h.assertTrue(pump({ c[3] }, 3, function() return c[3].status == "error" end), "they can't queue straight away")
+    h.assertTrue(c[3].message:find("again in 2 minutes"), c[3].message)
     c[1].disconnect()
     c[2].disconnect()
   end)

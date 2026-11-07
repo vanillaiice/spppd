@@ -714,6 +714,11 @@ local function updateOnline(dt)
       rm.setToast("CONNECTION LOST  GETTING BACK IN", colors.marshal, 4)
     elseif n.kind == "back" then
       rm.setToast("BACK ONLINE", colors.marshal, 3)
+    elseif n.kind == "vote" then
+      -- Everyone hears, the driver it's about too, so a vote is never a surprise.
+      local car = carInSeat(race, n.slot)
+      local who = n.slot == network.slot and "YOU" or (car and car.name) or ("P" .. n.slot)
+      rm.setToast(string.format("%s MAY BE VOTED OUT (%d/2)", who, n.count), colors.kerb, 4)
     else
       local car = carInSeat(race, n.slot)
       if car and not car.finished then

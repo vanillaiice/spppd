@@ -43,6 +43,16 @@ local function makeCar()
   }
 end
 
+-- A bot that presses QUICK MATCH.
+local function addQueuer(carId)
+  local client = newBot()
+  local host, port = settings.serverAddress()
+  client.queue(host, port, { car = carId, paint = #bots + 2, handling = "arcade", gearbox = "auto" })
+  local bot = { client = client, car = makeCar() }
+  bots[#bots + 1] = bot
+  return bot
+end
+
 local function addBot(role, code, carId, race)
   local client = newBot()
   local host, port = settings.serverAddress()
@@ -98,7 +108,7 @@ local function steps()
   end)
   step(5, function() shot("notice") end)
   step(3, function()
-    ui.focus.online = 4
+    ui.focus.online = 7
     press("return")
   end)
   step(3, function()
@@ -239,7 +249,7 @@ local function steps()
   end)
   step(3, function()
     network.roomCode = botRoom
-    ui.focus.online = 6
+    ui.focus.online = 9
     press("return")
   end)
   step(1, function()
@@ -271,6 +281,68 @@ local function steps()
   step(1, function()
     if #rm.race().cars ~= 1 then return "again" end
     expect(true, "the host leaving a race doesn't end it for the joiner")
+    saved.assists = settings.assists
+    settings.assists = "sim"
+    press("escape")
+  end)
+  -- Quick match: no code, and the server picks the race.
+  step(3, function() press("down") end)
+  step(2, function() press("return") end)
+  step(5, function()
+    expect(state.screen == "menu", "QUIT TO MENU leaves the shared race")
+    ui.focus.main = 4
+    press("return")
+  end)
+  step(3, function()
+    expect(menu.screen == "online", "back on ONLINE")
+    ui.focus.online = 6
+    press("return")
+  end)
+  step(1, function()
+    if network.status ~= "lobby" or not network.match then return "again" end
+    expect(#network.roomCode == 8, "QUICK MATCH finds a room the server made")
+    expect(network.statusText():find("Looking for drivers"), "and says it's looking")
+    expect(menu.onlineRows()[1].label == "CANCEL", "with nothing to choose but CANCEL")
+    addQueuer("samurai")
+    addQueuer("cyber")
+  end)
+  step(1, function()
+    if not network.match.startAt then return "again" end
+    expect(network.statusText():find("Starts in"), "two more drivers start the countdown")
+  end)
+  step(20, function() shot("quick-lobby") end)
+  step(1, function()
+    if state.screen ~= "race" then return "again" end
+    expect(true, "the race starts by itself")
+    expect(rm.race().handling == "sim", "with the player's own handling")
+    expect(#rm.race().cars == 3, "and three cars")
+    parkBots()
+  end)
+  step(1, function()
+    if rm.race().phase ~= "racing" then return "again" end
+  end)
+  step(10, function() press("escape") end)
+  step(3, function()
+    expect(network.canVoteOut(), "three drivers can vote one out")
+    ui.focus.pause = 2
+    press("return")
+  end)
+  step(3, function()
+    expect(menu.voting, "VOTE OUT lists the other drivers")
+    shot("vote-out")
+    ui.focus.vote = 1
+    press("return")
+  end)
+  step(1, function()
+    if (network.match.votes[2] or 0) < 1 then return "again" end
+    expect(not menu.voting, "the vote goes in")
+    expect(network.hasVotedOut(2), "and counts once")
+  end)
+  step(30, function()
+    shot("voted")
+    settings.assists = saved.assists
+    for _, bot in ipairs(bots) do bot.client.disconnect() end
+    bots = {}
     print("ONLINE FLOW PASSED")
     love.event.quit(0)
   end)

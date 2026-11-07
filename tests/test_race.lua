@@ -462,12 +462,15 @@ h.describe("race", function()
     race:destroy()
   end)
 
-  h.it("online races ignore the local handling tier", function()
+  h.it("online, each driver keeps their own handling", function()
     local track = Track.new(catalog.builtin()[1].def)
     local race = Race.new({ mode = "race", track = track, laps = 1, seed = 3, assist = "sim",
-      online = { slot = 1, peers = { { slot = 2, spec = garage[2], state = function() end } } } })
-    h.assertEq(race.handling, "arcade")
-    h.assertEq(race.player.model.assist.grip, require("src/sim/dynamics").ASSISTS.arcade.grip)
+      online = { slot = 1, setup = "SIM MANUAL",
+        peers = { { slot = 2, spec = garage[2], state = function() end, setup = "ARCADE" } } } })
+    h.assertEq(race.handling, "sim")
+    h.assertEq(race.player.model.assist.grip, require("src/sim/dynamics").ASSISTS.sim.grip)
+    h.assertEq(race.player.setupText, "SIM MANUAL", "and the results can say how each drives")
+    h.assertEq(race.cars[2].setupText, "ARCADE")
     race:destroy()
   end)
 
