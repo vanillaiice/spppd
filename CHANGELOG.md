@@ -1,5 +1,14 @@
 # Changelog
 
+## 3.2.1 (2026-11-08)
+
+### Online
+
+- COPY RECOVERY CODE in PROFILE puts the code on the clipboard. On the other device,
+  I HAVE A RECOVERY CODE fills itself in when the code is copied there.
+- Text fields take pasted text: ctrl+V on a computer, or paste on a phone's keyboard.
+  Spaces and line breaks in a pasted code are dropped.
+
 ## 3.2.0 (2026-11-08)
 
 3.2 still races 3.0 and 3.1. Driver names need a server from 3.2 on: the official one

@@ -84,8 +84,9 @@ local function splitSetup()
   ui.focus.setup = 2
 end
 
--- PROFILE without a driver, or with one and its recovery code showing. Nothing
--- is sent: the driver is written straight to a file of the scene's own.
+-- PROFILE without a driver, or with one, its recovery code showing and just copied
+-- (the fullest it gets). Nothing is sent: the driver is written straight to a file
+-- of the scene's own.
 local function profile(signedIn)
   local account = require("src/account")
   account.FILE = "visual-account.lua"
@@ -99,6 +100,7 @@ local function profile(signedIn)
   account.profile = signedIn and { since = "2026-11-07", devices = 2 } or nil
   menu.enter()
   menu.showCode = signedIn
+  if signedIn then account.message = "Copied. Keep it somewhere safe." end
   menu.go("profile")
 end
 

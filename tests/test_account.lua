@@ -45,7 +45,7 @@ h.describe("account", function()
       }))
       account.load()
       local code = account.recoveryCode()
-      h.assertTrue(code:match("^1042%-%u") ~= nil, code)
+      h.assertTrue(code:match("^1042%-[%u2-7]") ~= nil, code)
       local id, back = account.readCode(code)
       h.assertEq(id, 1042)
       h.assertEq(back, raw)
@@ -56,6 +56,47 @@ h.describe("account", function()
       h.assertEq(account.readCode("1042"), nil)
       h.assertEq(account.readCode("SPEEDY-ABCDE"), nil)
     end)
+  end)
+
+  h.it("a copied recovery code fills the field on the other device", function()
+    local menu, ui = require("src/menu"), require("src/ui")
+    local get, set = love.system.getClipboardText, love.system.setClipboardText
+    local clipboard = ""
+    love.system.getClipboardText = function() return clipboard end
+    love.system.setClipboardText = function(text) clipboard = text end
+    local function row(label)
+      for _, r in ipairs(menu.profileRows()) do
+        if r.label == label then return r end
+      end
+      error("no row " .. label)
+    end
+    local ok, err = pcall(withAccount, "test.invalid", "test-account.lua", function()
+      love.filesystem.write(account.FILE, "return " .. settings.serialize({
+        ["test.invalid"] = { id = 1042, name = "SPEEDY", key = account.base64url(KEY),
+          recovery = account.base64url(account.randomBytes(16)) },
+      }))
+      account.load()
+      local code = account.recoveryCode()
+      row("COPY RECOVERY CODE").activate()
+      h.assertEq(clipboard, code)
+      -- Another device: no driver, and the code copied with a line break after it.
+      love.filesystem.remove(account.FILE)
+      account.load()
+      clipboard = code .. "\n"
+      row("I HAVE A RECOVERY CODE").activate()
+      h.assertEq(ui.editing.value, code)
+      ui.editing = nil
+      -- Anything else on the clipboard leaves the field empty, to type or paste into.
+      clipboard = "hello there"
+      row("I HAVE A RECOVERY CODE").activate()
+      h.assertEq(ui.editing.value, "")
+      ui.textinput(" " .. code:lower() .. " ")
+      h.assertEq(ui.editing.value, code:lower())
+      ui.editing = nil
+    end)
+    love.system.getClipboardText, love.system.setClipboardText = get, set
+    ui.editing = nil
+    if not ok then error(err, 0) end
   end)
 
   h.it("names have the shape the server takes", function()

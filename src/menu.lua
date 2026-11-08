@@ -777,14 +777,23 @@ function menu.openProfile()
   menu.go("profile")
 end
 
-local function editRow(label, field, value, pattern, max, done)
+-- `start` is what the field holds when it opens, when there's something to offer.
+local function editRow(label, field, value, pattern, max, done, start)
   return { label = label, disabled = account.busy ~= nil, value = function()
       if ui.editing and ui.editing.field == field then return ui.editing.value .. "_" end
       return value and value() or ""
     end, activate = function()
       ui.startEditing("", function(v) if v ~= "" then done(v) end end, pattern, max)
       ui.editing.field = field
+      if start then ui.textinput(start() or "") end
     end }
+end
+
+-- A recovery code already on the clipboard, copied on another device, fills the
+-- field by itself.
+local function copiedCode()
+  local text = love.system.getClipboardText()
+  return text and account.readCode(text) and text or nil
 end
 
 -- A row that does something hard to undo asks for a second press.
@@ -808,7 +817,7 @@ local function profileRows()
   if not driver then
     return {
       editRow("PICK A NAME", "name", nil, "^[%w_%-]$", 12, account.signUp),
-      editRow("I HAVE A RECOVERY CODE", "code", nil, "^[%w%-]$", 48, account.recover),
+      editRow("I HAVE A RECOVERY CODE", "code", nil, "^[%w%-]$", 48, account.recover, copiedCode),
       back,
     }
   end
@@ -816,6 +825,10 @@ local function profileRows()
     editRow("NAME", "rename", function() return driver.name end, "^[%w_%-]$", 12, account.rename),
     { label = menu.showCode and "HIDE RECOVERY CODE" or "SHOW RECOVERY CODE", activate = function()
       menu.showCode = not menu.showCode
+    end },
+    { label = "COPY RECOVERY CODE", activate = function()
+      love.system.setClipboardText(account.recoveryCode())
+      account.message = "Copied. Keep it somewhere safe."
     end },
     confirmRow("SIGN OUT OF THIS DEVICE", "PRESS AGAIN TO SIGN OUT", account.signOut),
     confirmRow("DELETE DRIVER", "PRESS AGAIN TO DELETE", account.forget),
@@ -832,7 +845,7 @@ function menu.profileText()
   local lines = {}
   if driver and menu.showCode then
     lines[#lines + 1] = account.recoveryCode()
-    lines[#lines + 1] = "Type it into PROFILE on another device to race as " .. driver.name
+    lines[#lines + 1] = "Paste it into PROFILE on another device to race as " .. driver.name
       .. " there. Anyone with it can. Lose it and every device, and the driver is gone."
   end
   if account.message ~= "" then lines[#lines + 1] = account.message end

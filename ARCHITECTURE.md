@@ -1,6 +1,6 @@
 # SPPPD Architecture
 
-This describes the code as it stands at version 3.2.0 (2026-11-08). It explains how
+This describes the code as it stands at version 3.2.1 (2026-11-08). It explains how
 the game works and nothing else. `ROADMAP.md` holds what's agreed but not built.
 
 Numbers in the tables were measured from the code at `c88f172` (version 2.1.0) unless
@@ -1837,8 +1837,9 @@ Android), and elsewhere from clocks, table addresses and timing jitter stirred
 through SHA-256.
 
 The recovery code is the driver's number and the recovery key in base32,
-`1042-K7Q2M-…`. Typed into PROFILE on another device, it signs that device in with a
-device key of its own; the proof covers the new key, so it can't add a different one.
+`1042-K7Q2M-…`. COPY RECOVERY CODE puts it on the clipboard, and I HAVE A RECOVERY
+CODE starts filled in when the clipboard holds one that reads. Typed or pasted into
+PROFILE on another device, it signs that device in with a device key of its own; the proof covers the new key, so it can't add a different one.
 Ten devices at most: past that, the one used least recently is dropped.
 
 | Packet | Direction | Purpose |
@@ -2134,7 +2135,7 @@ positions, hence "new cars go on the end".
 | `make check-relay` | Checks the official relay answers, without showing in its stats |
 | `make site` | The website in `site/dist`, with this version's builds to download. See [The website](#the-website) |
 | `make deploy-site` | Builds the website, then deploys it |
-| `make zip` | `dist/spppd-3.2.0.love`. Tests stay out |
+| `make zip` | `dist/spppd-3.2.1.love`. Tests stay out |
 | `make win64 win32` | Windows zips. To this project, these are what a release means |
 | `make apk` | Test APK, self-signed, application id `xyz.hblabs.spppd` |
 | `make apk-perf` | APK that runs `--perf` at launch |

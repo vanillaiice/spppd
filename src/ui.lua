@@ -86,6 +86,8 @@ function ui.keypressed(key)
       stopEditing()
     elseif key == "backspace" then
       ui.editing.value = ui.editing.value:sub(1, -2)
+    elseif key == "v" and love.keyboard.isDown("lctrl", "rctrl", "lgui", "rgui") then
+      ui.textinput(love.system.getClipboardText() or "")
     end
     return
   end
@@ -104,10 +106,15 @@ function ui.gamepadpressed(button)
   end
 end
 
+-- Text arrives a letter at a time when typed, or all at once when pasted: a
+-- phone's keyboard pastes this way, and so does ctrl+V. Letters the field doesn't
+-- take are dropped, so a pasted code can carry spaces and line breaks.
 function ui.textinput(t)
   local e = ui.editing
-  if e and #e.value < (e.max or 24) and t:match(e.pattern or "^[%w_%.:%- ]$") then
-    e.value = e.value .. t
+  if not e then return end
+  for c in t:gmatch(".") do
+    if #e.value >= (e.max or 24) then break end
+    if c:match(e.pattern or "^[%w_%.:%- ]$") then e.value = e.value .. c end
   end
 end
 
