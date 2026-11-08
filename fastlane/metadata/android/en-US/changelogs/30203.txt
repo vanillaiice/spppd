@@ -1,1 +1,0 @@
-- Pausing during boost freezes its streaks of air too, with the slipstream and the neon glow.
