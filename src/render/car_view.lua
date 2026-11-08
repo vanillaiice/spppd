@@ -255,6 +255,11 @@ local function drawWheel(wheel, steer, shift)
   love.graphics.pop()
 end
 
+-- The car's own clock, which stands still while the race is paused.
+local function fxTime(car)
+  return fxOf(car).clock
+end
+
 local function warpAmount(car)
   return car.fx and car.fx.warp or 0
 end
@@ -271,7 +276,7 @@ local function drawWarp(car, alpha)
   local amount = warpAmount(car) * alpha
   if amount < 0.02 then return end
   local hl, hw = car.length / 2, car.width / 2
-  local time = love.timer.getTime()
+  local time = fxTime(car)
   for i = 1, 12 do
     local phase = (time * 3.4 + i * 0.618) % 1
     local side = i % 2 == 0 and 1 or -1
@@ -296,7 +301,7 @@ local function drawSlipstream(car, alpha)
   local amount = car.model.slipstream * (1 - warpAmount(car))
   if amount < 0.05 then return end
   local hl, hw = car.length / 2, car.width / 2
-  local time = love.timer.getTime()
+  local time = fxTime(car)
   for i = 1, 6 do
     local phase = (time * 1.6 + i * 0.37) % 1
     local side = (i % 2 == 0 and 1 or -1) * (hw + (0.2 + (i % 3) * 0.3) * M)
@@ -334,7 +339,7 @@ function view.draw(car, x, y, angle, alpha)
   if car.neon then
     local blob = textures.blob
     local r, g, b = neonColor(car)
-    local pulse = 0.85 + 0.15 * math.sin(love.timer.getTime() * NEON_PULSE)
+    local pulse = 0.85 + 0.15 * math.sin(fxTime(car) * NEON_PULSE)
     love.graphics.setBlendMode("add")
     love.graphics.setColor(r, g, b, pulse * alpha)
     love.graphics.draw(blob, 0, 0, 0, car.length * 2.3 / blob:getWidth(), car.width * 4.6 / blob:getHeight(),
