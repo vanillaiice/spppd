@@ -161,6 +161,20 @@ local SCENES = {
     r.startDelay = 100
     r.player.driver = { revs = function() return 0.68 end }
   end,
+  -- Parked on the road beside a sponsor board: SPPPD_BOARD (its number, 1 by
+  -- default), SPPPD_TRACK and SPPPD_TIME. SPPPD_SPOTS=1 shows the boards' numbers.
+  boards = function()
+    race({ track = os.getenv("SPPPD_TRACK") or "mirage", time = os.getenv("SPPPD_TIME") or "day", opponents = 0 })
+    local r = rm.race()
+    r.startDelay = 100
+    local list = require("src/render/track_renderer").boardSpots(r.track)
+    local b = list[math.min(#list, tonumber(os.getenv("SPPPD_BOARD")) or 1)]
+    local i = r.track:locate(b.x, b.y)
+    local s = r.track.samples[i]
+    r.player:teleport(s.x, s.y, math.atan2(s.ty, s.tx))
+    rm.syncCamera(1)
+    r.player.driver = { update = function(_, c) c.input.throttle, c.input.handbrake = 0, true end }
+  end,
   trial = function() race({ track = "highlands", time = "day", mode = "trial", opponents = 0 }) autopilot() end,
   free = function()
     race({ time = "day", mode = "freestyle", opponents = 0 })

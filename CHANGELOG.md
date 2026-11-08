@@ -1,5 +1,12 @@
 # Changelog
 
+## Unreleased
+
+### Tracks
+
+- Sponsor boards line the fences, like at a real circuit. The sponsors are made up
+  for now; real ones may come later.
+
 ## 3.2.3 (2026-11-08)
 
 ### Changed
