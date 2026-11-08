@@ -1,5 +1,12 @@
 # Changelog
 
+## 3.2.3 (2026-11-08)
+
+### Changed
+
+- Pausing during boost freezes its streaks of air too. They, the slipstream's air
+  and the neon glow kept moving while the race stood still.
+
 ## 3.2.2 (2026-11-08)
 
 ### Android

@@ -1,3 +1,0 @@
-- First release on F-Droid, built from source.
-- New package name, xyz.spppd: it installs beside an SPPPD from itch or GitHub instead of updating it, with fresh settings, records and tracks. Copy your recovery code from PROFILE to bring your driver name across.
-- A pixel car icon, and no microphone permission.

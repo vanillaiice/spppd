@@ -1,10 +1,10 @@
 -- Global tuning constants. Everything here is shared by the simulation,
 -- the renderer and the tests, so it must stay free of LÖVE calls.
 local config = {
-  VERSION = "3.2.2",
+  VERSION = "3.2.3",
   -- The Android version code: major * 10000 + minor * 100 + patch. Stores like
   -- F-Droid only offer an update when it goes up, so bump it with VERSION.
-  VERSION_CODE = 30202,
+  VERSION_CODE = 30203,
   -- What the official server keeps, and its rules: PRIVACY.md on the website, which
   -- links to TERMS.md.
   PRIVACY_URL = "https://spppd.xyz/privacy/",
