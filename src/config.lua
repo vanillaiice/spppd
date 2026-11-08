@@ -2,6 +2,9 @@
 -- the renderer and the tests, so it must stay free of LÖVE calls.
 local config = {
   VERSION = "3.2.1",
+  -- The Android version code: major * 10000 + minor * 100 + patch. Stores like
+  -- F-Droid only offer an update when it goes up, so bump it with VERSION.
+  VERSION_CODE = 30201,
   -- What the official server keeps, and its rules: PRIVACY.md on the website, which
   -- links to TERMS.md.
   PRIVACY_URL = "https://spppd.xyz/privacy/",

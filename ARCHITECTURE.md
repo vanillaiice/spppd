@@ -94,7 +94,10 @@ each thing at a time:
 main.lua            LÖVE callbacks; chooses the game, --test, --perf or --visual
 conf.lua            Window and module setup; turns graphics off for --test
 Makefile            run, test*, server, deploy-relay, site*, deploy-site, zip, apk, ...
-android/apk.sh      Builds and signs the test APK
+android/apk.sh      Builds and signs the APK
+android/prepare.sh  Readies the love-android submodule for SPPPD; apk.sh and F-Droid run it
+android/luajit.sh   Rebuilds LuaJIT for Android from source, for F-Droid
+android/fdroid.yml  The F-Droid build recipe; the listing is in fastlane/
 config/deploy.yml   The website as the Kamal app, and the relay as its accessory
 bin/relay-deploy    Builds the relay and deploys it
 bin/site-deploy     Deploys the website
@@ -170,8 +173,9 @@ tests/
   perf.lua                Frame timing
 ```
 
-`dist/` and `.backup/` are ignored by git. `dist/` also holds `love-android`, a
-1.1 GB compiled LÖVE that `make clean` deletes.
+`dist/` and `.backup/` are ignored by git. LÖVE for Android is the
+`android/love-android` submodule (11.5a); building it fills its `app/build` with
+about 1 GB.
 
 ---
 
@@ -2137,15 +2141,18 @@ positions, hence "new cars go on the end".
 | `make deploy-site` | Builds the website, then deploys it |
 | `make zip` | `dist/spppd-3.2.1.love`. Tests stay out |
 | `make win64 win32` | Windows zips. To this project, these are what a release means |
-| `make apk` | Test APK, self-signed, application id `xyz.hblabs.spppd` |
+| `make apk` | APK signed with a local key, application id `xyz.spppd` |
 | `make apk-perf` | APK that runs `--perf` at launch |
-| `make all` | `clean` first, which wipes `dist/`, including `love-android`. Releases use `make zip win64 win32` |
+| `make all` | `clean` first, which wipes `dist/`. Releases use `make zip win64 win32` |
 
 The first `make apk` compiles LÖVE 11.5 for Android (about 1 GB). After that only the
 `.love` inside the APK is swapped, then it's realigned and resigned.
 
-The version lives in `config.lua`, and `Makefile` and `android/apk.sh` read it from
-there. There are no tags and no CI.
+The version lives in `config.lua`, and `Makefile` and `android/prepare.sh` read it from
+there. `VERSION_CODE` beside it is the Android version code, major * 10000 +
+minor * 100 + patch; a test checks the two agree. F-Droid builds each new `v*` tag
+from source and offers it only if the code went up, and shows
+`fastlane/metadata/android/en-US/changelogs/<VERSION_CODE>.txt` as its notes. There is no CI.
 
 ### Tests
 

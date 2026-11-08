@@ -1,0 +1,2 @@
+- COPY RECOVERY CODE in PROFILE puts the code on the clipboard. On the other device, I HAVE A RECOVERY CODE fills itself in when the code is copied there.
+- Text fields take pasted text from the phone's keyboard. Spaces and line breaks in a pasted code are dropped.

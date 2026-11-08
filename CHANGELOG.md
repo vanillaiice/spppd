@@ -1,5 +1,18 @@
 # Changelog
 
+## Unreleased
+
+### Android
+
+- SPPPD is now built to go on F-Droid, which builds it from source.
+- **The Android app is new to your phone**: its package changed to `xyz.spppd`, to
+  match spppd.xyz. Install this version and it sits beside the old SPPPD rather than
+  updating it, and starts with fresh settings, records and tracks. Uninstall the old
+  one when you're done with it. A driver name comes back with its recovery code, so
+  copy that from PROFILE first.
+- A pixel car icon instead of LÖVE's heart.
+- It no longer asks for the microphone, which it never used.
+
 ## 3.2.1 (2026-11-08)
 
 ### Online

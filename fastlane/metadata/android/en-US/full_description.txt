@@ -1,0 +1,19 @@
+SPPPD is a top-down racing game. Race the AI, set time trials, drift around in freestyle, or race up to three friends online. Phones race desktops.
+
+<b>12 cars, 10 tracks, four times of day.</b> From a 235 hp four-cylinder to a quad-turbo 16 at 381 km/h, each sounding like the engine it has. Race at day, dusk, night or midnight, under floodlights and your own headlights.
+
+<b>Slide for boost.</b> The boost bar fills on its own, and three times faster while you're sideways. Sit in someone's slipstream, then pull out and slingshot past.
+
+<b>Handling your way.</b> Arcade is the default: big grip and a held drift on the handbrake. Sport adds realistic grip with driver aids, and Sim takes the aids away.
+
+<b>Made for phones too.</b> A stick or buttons to steer, with gas that comes on by itself unless you turn it off, and controls you can resize and fade. Plug in a pad and the touch controls get out of the way.
+
+<b>Freestyle.</b> A lot full of cones and containers to play in, or any circuit with no clock.
+
+<b>Online, two to four players.</b> Quick match finds you a race, or one player hosts and reads out a room code. Pick a driver name if you like; a recovery code moves it to your other devices. Racing offline sends nothing anywhere.
+
+<b>Everything you see and hear is made by the game</b>: the cars, the tracks, the engine sounds and the menu music. No ads, no account.
+
+The track editor is in the desktop version, free at https://spppd.xyz, and tracks made there can be raced on a phone online.
+
+SPPPD is free software under the GPLv3, built with LÖVE. The online server is AGPLv3, and you can run your own.

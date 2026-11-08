@@ -1,0 +1,4 @@
+[submodule "android/love-android"]
+	path = android/love-android
+	url = https://github.com/love2d/love-android
+	ignore = dirty

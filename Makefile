@@ -109,7 +109,8 @@ zip:
 	mkdir -p dist/
 	zip -9 -r dist/${name}-${ver}.love main.lua conf.lua LICENSE assets src
 
-# A test build for a phone. See android/apk.sh for what it needs.
+# The phone build. See android/apk.sh for what it needs; F-Droid builds its own
+# from source (android/fdroid.yml).
 apk: zip
 	./android/apk.sh
 
