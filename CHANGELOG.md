@@ -1,9 +1,9 @@
 # Changelog
 
-## Unreleased
+## 3.2.0 (2026-11-08)
 
-Driver names need a server from this version on. The official one will be updated
-first. Everything else still races 3.0 and 3.1.
+3.2 still races 3.0 and 3.1. Driver names need a server from 3.2 on: the official one
+is. On an older one the game says it may not have drivers yet.
 
 ### Online
 
