@@ -170,7 +170,7 @@ function rm.start(opts)
   local env = environment.time(timeName)
   local scene
   if track then
-    scene = track_renderer.load(track, timeName)
+    scene = track_renderer.load(track, timeName, opts.entry and opts.entry.builtin and opts.entry.name or nil)
     minimap.load(track)
   else
     scene = track_renderer.loadApron(timeName)

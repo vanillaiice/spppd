@@ -130,6 +130,8 @@ src/
 
   render/post.lua         Canvases, night lightmap, glow, final grade
   render/track_renderer.lua  Track to meshes; road, ground and gravel shaders
+  render/boards.lua       Sponsor boards along the fences: placement, meshes
+  sponsors.lua            Who is on the boards: the pool and sold spots
   sim/lot.lua             Freestyle's playground layout, as data
   render/car_view.lua     Draws cars, spawns tyre smoke and marks
   render/car_sprites.lua  Generates car sprites
@@ -1016,9 +1018,38 @@ stays.
 | Barriers | Coloured quads, plus an ink outline and a shadow copy |
 | Trees, palms, shrubs | Sprite batches. Up to 3000 attempts, kept where clumping noise and the distance from the road allow |
 | Containers, grandstand, grid boxes | Baked into rectangle meshes, because drawing them one at a time cost a slow phone more than the rest of the world together |
+| Sponsor boards | One rectangle mesh for the panels and one `Text` object for all the lettering. See below |
 
 Scenery uses an RNG seeded from the track's sample count, so a track looks the same
 each time.
+
+### Sponsor boards
+
+Hoardings like an F1 circuit's: flat panels on the grass just outside the fence,
+20 m long and 2.4 m deep, lettered so the bottom of the text faces the road. They're
+only drawn and have no physics. `boards.place` walks each fence from the start line,
+the left fence first, and lays a board along any chord a board long that the fence
+stays within 0.4 m of. That means straights and gentle bends, never hairpins. The
+board is pushed out by however far the fence bows towards it, so the gap stays the
+same. A board must sit wholly behind the nearest fence, clear of other boards and of
+the grandstand, and the next one comes 50 m on. That gives 19 to 56 boards a lap.
+A 10 m gap, about twice as many boards, felt like too much on ARDENNES.
+Trees and containers keep 6.5 m clear of every board.
+
+Boards are numbered 1..N in that order, and the number is the board's address:
+`sponsors.spots.mirage[3]` is MIRAGE's third board. A board that hasn't been sold
+takes `sponsors.pool[(n + offset) % #pool + 1]`, where the offset comes from the
+track's name. So each track starts somewhere else in the pool, and no sponsor is on
+two boards in a row. The player's own tracks show only the pool. **Changing
+`boards.LENGTH`, `DEPTH`, `GAP`, `SET`, `BOW` or the walk renumbers every board**,
+so once a spot is sold they stay as they are.
+
+A sponsor is up to 16 characters from A-Z, 0-9, space and `. - & ! '`, a `#rrggbb`
+board colour, and an optional `#rrggbb` ink colour. Without ink, the text is black
+or white, whichever reads better. `sponsors.check` validates an entry, and the tests
+run it over every entry. `SPPPD_SPOTS=1` labels each board with its address instead
+of its sponsor, and `love . --visual boards` with `SPPPD_TRACK` and `SPPPD_BOARD`
+parks beside one board.
 
 Freestyle's `loadApron` is a separate small scene: one huge quad and painted bays
 drawn around wherever the camera is, with the playground from `sim/lot.lua` in the

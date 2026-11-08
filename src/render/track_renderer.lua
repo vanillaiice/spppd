@@ -4,6 +4,7 @@ local config = require("src/config")
 local textures = require("src/render/textures")
 local environment = require("src/render/environment")
 local lot = require("src/sim/lot")
+local boards = require("src/render/boards")
 
 local renderer = {}
 
@@ -289,7 +290,10 @@ local function outsideRoad(track, x, y, clearance)
   return off > barrier + clearance
 end
 
-local function scatter(track, theme, rng)
+-- Trees and containers stand this far clear of a sponsor board, so the board shows.
+local BOARD_CLEARANCE = 6.5 * M
+
+local function scatter(track, theme, rng, boardList)
   local b = track.bounds
   local margin = 80 * M
   local items = {}
@@ -299,15 +303,15 @@ local function scatter(track, theme, rng)
     local y = rng:random(b.minY - margin, b.maxY + margin)
     -- Clumps read as woodland; a pure random spread reads as confetti.
     local clump = love.math.noise(x / 1400, y / 1400)
-    if clump > 0.34 and outsideRoad(track, x, y, 3 * M) then
+    if clump > 0.34 and outsideRoad(track, x, y, 3 * M) and not boards.near(boardList, x, y, BOARD_CLEARANCE) then
       items[#items + 1] = { x = x, y = y, spin = rng:random() * math.pi * 2, s = 0.75 + rng:random() * 0.7 }
     end
   end
   return items
 end
 
-local function buildScenery(track, theme, rng)
-  local items = scatter(track, theme, rng)
+local function buildScenery(track, theme, rng, boardList)
+  local items = scatter(track, theme, rng, boardList)
   local batches = {}
   -- Canopies have the sun painted on, so only palms may spin.
   local function add(image, item, size, angle)
@@ -338,7 +342,9 @@ local function buildScenery(track, theme, rng)
   end
   local list = {}
   for _, box in pairs(boxes) do
-    if outsideRoad(track, box.x, box.y, 7 * M) then list[#list + 1] = box end
+    if outsideRoad(track, box.x, box.y, 7 * M) and not boards.near(boardList, box.x, box.y, BOARD_CLEARANCE) then
+      list[#list + 1] = box
+    end
   end
   return batches, list
 end
@@ -354,6 +360,14 @@ local function grandstandSpot(track)
     y = s.y + s.ny * sign * depth,
     angle = math.atan2(s.ty, s.tx),
   }
+end
+
+local STAND_W, STAND_H = 62 * M, 8 * M
+
+-- Every sponsor board on the track, numbered; see src/render/boards.lua.
+function renderer.boardSpots(track)
+  local st = grandstandSpot(track)
+  return boards.place(track, { { x = st.x, y = st.y, angle = st.angle, len = STAND_W, depth = STAND_H } })
 end
 
 local function buildGridBoxes(track)
@@ -387,7 +401,7 @@ local function buildStand(st, env)
   local CROWD = { { 0.98, 0.25, 0.25 }, { 0.2, 0.55, 0.98 }, { 0.99, 0.85, 0.2 }, { 0.98, 0.98, 0.98 }, { 0.98, 0.45, 0.75 } }
   local rects = {}
   local frame = { st.x, st.y, st.angle }
-  local w, h = 62 * M, 8 * M
+  local w, h = STAND_W, STAND_H
   addRect(rects, -w / 2 + 12, -h / 2 + 12, w, h, { 0, 0, 0 }, env.shadowAlpha, frame)
   addRect(rects, -w / 2, -h / 2, w, h, { 0.32, 0.36, 0.5 }, 1, frame)
   local rng = love.math.newRandomGenerator(5)
@@ -429,7 +443,9 @@ local function buildStuds(track)
   return batch
 end
 
-function renderer.load(track, timeName)
+-- trackName is a built-in track's name, which its sold boards are filed under;
+-- nil for one of the player's own.
+function renderer.load(track, timeName, trackName)
   textures.load()
   local self = {}
   self.track = track
@@ -467,7 +483,9 @@ function renderer.load(track, timeName)
   }, "fan", "static")
 
   local rng = love.math.newRandomGenerator(track.count * 7 + 3)
-  self.batches, self.boxes = buildScenery(track, self.theme, rng)
+  local boardList = renderer.boardSpots(track)
+  self.boards = boards.build(boardList, trackName, track.title, self.env, addRect, rectMesh)
+  self.batches, self.boxes = buildScenery(track, self.theme, rng, boardList)
   self.gridBoxes = buildGridBoxes(track)
   self.boxMesh = buildBoxes(self.boxes, self.env)
   self.standMesh = buildStand(grandstandSpot(track), self.env)
@@ -692,6 +710,7 @@ function renderer:drawGround()
   love.graphics.draw(self.barrierEdgeR)
   love.graphics.draw(self.barrierL)
   love.graphics.draw(self.barrierR)
+  boards.draw(self.boards)
 
   -- Scenery shadows, then the scenery itself.
   local env = self.env
