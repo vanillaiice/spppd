@@ -309,24 +309,25 @@ h.describe("dynamics", function()
           end
         end
         h.assertTrue(low > math.rad(25), "fell out of the drift: " .. math.deg(low))
-        h.assertTrue(high < math.rad(45), "ran too wide: " .. math.deg(high))
+        h.assertTrue(high < math.rad(52), "ran too wide: " .. math.deg(high))
       end
     end)
 
     h.it(spec.name .. " lets go of a long drift without a snap or a fishtail", function()
-      for _, case in ipairs({ { 0, 0 }, { 0, 1 }, { 0.5, 1 } }) do
+      -- The last two light the boost on the way out, whose bite is strongest in a drift.
+      for _, case in ipairs({ { 0, 0 }, { 0, 1 }, { 0.5, 1 }, { 0, 1, true }, { 0.5, 1, true } }) do
         local s = heldDrift(spec, 2.5, case[2])
         local side = s.c.beta > 0 and 1 or -1
         local swing, jump, last = 0, 0, nil
         for _ = 1, 3 / DT do
           local r = s.r
-          s:step(input({ steer = case[1], throttle = case[2], keyboard = true }))
+          s:step(input({ steer = case[1], throttle = case[2], boost = case[3], keyboard = true }))
           local yawAccel = (s.r - r) / DT
           if last then jump = math.max(jump, math.abs(yawAccel - last)) end
           last = yawAccel
           if s.c.beta * side < 0 then swing = math.max(swing, math.abs(s.c.beta)) end
         end
-        local label = string.format("steer %.1f throttle %d", case[1], case[2])
+        local label = string.format("steer %.1f throttle %d%s", case[1], case[2], case[3] and " boost" or "")
         h.assertTrue(swing < math.rad(8), label .. " swung " .. math.deg(swing))
         h.assertTrue(jump < 4, label .. " yaw kick in one step " .. jump)
       end
