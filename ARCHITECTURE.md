@@ -2176,11 +2176,29 @@ positions, hence "new cars go on the end".
 | `make zip` | `dist/spppd-3.4.0.love`. Tests stay out |
 | `make win64 win32` | Windows zips. To this project, these are what a release means |
 | `make apk` | APK signed with a local key, application id `xyz.spppd` |
+| `make aab` | App Bundle for Google Play, signed with the upload key (`UPLOAD_KEYSTORE`) |
 | `make apk-perf` | APK that runs `--perf` at launch |
 | `make all` | `clean` first, which wipes `dist/`. Releases use `make zip win64 win32` |
 
 The first `make apk` compiles LÖVE 11.5 for Android (about 1 GB). After that only the
-`.love` inside the APK is swapped, then it's realigned and resigned.
+`.love` inside the APK is swapped, then it's realigned and resigned. Changing the
+version or `android/prepare.sh` compiles it again.
+
+`prepare.sh` brings love-android 11.5 up to what Google Play asks: target API 36, and
+64-bit libraries on 16 KB memory pages. That takes NDK r27, which goes no lower than
+Android 5.0 (API 21), and Android Gradle Plugin 8.10.1 on Gradle 8.11.1. It also patches
+what r27 and the newer R8 broke: `-Wno-register` for libmodplug, `ALooper_pollOnce` in
+SDL's sensor code, and keep rules for the `love` library, whose shrinking otherwise
+strips the constructor Android starts `GameActivity` with. `apk.sh` aligns with
+`zipalign -P 16`. Check a build with `zipalign -c -P 16 -v 4` and `readelf -lW` on its
+`lib/arm64-v8a/*.so` (LOAD alignment `0x4000`).
+
+From API 35 Android draws apps edge to edge, and LÖVE already lays a fullscreen game
+under a camera notch. `ui.safeArea` reads `love.window.getSafeArea()`, and the HUD,
+the touch controls and the menus are drawn inside it while the race and the menu's
+backdrop fill the screen. Touches are moved into the same space in `main.lua`. On the
+A04 the notch takes 24 units on one side. `SPPPD_SAFE=left,top,right,bottom` fakes one
+on a desktop.
 
 The version lives in `config.lua`, and `Makefile` and `android/prepare.sh` read it from
 there. `VERSION_CODE` beside it is the Android version code, major * 10000 +

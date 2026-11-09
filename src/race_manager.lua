@@ -16,6 +16,7 @@ local track_renderer = require("src/render/track_renderer")
 local car_view = require("src/render/car_view")
 local sprites = require("src/render/car_sprites")
 local hud = require("src/hud")
+local ui = require("src/ui")
 local minimap = require("src/minimap")
 local audio = require("src/audio")
 local radio = require("src/radio")
@@ -1000,7 +1001,8 @@ function rm.draw(sw, sh)
   rm.drawScene(sw, sh)
   if session.demo then return end
   if not session.split then
-    hud.draw(sw, sh, session.race, session, session.views[1])
+    -- Inside the safe area, so a camera notch doesn't cover the HUD or a button.
+    ui.inSafeArea(sw, sh, function(w, h) hud.draw(w, h, session.race, session, session.views[1]) end)
     return
   end
   for i, view in ipairs(session.views) do

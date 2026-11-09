@@ -1,4 +1,4 @@
-.PHONY: run test test-visual test-server test-online test-online-visual listen sound-report server relay-linux deploy-relay check-relay deploy-backup site-downloads site site-dev deploy-site itch release-files zip apk apk-perf win64 win32 all clean
+.PHONY: run test test-visual test-server test-online test-online-visual listen sound-report server relay-linux deploy-relay check-relay deploy-backup site-downloads site site-dev deploy-site itch release-files zip apk aab apk-perf win64 win32 all clean
 
 # src/config.lua holds the version.
 ver := $(shell sed -n 's/.*VERSION = "\(.*\)".*/\1/p' src/config.lua)
@@ -113,6 +113,10 @@ zip:
 # from source (android/fdroid.yml).
 apk: zip
 	./android/apk.sh
+
+# The bundle Google Play takes, signed with the upload key: see android/aab.sh.
+aab: zip
+	./android/aab.sh
 
 # An APK that runs love . --perf as soon as it opens. Read the results with
 # adb logcat | grep PERF. It shares the game's save folder but changes nothing in it.

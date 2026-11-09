@@ -41,7 +41,7 @@ Builds:
     scandelete:
       - android/love-android/love/src/jni/LuaJIT-2.1/android
     build: ../../luajit.sh $$NDK$$
-    ndk: r25c
+    ndk: 27.1.12297006
 
 AutoUpdateMode: Version
 UpdateCheckMode: Tags ^v[0-9.]+$

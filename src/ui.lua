@@ -23,6 +23,46 @@ function ui.scale(sw, sh)
   return math.max(1, math.floor(fit * 2 + 0.25) / 2)
 end
 
+-- The part of the screen clear of a camera notch or rounded corners, as x, y, w,
+-- h. The race and menu backdrops still fill the screen; what's read or pressed
+-- sits in here. SPPPD_SAFE=left,top,right,bottom fakes a notch on a desktop.
+function ui.safeArea(sw, sh)
+  local fake = os.getenv("SPPPD_SAFE")
+  if fake then
+    local l, t, r, b = fake:match("^(%d+),(%d+),(%d+),(%d+)$")
+    if l then return tonumber(l), tonumber(t), sw - l - r, sh - t - b end
+  end
+  if ui.mobile and love.window and love.window.getSafeArea then
+    local ok, x, y, w, h = pcall(love.window.getSafeArea)
+    if ok and w and w > sw * 0.5 and h > sh * 0.5 then
+      return math.floor(x), math.floor(y), math.floor(math.min(w, sw - x)), math.floor(math.min(h, sh - y))
+    end
+  end
+  return 0, 0, sw, sh
+end
+
+-- Draws fn(w, h) inside the safe area, with the origin at its corner.
+function ui.inSafeArea(sw, sh, fn)
+  local x, y, w, h = ui.safeArea(sw, sh)
+  love.graphics.push()
+  love.graphics.translate(x, y)
+  fn(w, h)
+  love.graphics.pop()
+end
+
+-- A clip in the current drawing's own coordinates, kept inside any clip already set.
+-- Returns what to hand back to love.graphics.setScissor afterwards.
+function ui.clip(x, y, w, h)
+  local before = { love.graphics.getScissor() }
+  local sx, sy = love.graphics.transformPoint(x, y)
+  love.graphics.intersectScissor(sx, sy, w, h)
+  return before
+end
+
+function ui.unclip(before)
+  love.graphics.setScissor(unpack(before))
+end
+
 function ui.font(size)
   size = math.max(6, math.floor(size + 0.5))
   local font = ui.fonts[size]
@@ -136,8 +176,15 @@ function ui.consumeBack()
   return back
 end
 
+-- The pointer in the coordinates being drawn in, which differ from the screen's
+-- inside the safe area.
+local function pointer()
+  return love.graphics.inverseTransformPoint(ui.mx, ui.my)
+end
+
 local function inside(x, y, w, h)
-  return ui.mx >= x and ui.mx < x + w and ui.my >= y and ui.my < y + h
+  local mx, my = pointer()
+  return mx >= x and mx < x + w and my >= y and my < y + h
 end
 
 -- Drawing helpers ----------------------------------------------------------
@@ -146,14 +193,14 @@ end
 function ui.kerb(x, y, w, h, s)
   local band = 6 * s
   local columns = math.ceil(w / band)
-  love.graphics.setScissor(x, y, w, h)
+  local before = ui.clip(x, y, w, h)
   for i = 0, columns do
     local c = i % 2 == 0 and colors.kerb or colors.paint
     love.graphics.setColor(c)
     local bx = x + i * band
     love.graphics.polygon("fill", bx, y + h, bx + band, y + h, bx + band + h * 0.5, y, bx + h * 0.5, y)
   end
-  love.graphics.setScissor()
+  ui.unclip(before)
 end
 
 function ui.panel(x, y, w, h, alpha)
@@ -207,7 +254,7 @@ function ui.list(id, items, x, y, w, rowH, size, s)
     end
 
     if selected and ui.clicked and hovered and not item.disabled then
-      if item.left and ui.mx < x + w * 0.62 then
+      if item.left and pointer() < x + w * 0.62 then
         item.left()
         ui.played = "select"
       elseif item.right then
