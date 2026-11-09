@@ -11,11 +11,11 @@ set -euo pipefail
 
 repo=$(cd "$(dirname "$0")/.." && pwd)
 luajit="$repo/android/love-android/love/src/jni/LuaJIT-2.1"
-ndk=${1:-${ANDROID_NDK_HOME:-${ANDROID_HOME:-$HOME/Android/Sdk}/ndk/25.2.9519653}}
+ndk=${1:-${ANDROID_NDK_HOME:-${ANDROID_HOME:-$HOME/Android/Sdk}/ndk/27.1.12297006}}
 bin="$ndk/toolchains/llvm/prebuilt/linux-x86_64/bin"
 [ -x "$bin/clang" ] || { echo "No NDK at $ndk"; exit 1; }
 
-# abi, clang target, Android API (NDK r25 goes no lower than 19), host gcc flags
+# abi, clang target, Android API (NDK r27 goes no lower than 21), host gcc flags
 build() {
   local abi=$1 target=$2 api=$3 host=$4
   make -C "$luajit" clean >/dev/null
@@ -41,6 +41,6 @@ build() {
 }
 
 build arm64-v8a aarch64-linux-android 21 ""
-build armeabi-v7a armv7a-linux-androideabi 19 -m32
+build armeabi-v7a armv7a-linux-androideabi 21 -m32
 make -C "$luajit" clean >/dev/null
 ls -la "$luajit"/android/*/libluajit.a

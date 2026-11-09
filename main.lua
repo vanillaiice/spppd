@@ -200,13 +200,19 @@ end
 
 -- Taps also arrive below as mouse events marked istouch, which is what works
 -- the menus. A real mouse drives the on-screen controls like a single finger.
+-- The touch controls are laid out in the safe area, so touches are moved into it.
+local function safeTouch(x, y)
+  local ox, oy, w, h = ui.safeArea(love.graphics.getDimensions())
+  return x - ox, y - oy, w, h
+end
+
 function love.touchpressed(id, x, y)
   touch.active = true
-  if drivingByTouch() then touch.pressed(id, x, y, love.graphics.getDimensions()) end
+  if drivingByTouch() then touch.pressed(id, safeTouch(x, y)) end
 end
 
 function love.touchmoved(id, x, y)
-  touch.moved(id, x, y)
+  touch.moved(id, safeTouch(x, y))
 end
 
 function love.touchreleased(id)
@@ -217,7 +223,7 @@ function love.mousepressed(x, y, button, istouch)
   ui.mousepressed(x, y, button)
   if state.screen == "editor" then editor.mousepressed(x, y, button) end
   if button == 1 and not istouch and drivingByTouch() then
-    touch.pressed("mouse", x, y, love.graphics.getDimensions())
+    touch.pressed("mouse", safeTouch(x, y))
   end
 end
 
@@ -229,7 +235,7 @@ end
 function love.mousemoved(x, y, dx, dy, istouch)
   ui.mousemoved(x, y)
   if state.screen == "editor" then editor.mousemoved(x, y, dx, dy) end
-  if not istouch then touch.moved("mouse", x, y) end
+  if not istouch then touch.moved("mouse", safeTouch(x, y)) end
 end
 
 function love.wheelmoved(x, y)

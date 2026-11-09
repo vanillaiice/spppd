@@ -933,7 +933,9 @@ local SCREENS = {
 
 local function drawBoard(sw, sh, s, title, titleColor)
   local w = sw > sh and math.min(sw, math.max(250 * s, sw * 0.4)) or sw
-  ui.panel(0, 0, w, sh, 0.9)
+  -- The board's backing reaches under a notch on the left, to the screen's edge.
+  local left = math.min(0, (love.graphics.inverseTransformPoint(0, 0)))
+  ui.panel(left, 0, w - left, sh, 0.9)
   love.graphics.setColor(colors.kerb)
   love.graphics.rectangle("fill", w, 0, 2 * s, sh)
   ui.kerb(14 * s, 44 * s, w - 28 * s, 4 * s, s)
@@ -1120,8 +1122,15 @@ function menu.listLayout(screen, count, sh, s)
   return screen == "main" and 62 * s or 72 * s, rowH
 end
 
-function menu.draw(sw, sh)
-  rm.drawScene(sw, sh)
+local drawScreen
+
+-- The demo race fills the screen; the menu itself keeps clear of a notch.
+function menu.draw(fullW, fullH)
+  rm.drawScene(fullW, fullH)
+  ui.inSafeArea(fullW, fullH, drawScreen)
+end
+
+function drawScreen(sw, sh)
   local s = ui.scale(sw, sh)
 
   local titles = {

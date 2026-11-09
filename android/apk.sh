@@ -25,13 +25,15 @@ tools="$ANDROID_HOME/build-tools/${BUILD_TOOLS:-36.0.0}"
 
 "$repo/android/prepare.sh" "$game"
 
-# The compiled APK carries the version, so it's rebuilt when the version changes.
+# The compiled APK carries the version, and prepare.sh sets the toolchain, so it's
+# rebuilt when either changes.
 outputs="$love_android/app/build/outputs/apk"
 stamp="$outputs/spppd-base"
+want="$code $(md5sum "$repo/android/prepare.sh" | cut -c1-12)"
 unsigned=$(find "$outputs" -path '*embedNoRecord/release/*.apk' 2>/dev/null | head -1 || true)
-if [ -z "$unsigned" ] || [ "$(cat "$stamp" 2>/dev/null)" != "$code" ]; then
+if [ -z "$unsigned" ] || [ "$(cat "$stamp" 2>/dev/null)" != "$want" ]; then
   (cd "$love_android" && ./gradlew --no-daemon --console=plain assembleEmbedNoRecordRelease)
-  echo "$code" > "$stamp"
+  echo "$want" > "$stamp"
   unsigned=$(find "$outputs" -path '*embedNoRecord/release/*.apk' | head -1)
 fi
 
@@ -46,7 +48,8 @@ mkdir -p "$work/assets"
 cp "$unsigned" "$work/base.apk"
 cp "$game" "$work/assets/game.love"
 (cd "$work" && zip -q -0 base.apk assets/game.love)
-"$tools/zipalign" -p -f 4 "$work/base.apk" "$work/aligned.apk"
+# Native libraries on 16 KB page boundaries, as Google Play asks.
+"$tools/zipalign" -P 16 -f 4 "$work/base.apk" "$work/aligned.apk"
 "$tools/apksigner" sign --ks "$keystore" --ks-pass pass:android --ks-key-alias spppd \
   --out "$output" "$work/aligned.apk"
 "$tools/apksigner" verify "$output"
