@@ -16,6 +16,7 @@ local function fresh(mode)
   settings.touchSteer = "stick"
   settings.gearbox = "auto"
   settings.touchSize = "medium"
+  settings.touchFeel = "medium"
   local rest = touch.layout(SW, SH).rest
   CX, CY = rest.x, rest.y
   return { steer = 0, throttle = 0, brake = 0 }
@@ -116,6 +117,48 @@ h.describe("touch", function()
     h.assertBetween(apply().steer, 0.01, 0.2, "a quarter of the way")
     touch.moved(1, CX + r, CY)
     h.assertEq(apply().steer, 1, "full lock")
+  end)
+
+  h.it("steering feel bends the stick's response, and full lock stays full lock", function()
+    local r = touch.layout(SW, SH).radius
+    local quarter, edge = {}, {}
+    for _, feel in ipairs({ "low", "medium", "high" }) do
+      fresh()
+      settings.touchFeel = feel
+      touch.pressed(1, CX, CY, SW, SH)
+      touch.moved(1, CX + r * 0.25, CY)
+      quarter[feel] = apply().steer
+      touch.moved(1, CX + r, CY)
+      edge[feel] = apply().steer
+    end
+    h.assertTrue(quarter.low < quarter.medium and quarter.medium < quarter.high,
+      string.format("a quarter push: %.2f %.2f %.2f", quarter.low, quarter.medium, quarter.high))
+    for feel, v in pairs(edge) do h.assertEq(v, 1, feel .. " full lock") end
+    fresh()
+  end)
+
+  h.it("steering feel winds the arrows on slower or faster, and leaves keys alone", function()
+    local dynamics = require("src/sim/dynamics")
+    local garage = require("src/entities/garage")
+    local function windOn(feel)
+      fresh()
+      settings.touchSteer = "buttons"
+      settings.touchFeel = feel
+      touch.pressed(1, 20, 300, SW, SH)
+      local t = apply()
+      local c = dynamics.new(garage[1], "arcade")
+      for _ = 1, 6 do dynamics.step(c, t, 30, 0, 0, 1 / 60) end
+      touch.released(1)
+      return math.abs(c.steerInput), t.steerRate
+    end
+    local low, lowRate = windOn("low")
+    local medium, mediumRate = windOn("medium")
+    local high = windOn("high")
+    h.assertTrue(low < medium and medium < high, string.format("after 0.1 s: %.3f %.3f %.3f", low, medium, high))
+    h.assertEq(mediumRate, 1, "medium is as it was")
+    h.assertTrue(lowRate < 1, "low winds on slower")
+    fresh()
+    h.assertEq(apply().steerRate, nil, "the stick and the keyboard don't use it")
   end)
 
   h.it("the box stays put when the thumb goes past the edge", function()
@@ -530,16 +573,17 @@ h.describe("touch", function()
     settings.touch = "on"
   end)
 
-  h.it("touch size and opacity are saved", function()
+  h.it("touch size, opacity and steering feel are saved", function()
     fresh()
-    settings.touchSize, settings.touchOpacity = "large", 0.5
+    settings.touchSize, settings.touchOpacity, settings.touchFeel = "large", 0.5, "high"
     settings.save()
-    settings.touchSize, settings.touchOpacity = "medium", 1
+    settings.touchSize, settings.touchOpacity, settings.touchFeel = "medium", 1, "medium"
     settings.load()
     h.assertEq(settings.touchSize, "large")
     h.assertEq(settings.touchOpacity, 0.5)
+    h.assertEq(settings.touchFeel, "high")
     -- The visual tests read this file too, so it goes back to the defaults.
-    settings.touch, settings.touchSize, settings.touchOpacity = "auto", "medium", 1
+    settings.touch, settings.touchSize, settings.touchOpacity, settings.touchFeel = "auto", "medium", 1, "medium"
     settings.save()
   end)
 end)

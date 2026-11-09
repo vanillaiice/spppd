@@ -40,7 +40,8 @@ At the start lights, hold the revs on the white bar for a good launch.
 and BOOST on the right, and horn, reset and pause at the top right. The car accelerates
 by itself unless you turn Auto Gas off. With buttons steering and Auto Gas off, GAS and
 BRAKE sit side by side and one thumb slides between them. The manual gearbox puts DOWN
-on the left and UP on the right, like paddles.
+on the left and UP on the right, like paddles. Steering Feel in CONTROLS makes touch
+steering gentler or sharper.
 
 **A pad works on a phone too.** Press anything on it, even just the stick, and the touch
 controls get out of the way. Touch the screen to bring them back. If the pad drops out

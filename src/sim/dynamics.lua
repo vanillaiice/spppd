@@ -279,14 +279,14 @@ end
 
 -- A key press is all-or-nothing, so digital steering winds on over time: a
 -- tap at speed moves the wheel a little, holding the key takes it to the limit.
-local function filterKeyboardSteer(c, wanted, speed, dt)
+local function filterKeyboardSteer(c, wanted, speed, dt, scale)
   local current = c.steerInput
   local rate
   if wanted == 0 or wanted * current < 0 then
     rate = KEY_STEER_RELEASE
   else
     rate = KEY_STEER_RATE * c.assist.keyRate / (1 + speed / KEY_STEER_FADE)
-    rate = rate * (1 + (DRIFT_KEYS - 1) * c.drift * c.assist.drift)
+    rate = rate * (1 + (DRIFT_KEYS - 1) * c.drift * c.assist.drift) * (scale or 1)
   end
   local delta = max(-rate * dt, min(rate * dt, wanted - current))
   c.steerInput = current + delta
@@ -318,7 +318,7 @@ local function updateSteering(c, input, vx, vy, r, dt)
   maxAngle = maxAngle + (lock - maxAngle) * drift * DRIFT_LOCK
   local steerInput = input.steer
   if input.keyboard then
-    steerInput = filterKeyboardSteer(c, steerInput, speed, dt)
+    steerInput = filterKeyboardSteer(c, steerInput, speed, dt, input.steerRate)
   else
     c.steerInput = steerInput
   end
