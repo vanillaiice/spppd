@@ -32,14 +32,16 @@ func request(handler http.Handler, method, target string, form url.Values, heade
 	return out
 }
 
-// memoryStore is a fresh in-memory store with cheap password hashing.
+// Real hashing costs a second a password under -race.
+func init() { passwordCost = bcrypt.MinCost }
+
+// memoryStore is a fresh in-memory store.
 func memoryStore(t *testing.T) *Store {
 	t.Helper()
 	store, err := OpenStore("")
 	if err != nil {
 		t.Fatal(err)
 	}
-	store.cost = bcrypt.MinCost
 	t.Cleanup(func() { store.Close() })
 	return store
 }

@@ -2,6 +2,33 @@
 local harness = { passed = 0, failed = 0, failures = {}, filter = nil, TIME_LIMIT = 120 }
 
 local currentSuite = ""
+local count = 0
+
+-- The hook in `it` gives a traceback, but compiled code never calls it, so this
+-- thread ends the run when a test spins past its limit inside a trace.
+local WATCHDOG = [[
+local limit = ...
+local channel = require("love.thread").getChannel("test-watchdog")
+local name
+while true do
+  local message
+  if name then message = channel:demand(limit) else message = channel:demand() end
+  if message == nil then
+    print("  FAIL  " .. name .. "\n        test ran past its time limit (stopped by the watchdog)")
+    os.exit(1)
+  end
+  if message == true then return end
+  name = message or nil
+end
+]]
+local watchdog
+
+-- SPPPD_TEST_SHARD=i/n runs every n-th test starting at the i-th, so n processes
+-- can share the suite. See bin/test-parallel.
+function harness.setShard(spec)
+  local i, n = (spec or ""):match("^(%d+)/(%d+)$")
+  harness.shard, harness.shards = tonumber(i), tonumber(n)
+end
 
 function harness.describe(name, fn)
   currentSuite = name
@@ -11,6 +38,14 @@ end
 function harness.it(name, fn)
   local full = currentSuite .. " > " .. name
   if harness.filter and not full:lower():find(harness.filter:lower(), 1, true) then return end
+  count = count + 1
+  if harness.shards and (count - 1) % harness.shards ~= harness.shard - 1 then return end
+  if not watchdog then
+    watchdog = love.thread.newThread(WATCHDOG)
+    watchdog:start(harness.TIME_LIMIT)
+  end
+  local channel = love.thread.getChannel("test-watchdog")
+  channel:push(full)
   local startedAt = love.timer.getTime()
   -- A test that spins forever fails with a traceback instead of hanging the run.
   local deadline = os.clock() + harness.TIME_LIMIT
@@ -22,6 +57,7 @@ function harness.it(name, fn)
   end, "", 100000)
   local ok, err = xpcall(fn, debug.traceback)
   debug.sethook()
+  channel:push(false)
   local took = love.timer.getTime() - startedAt
   if ok then
     harness.passed = harness.passed + 1
@@ -58,6 +94,7 @@ function harness.assertBetween(value, low, high, message)
 end
 
 function harness.report()
+  if watchdog then love.thread.getChannel("test-watchdog"):push(true) end
   print(string.format("\n%d passed, %d failed", harness.passed, harness.failed))
   for _, f in ipairs(harness.failures) do print("  FAILED: " .. f.name) end
   return harness.failed == 0

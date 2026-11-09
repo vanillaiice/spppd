@@ -1,4 +1,4 @@
-.PHONY: run test test-visual test-server test-online test-online-visual listen sound-report server relay-linux deploy-relay check-relay deploy-backup site-downloads site site-dev deploy-site itch release-files zip apk aab apk-perf win64 win32 all clean
+.PHONY: run test test-serial test-visual test-server test-online test-online-visual listen sound-report server relay-linux deploy-relay check-relay deploy-backup site-downloads site site-dev deploy-site itch release-files zip apk aab apk-perf win64 win32 all clean
 
 # src/config.lua holds the version.
 ver := $(shell sed -n 's/.*VERSION = "\(.*\)".*/\1/p' src/config.lua)
@@ -7,8 +7,12 @@ name := spppd
 run:
 	love .
 
-# Simulation, rules, editor and support code. Needs no display.
+# Simulation, rules, editor and support code. Needs no display. Runs on every core;
+# test-serial runs it in one process, in order.
 test:
+	./bin/test-parallel
+
+test-serial:
 	love . --test
 
 # Plays the real game through its real input handlers. Needs a display.

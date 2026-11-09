@@ -182,7 +182,7 @@ without showing in its stats. See `ARCHITECTURE.md`.
 
 ## Building and testing
 
-    make test                 # simulation, rules, editor, audio, about 8 minutes
+    make test                 # simulation, rules, editor, audio, about 25 seconds
     make test-visual          # the real game through its input handlers
     make test-server          # the relay
     make test-online          # clients through a real relay
