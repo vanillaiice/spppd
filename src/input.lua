@@ -286,10 +286,11 @@ local function deadzone(v)
   return (v - (v > 0 and 0.08 or -0.08)) / 0.92
 end
 
--- A curved response gives fine control around the centre.
-function input.curve(v)
+-- A curved response gives fine control around the centre. bend is how much: 0 is
+-- straight, and the pad's 0.6 is the default.
+function input.curve(v, bend)
   local axis = deadzone(v)
-  return axis * math.abs(axis) ^ 0.6
+  return axis * math.abs(axis) ^ (bend or 0.6)
 end
 
 -- How far the throttle is pressed, on any device.

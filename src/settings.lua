@@ -21,6 +21,7 @@ local settings = {
   touchSteer = "stick",  -- or "buttons"
   touchSize = "medium",  -- "small", "medium" or "large"
   touchOpacity = 1,
+  touchFeel = "medium",  -- how sharply touch steering answers: "low", "medium" or "high"
   autoGas = true,
   vibration = true,
   keys = {},         -- changed keys and pad buttons, see input.setBindings

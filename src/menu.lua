@@ -478,6 +478,8 @@ local function controlsRows()
       function(v) settings.touch = v end, { "auto", "on", "off" }, { auto = "AUTO", on = "ON", off = "OFF" }),
     stepper("TOUCH STEERING", function() return settings.touchSteer end,
       function(v) settings.touchSteer = v end, { "stick", "buttons" }, { stick = "STICK", buttons = "BUTTONS" }),
+    stepper("STEERING FEEL", function() return settings.touchFeel end,
+      function(v) settings.touchFeel = v end, { "low", "medium", "high" }, { low = "LOW", medium = "MEDIUM", high = "HIGH" }),
     toggle("AUTO GAS", "autoGas"),
     stepper("GEARBOX", function() return settings.gearbox end, function(v) settings.gearbox = v end,
       { "auto", "manual" }, { auto = "AUTO", manual = "MANUAL" }),

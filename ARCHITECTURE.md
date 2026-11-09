@@ -1340,6 +1340,11 @@ the corner and BOOST moves beside BRAKE. An action held by two fingers is let go
 when the last one lifts. `layout.buttons[1..5]` keep their order in both layouts
 (boost, drift, pause, reset, horn), because `tests/flow.lua` picks them by index.
 
+STEERING FEEL (`settings.touchFeel`, `touch.FEEL`) sets how sharply touch steers. On
+the stick it's the bend of `input.curve`: 1.0, 0.6 or 0.25 for LOW, MEDIUM and HIGH,
+where MEDIUM is the pad's. On the arrows it scales how fast the wheel winds on: 0.75,
+1 or 1.35, passed to `dynamics` as `input.steerRate`. Keys and pads keep their own.
+
 `touch.shown()` is true when the setting is `on`, or when it's `auto` and a touch has
 been seen. A key press or pad button in a race hands back.
 

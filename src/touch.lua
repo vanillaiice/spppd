@@ -259,14 +259,26 @@ function touch.brakes()
   return pedal(-touch.stick.y)
 end
 
+-- TOUCH STEERING FEEL: how far the stick bends its response round the centre, and
+-- how fast the arrows wind the wheel on.
+touch.FEEL = {
+  low = { bend = 1.0, arrows = 0.75 },
+  medium = { bend = 0.6, arrows = 1 },
+  high = { bend = 0.25, arrows = 1.35 },
+}
+
 -- Layered over input.applyTo, so a keyboard or pad keeps working alongside.
 function touch.applyTo(target)
+  target.steerRate = nil
   if not touch.shown() then return end
+  local feel = touch.FEEL[settings.touchFeel] or touch.FEEL.medium
   local stick = touch.stick
   local up = stick and stick.y or 0
   if stick then
-    target.steer = input.curve(stick.x)
+    target.steer = input.curve(stick.x, feel.bend)
     target.keyboard = false
+  elseif touch.buttons() then
+    target.steerRate = feel.arrows
   end
   target.brake = math.max(target.brake, pedal(-up))
   local gas = settings.autoGas and 1 or pedal(up)
