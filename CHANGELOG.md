@@ -1,5 +1,18 @@
 # Changelog
 
+## 3.5.0 (2026-11-09)
+
+3.5.0 races 3.0 to 3.4. No server change.
+
+### Phones
+
+- Steering Feel in CONTROLS makes touch steering gentler or sharper: how the stick
+  answers around the centre, and how fast the arrows turn the wheel. Medium is as before.
+- The first launch is much quicker: the phone's cores share building the sounds. On a
+  Galaxy A04 they're ready after 5 seconds instead of 18.
+- The HUD, touch controls and menus keep clear of a camera notch.
+- Android 5.0 is now the oldest Android SPPPD runs on, down from 4.1.
+
 ## 3.4.0 (2026-11-09)
 
 3.4.0 races 3.0 to 3.3. No server change.

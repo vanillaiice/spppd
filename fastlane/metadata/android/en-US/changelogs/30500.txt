@@ -1,0 +1,1 @@
+- Steering Feel in CONTROLS makes touch steering gentler or sharper. The first launch is much quicker, and the HUD and buttons keep clear of a camera notch. Needs Android 5.0 or newer.

@@ -1,6 +1,6 @@
 # SPPPD Architecture
 
-This describes the code as it stands at version 3.4.0 (2026-11-09). It explains how
+This describes the code as it stands at version 3.5.0 (2026-11-09). It explains how
 the game works and nothing else. `ROADMAP.md` holds what's agreed but not built.
 
 Numbers in the tables were measured from the code at `c88f172` (version 2.1.0) unless
@@ -2192,7 +2192,7 @@ positions, hence "new cars go on the end".
 | `make check-relay` | Checks the official relay answers, without showing in its stats |
 | `make site` | The website in `site/dist`, with this version's builds to download. See [The website](#the-website) |
 | `make deploy-site` | Builds the website, then deploys it |
-| `make zip` | `dist/spppd-3.4.0.love`. Tests stay out |
+| `make zip` | `dist/spppd-3.5.0.love`. Tests stay out |
 | `make win64 win32` | Windows zips. To this project, these are what a release means |
 | `make apk` | APK signed with a local key, application id `xyz.spppd` |
 | `make aab` | App Bundle for Google Play, signed with the upload key (`UPLOAD_KEYSTORE`) |

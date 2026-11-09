@@ -1,1 +1,0 @@
-- Arcade drifting responds more: DRIFT kicks the tail out sooner, a held drift sits wider and follows the steering sooner, and boost still pulls it straight. Sport and Sim are unchanged.
