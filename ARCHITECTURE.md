@@ -1,6 +1,6 @@
 # SPPPD Architecture
 
-This describes the code as it stands at version 3.3.0 (2026-11-08). It explains how
+This describes the code as it stands at version 3.4.0 (2026-11-09). It explains how
 the game works and nothing else. `ROADMAP.md` holds what's agreed but not built.
 
 Numbers in the tables were measured from the code at `c88f172` (version 2.1.0) unless
@@ -525,7 +525,9 @@ corners.
 
 It also carries the car where its nose points, which is what saves a slide. A second
 force acts across the direction of travel, towards the nose, swinging the travel round
-at 4 times the slip angle per second, up to 0.9 g, without changing the speed. It
+at 4 times the slip angle per second, up to 0.9 g plus 2 g times `c.drift`, without
+changing the speed. A drift is a bigger slide than the tyres alone get into, and
+unwinds quickly on its own, so a boost save out of one needs the extra. It
 never turns the nose itself, so a turn on grip, where nose and travel already agree,
 is barely tighter (the test allows 12%), and the driver still has to point the car
 somewhere. Grass and gravel drag is halved under boost. Not removed, or a boosted cut
@@ -548,16 +550,17 @@ in stages:
 5. **Settle on release:** letting go of a drift bleeds off rotation with both a yaw
    term and a damping term, which stops the tail swinging past centre.
 6. **Hold:** with the handbrake held and the steering into the slide, the tail is
-   sprung and damped towards `-steer × 0.55` rad. This replaced a catch that collapsed
+   sprung and damped towards `-steer × 0.7` rad. This replaced a catch that collapsed
    the slide about every 1.6 s.
 
 The result is eased in over 60 ms so corrections never snap, except with the handbrake
 held, when it applies instantly or a fast drift would spin first.
 
-`c.drift` (0 to 1) rises at 9/s while the handbrake is held above 9 m/s on a tier with
+`c.drift` (0 to 1) rises at 15/s while the handbrake is held above 9 m/s on a tier with
 `drift`. It then fades at 1/s, or 2.5/s once the slide ends or the throttle lifts. It widens the steering
-range, weakens the caster, cuts rear grip by up to 45% and cuts handbrake force by up
-to 85%, so the tail slides rather than locks.
+range, weakens the caster, cuts rear grip by up to 55% and cuts handbrake force by up
+to 85%, so the tail slides rather than locks. Key and arrow steering winds on up to 1.5
+times faster in a drift.
 
 ### Vehicle specs
 
@@ -2170,7 +2173,7 @@ positions, hence "new cars go on the end".
 | `make check-relay` | Checks the official relay answers, without showing in its stats |
 | `make site` | The website in `site/dist`, with this version's builds to download. See [The website](#the-website) |
 | `make deploy-site` | Builds the website, then deploys it |
-| `make zip` | `dist/spppd-3.3.0.love`. Tests stay out |
+| `make zip` | `dist/spppd-3.4.0.love`. Tests stay out |
 | `make win64 win32` | Windows zips. To this project, these are what a release means |
 | `make apk` | APK signed with a local key, application id `xyz.spppd` |
 | `make apk-perf` | APK that runs `--perf` at launch |

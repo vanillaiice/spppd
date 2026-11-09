@@ -1,5 +1,17 @@
 # Changelog
 
+## 3.4.0 (2026-11-09)
+
+3.4.0 races 3.0 to 3.3. No server change.
+
+### Driving
+
+- Arcade drifting responds more. DRIFT kicks the tail out sooner, a held drift sits
+  wider, at about 45 degrees instead of 31, and follows the steering sooner, and the
+  steering arrows and keys turn in faster during a drift. Sport and Sim are unchanged.
+- Boost still pulls a drift straight: in a one-second save, the car slides 6.4 m
+  sideways instead of 9.2 m on tarmac, and 7.3 m instead of 9.9 m on grass.
+
 ## 3.3.0 (2026-11-08)
 
 ### Tracks
