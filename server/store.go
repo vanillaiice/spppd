@@ -102,10 +102,12 @@ func migrate(db *sql.DB) error {
 type Store struct {
 	db    *sql.DB
 	path  string // the database file, or "" in memory
-	cost  int    // bcrypt cost; tests turn it down
 	dummy []byte // compared against when a name doesn't exist, so timing doesn't tell
 	key   []byte // the analytics key, once read
 }
+
+// passwordCost is the bcrypt cost; the tests turn it down.
+var passwordCost = bcrypt.DefaultCost
 
 // OpenStore opens the database at path, creating it if needed. An empty path keeps
 // everything in memory, gone at exit.
@@ -131,8 +133,8 @@ func OpenStore(path string) (*Store, error) {
 		db.Close()
 		return nil, fmt.Errorf("updating %s: %w", path, err)
 	}
-	s := &Store{db: db, path: path, cost: bcrypt.DefaultCost}
-	s.dummy, _ = bcrypt.GenerateFromPassword([]byte("not a real password"), s.cost)
+	s := &Store{db: db, path: path}
+	s.dummy, _ = bcrypt.GenerateFromPassword([]byte("not a real password"), passwordCost)
 	return s, nil
 }
 
@@ -222,7 +224,7 @@ func (s *Store) AddUser(name, password string, now time.Time) error {
 	if err := checkPasswordRules(password); err != nil {
 		return err
 	}
-	hash, err := bcrypt.GenerateFromPassword([]byte(password), s.cost)
+	hash, err := bcrypt.GenerateFromPassword([]byte(password), passwordCost)
 	if err != nil {
 		return err
 	}
@@ -241,7 +243,7 @@ func (s *Store) SetPassword(name, password string) error {
 	if err := checkPasswordRules(password); err != nil {
 		return err
 	}
-	hash, err := bcrypt.GenerateFromPassword([]byte(password), s.cost)
+	hash, err := bcrypt.GenerateFromPassword([]byte(password), passwordCost)
 	if err != nil {
 		return err
 	}

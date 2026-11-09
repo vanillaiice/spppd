@@ -2229,7 +2229,8 @@ from source and offers it only if the code went up, and shows
 
 | Command | Runs | Needs |
 | --- | --- | --- |
-| `make test` | Nine Lua suites, about 7.5 minutes | Nothing |
+| `make test` | The Lua suites on every core (`bin/test-parallel`), about 25 seconds on 8 cores | Nothing |
+| `make test-serial` | The same in one process, in order, about 2 minutes | Nothing |
 | `make test-visual` | `tests/flow.lua`: real handlers with graphics and sound | A display, and no pointer over the window |
 | `make listen` | `tests/sound/listen.lua`: old and new sounds side by side | A display and ears |
 | `make sound-report` | Measures every sound and the mix, old against new | `tests/sound/requirements.txt` |
@@ -2251,9 +2252,18 @@ from source and offers it only if the code went up, and shows
 
 Things to know about the harness:
 
-- `tests/run.lua` calls `jit.off()`, matching the Galaxy A04.
+- The JIT is on. It used to be off to match the Galaxy A04, but on x86-64 compiled
+  code does the same double arithmetic as the interpreter: every lap time and figure
+  the suite prints came out the same both ways, and the suite runs five times faster.
 - A debug hook fails any test that runs past its time limit (`SPPPD_TEST_LIMIT`, 120 s
-  by default), so a hang gives a traceback.
+  by default), so a hang gives a traceback. Compiled code never calls the hook, so a
+  watchdog thread also ends the run, without a traceback, when a test spins inside a
+  trace.
+- `SPPPD_TEST_SHARD=i/n` runs every n-th test from the i-th and saves into
+  `spppd-test-<i>` instead of `spppd-test`, so shards don't share settings or caches.
+  `bin/test-parallel` starts one shard per core (`SPPPD_TEST_SHARDS` to change it)
+  and adds up the results. A test that leans on state an earlier test left behind
+  breaks under sharding; `make test-serial` runs them in order.
 - `--test` has no audio or graphics, so `audio.ready` is false and a test guarded by
   it passes silently. It also never builds a track mesh. After drawing changes, a
   `--visual` scene is the real check.

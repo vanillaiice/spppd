@@ -35,7 +35,9 @@ function love.conf(t)
 
   -- `love . --test` runs the simulation tests without opening a window.
   if hasArg("--test") or hasArg("--sounds") then
-    t.identity = "spppd-test"
+    -- Each shard of a parallel run saves into its own folder.
+    local shard = (os.getenv("SPPPD_TEST_SHARD") or ""):match("^(%d+)/")
+    t.identity = shard and ("spppd-test-" .. shard) or "spppd-test"
     t.window = nil
     t.modules.window = false
     t.modules.graphics = false

@@ -4,7 +4,7 @@ local SUITES = { "tests/test_track", "tests/test_dynamics", "tests/test_slipstre
 
 return function(filter)
   io.stdout:setvbuf("no")
-  jit.off()
+  harness.setShard(os.getenv("SPPPD_TEST_SHARD"))
   harness.TIME_LIMIT = tonumber(os.getenv("SPPPD_TEST_LIMIT")) or harness.TIME_LIMIT
   harness.filter = filter
   for _, name in ipairs(SUITES) do
