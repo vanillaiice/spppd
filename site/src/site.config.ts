@@ -10,6 +10,8 @@ export default {
   releases: 'https://github.com/vanillaiice/spppd/releases',
   github: 'https://github.com/vanillaiice/spppd',
   itch: 'https://vanillaiice.itch.io/spppd?ref=spppd.xyz',
+  // The community server: feedback, ideas, finding a race. A never-expiring invite.
+  discord: 'https://discord.gg/gPCvjny3qW',
   author: { name: 'vanillaiice', url: 'https://vanillaiice.xyz' },
   // Self-hosted Umami (cookieless), deployed from ~/Projects/stats.hblabs.xyz. The ID is
   // public by design. It only counts visits on the real domain, never in dev or preview.
