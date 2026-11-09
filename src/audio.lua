@@ -12,6 +12,7 @@
 local sfxr = require("src/lib/sfxr")
 local cache = require("src/sound_cache")
 local garage = require("src/entities/garage")
+local unpack = unpack or table.unpack
 
 local audio = { ready = false, spool = 0, duck = 0 }
 local voices = {}  -- audio.voiceOf's results, by key
@@ -991,12 +992,66 @@ local function looping(data)
   return source
 end
 
-local function loop(name, render, ...)
-  return looping(cache.get(name, render, ...))
+-- Every sound the cache keeps, by name: { name, render, args }. Engine loops come
+-- first, as they take longest, so threads sharing the list finish together.
+function audio.jobs()
+  local list = {}
+  local function add(name, render, ...)
+    list[#list + 1] = { name = name, render = render, args = { ... } }
+  end
+  local voices, turbos = {}, {}
+  for _, spec in ipairs(garage) do
+    local voice = audio.voiceOf(spec)
+    if voice and not voices[voice.key] then
+      voices[voice.key] = true
+      local name = "engine" .. voice.key
+      for i, rpm in ipairs(voice.rpms) do add(name .. "_" .. i, audio.engineData, voice, rpm) end
+      add(name .. "_overrun", audio.engineData, voice, voice.rpms[2], "overrun")
+      add(name .. "_idle", audio.engineData, voice, voice.idleAt, "idle")
+      add(name .. "_limiter", audio.engineData, voice, voice.rpms[#voice.rpms], "limiter")
+    end
+    if TURBOS[spec.turbos] and not turbos[spec.turbos] then
+      turbos[spec.turbos] = true
+      add("turbo" .. spec.turbos, audio.turboData, spec.turbos)
+      add("turboboost" .. spec.turbos, audio.turboBoostData, spec.turbos)
+    end
+  end
+  add("scrub", audio.scrubData)
+  add("squeal", audio.squealData)
+  add("grind", audio.grindData)
+  add("road", audio.roadData)
+  add("loose", audio.looseData)
+  add("wind", audio.windData)
+  add("boostgas", audio.boostGasData)
+  add("horn", audio.hornData)
+  add("flame", audio.flameData)
+  add("blower", audio.blowerData)
+  add("motor", audio.motorData)
+  for _, name in ipairs({ "beep", "go", "click", "select", "shift", "lap", "blowoff", "finish" }) do
+    add(name, audio.shotData, name)
+  end
+  add("startup", audio.startupData)
+  for size = 0, #IMPACT_TIERS do
+    local name = size == 0 and "scrape" or "impact" .. size
+    add(name, audio.shotData, name)
+  end
+  return list
 end
 
-local function shot(name, render, ...)
-  local source = love.audio.newSource(cache.get(name, render, ...), "static")
+local jobs
+
+-- The sound called name, from the cache or rendered now.
+local function get(name)
+  local job = jobs[name]
+  return cache.get(name, job.render, unpack(job.args))
+end
+
+local function loop(name)
+  return looping(get(name))
+end
+
+local function shot(name)
+  local source = love.audio.newSource(get(name), "static")
   breathe()
   return source
 end
@@ -1006,51 +1061,87 @@ end
 local function engineLoops(voice)
   local name = "engine" .. voice.key
   local engine = { voice = voice, speeds = {} }
-  for i, rpm in ipairs(voice.rpms) do engine.speeds[i] = loop(name .. "_" .. i, audio.engineData, voice, rpm) end
-  engine.overrun = loop(name .. "_overrun", audio.engineData, voice, voice.rpms[2], "overrun")
-  engine.idle = loop(name .. "_idle", audio.engineData, voice, voice.idleAt, "idle")
-  engine.limiter = loop(name .. "_limiter", audio.engineData, voice, voice.rpms[#voice.rpms], "limiter")
+  for i in ipairs(voice.rpms) do engine.speeds[i] = loop(name .. "_" .. i) end
+  engine.overrun = loop(name .. "_overrun")
+  engine.idle = loop(name .. "_idle")
+  engine.limiter = loop(name .. "_limiter")
   engine.rival = engine.speeds[2]:clone()
   return engine
+end
+
+-- How many threads share a first launch: the cores but one, which the splash keeps.
+local MAX_WORKERS = 6
+
+-- Renders every sound into the cache folder on threads of their own, so a phone's
+-- cores share the first launch instead of one doing it all. Waits until they're
+-- done, letting the splash draw meanwhile. A thread that fails just leaves its
+-- sounds out, and get renders those here as before.
+function audio.prerender(workers)
+  if not (cache.folder and love.thread and love.system) then return 0 end
+  workers = workers or math.max(1, math.min(MAX_WORKERS, love.system.getProcessorCount() - 1))
+  local queue, done = love.thread.newChannel(), love.thread.newChannel()
+  for _, job in ipairs(audio.jobs()) do queue:push(job.name) end
+  local threads = {}
+  for i = 1, workers do
+    threads[i] = love.thread.newThread("src/sound_worker.lua")
+    threads[i]:start(cache.folder, queue, done)
+  end
+  local finished = 0
+  while finished < workers do
+    if done:pop() then finished = finished + 1 end
+    for i, thread in ipairs(threads) do
+      if thread and not thread:isRunning() and thread:getError() then
+        print("sound thread failed: " .. thread:getError())
+        threads[i] = false
+        finished = finished + 1
+      end
+    end
+    if finished < workers then
+      if coroutine.running() then coroutine.yield() else love.timer.sleep(0.005) end
+    end
+  end
+  return workers
 end
 
 function audio.load()
   if audio.ready or not love.audio then return end
   local ok, err = pcall(function()
+    jobs = {}
+    for _, job in ipairs(audio.jobs()) do jobs[job.name] = job end
     cache.open({ "src/audio.lua", "src/lib/sfxr.lua" })
-    audio.scrub = loop("scrub", audio.scrubData)
-    audio.squeal = loop("squeal", audio.squealData)
-    audio.grind = loop("grind", audio.grindData)
-    audio.road = loop("road", audio.roadData)
-    audio.loose = loop("loose", audio.looseData)
-    audio.wind = loop("wind", audio.windData)
-    audio.boostGas = loop("boostgas", audio.boostGasData)
-    audio.horn = loop("horn", audio.hornData)
+    if not cache.complete then audio.prerender() end
+    audio.scrub = loop("scrub")
+    audio.squeal = loop("squeal")
+    audio.grind = loop("grind")
+    audio.road = loop("road")
+    audio.loose = loop("loose")
+    audio.wind = loop("wind")
+    audio.boostGas = loop("boostgas")
+    audio.horn = loop("horn")
     audio.rivalHorn = audio.horn:clone()
-    audio.flame = loop("flame", audio.flameData)
+    audio.flame = loop("flame")
     audio.engines, audio.turbos, audio.turboBoosts = {}, {}, {}
     for _, spec in ipairs(garage) do
       local voice = audio.voiceOf(spec)
       if voice and not audio.engines[voice.key] then audio.engines[voice.key] = engineLoops(voice) end
       if TURBOS[spec.turbos] and not audio.turbos[spec.turbos] then
-        audio.turbos[spec.turbos] = loop("turbo" .. spec.turbos, audio.turboData, spec.turbos)
-        audio.turboBoosts[spec.turbos] = loop("turboboost" .. spec.turbos, audio.turboBoostData, spec.turbos)
+        audio.turbos[spec.turbos] = loop("turbo" .. spec.turbos)
+        audio.turboBoosts[spec.turbos] = loop("turboboost" .. spec.turbos)
       end
     end
-    audio.blower = loop("blower", audio.blowerData)
-    local motor = cache.get("motor", audio.motorData)
+    audio.blower = loop("blower")
+    local motor = get("motor")
     audio.motor = looping(motor)
     audio.rivalMotor = looping(motor)
     audio.shots = {}
     for _, name in ipairs({ "beep", "go", "click", "select", "shift", "lap", "blowoff", "finish" }) do
-      audio.shots[name] = shot(name, audio.shotData, name)
+      audio.shots[name] = shot(name)
     end
-    audio.shots.startup = shot("startup", audio.startupData)
+    audio.shots.startup = shot("startup")
     -- impacts[0] is the graze, then the sizes of crash. Each size can overlap itself.
     audio.impacts = {}
     for size = 0, #IMPACT_TIERS do
-      local name = size == 0 and "scrape" or "impact" .. size
-      local data = cache.get(name, audio.shotData, name)
+      local data = get(size == 0 and "scrape" or "impact" .. size)
       audio.impacts[size] = {}
       for i = 1, 2 do audio.impacts[size][i] = love.audio.newSource(data, "static") end
     end

@@ -144,6 +144,7 @@ src/
 
   audio.lua               Sound synthesis and the live mix
   sound_cache.lua         WAV cache in the save folder
+  sound_worker.lua        Thread that renders sounds on a first launch
   radio.lua               Player's own music, freestyle only
   lib/sfxr.lua            Third-party arcade effects synth (MIT)
   rumble.lua              Pad motors and phone buzzer
@@ -205,7 +206,7 @@ keeps them, turns vsync off and uses the same test identity.
 `love.load` wraps the slow work in a coroutine, `loadGame`: compile shaders, generate
 textures, then load or render every sound. `love.update` resumes it once a frame, and
 the splash shows `LOADING` while it's alive. `audio.load` yields through `breathe()`
-at most every 1/30 s, so a slow phone keeps drawing frames during a first launch. The
+at most every 1/30 s, and every frame while threads render a first launch, so a slow phone keeps drawing frames during a first launch. The
 yield sits inside a `pcall`, which works because LuaJIT can yield across `pcall`.
 
 The splash timer starts only when loading finishes. Its first update plays the
@@ -1228,8 +1229,21 @@ everything and clears older folders. A `complete` file is written last, so an
 interrupted first launch doesn't count. Any cache failure only costs time: the sound
 is rendered as normal.
 
+On a first launch the cores share the work. `audio.jobs()` lists every cached sound
+by name, engine loops first as they're slowest. `audio.prerender` puts the names on a
+channel and starts one `sound_worker.lua` thread per core but one, up to 6. Each takes
+names until the channel is empty and writes the WAVs into the cache folder, while the
+loading coroutine yields so the splash keeps drawing. `audio.load` then reads them
+like any cached sound, and renders anything a failed thread left out. `cache.get`
+trusts a WAV in a folder that isn't `complete`, because `cache.open` empties such a
+folder first, so only this launch's threads can have written it. Every render is
+seeded, so a thread makes the same sound the main thread would, apart from sfxr's
+noise, which was never seeded (the scrape).
+
 On the Galaxy A04 a full render took about 14.5 s and a cached launch 2.3 s
 (2026-11-01). That was before the crashes, squeal, grind and idle loops were added.
+On 2026-11-09, wall time from start to sounds ready: 18.1 s on one thread, 5.1 s on
+the A04's threads, 1.6 s from the cache.
 With the JIT off on the desktop the render is about 14% longer now, because moving the
 scrub and boost off sfxr paid for most of them.
 

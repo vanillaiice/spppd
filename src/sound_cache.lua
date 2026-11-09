@@ -45,12 +45,13 @@ function cache.open(files)
   end)
 end
 
--- The sound called name: from disk if it's there, otherwise render(...).
+-- The sound called name: from disk if it's there, otherwise render(...). An
+-- unfinished folder only holds what this launch wrote: open empties it otherwise.
 function cache.get(name, render, ...)
   local folder = cache.folder
   if not folder then return render(...) end
   local path = folder .. "/" .. name .. ".wav"
-  if cache.complete then
+  if cache.complete or love.filesystem.getInfo(path) then
     local ok, data = pcall(love.sound.newSoundData, path)
     if ok then return data end
   end
