@@ -148,7 +148,10 @@ func securityHeaders(h http.Header) {
 	h.Set("Content-Security-Policy", "frame-ancestors 'none'; base-uri 'none'; form-action 'self'; object-src 'none'")
 	h.Set("X-Frame-Options", "DENY")
 	h.Set("X-Content-Type-Options", "nosniff")
-	h.Set("Referrer-Policy", "no-referrer")
+	// same-origin, not no-referrer: no-referrer makes a browser send "Origin:
+	// null" on its own form posts, and over plain http, where there is no
+	// Sec-Fetch-Site, the cross-origin check then refuses them.
+	h.Set("Referrer-Policy", "same-origin")
 }
 
 type userKey struct{}
