@@ -3,9 +3,11 @@
 {
 	admin off
 	# kamal-proxy, on the kamal network, says who the visitor is. {client_ip} is then
-	# the visitor, which the track server needs to count uploads.
+	# the visitor, which the track server needs to count uploads. Strict reads
+	# X-Forwarded-For from the right, so a visitor can't put a made-up address first.
 	servers {
 		trusted_proxies static private_ranges
+		trusted_proxies_strict
 	}
 }
 
