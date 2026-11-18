@@ -175,19 +175,40 @@ local function rename()
   end, "^[%w_ ]$", 18)
 end
 
--- The track as one line on the clipboard, to paste anywhere.
-local function exportTrack()
+-- Sharing tracks: a file in the save folder's shared/ folder, which EXPORT opens so
+-- the file can be sent anywhere, or one line of text on the clipboard. A file is the
+-- track's plain wire text; IMPORT reads files, drops and the clipboard alike, all
+-- through share.import. See src/tracks/share.lua.
+local SHARED = "shared"
+local FILE_EXT = ".spppd"
+
+local function openShared()
+  love.filesystem.createDirectory(SHARED)
+  love.system.openURL("file://" .. love.filesystem.getSaveDirectory() .. "/" .. SHARED)
+end
+
+local function exportFile()
+  love.filesystem.createDirectory(SHARED)
+  local file = SHARED .. "/" .. doc.name .. FILE_EXT
+  if love.filesystem.write(file, share.text(model.definition(doc))) then
+    say("Exported " .. doc.name .. FILE_EXT .. " to the shared folder")
+    openShared()
+  else
+    say("Couldn't write the track file")
+  end
+end
+
+local function copyCode()
   love.system.setClipboardText(share.export(model.definition(doc)))
   say("Track code copied. Paste it anywhere to share")
 end
 
--- A track code (or a track's plain text) from the clipboard, opened as a new,
--- unsaved track.
-local function importTrack()
-  local def, why = share.import(love.system.getClipboardText())
+-- A track's text, from a file or the clipboard, opened as a new, unsaved track.
+local function importText(text, from)
+  local def, why = share.import(text)
   if not def then
-    say("No track on the clipboard (" .. (why or "?") .. ")")
-    return
+    say("No track in " .. from .. " (" .. (why or "?") .. ")")
+    return false
   end
   local name = def.title:lower():gsub("[^%w]+", "_"):gsub("^_+", ""):gsub("_+$", "")
   if name == "" then name = "shared_track" end
@@ -199,11 +220,45 @@ local function importTrack()
   local ok, imported = pcall(model.fromEntry, { name = name, title = def.title, def = def })
   if not ok then
     say("That track can't be opened")
-    return
+    return false
   end
   setDocument(imported)
   doc.dirty = true
   say("Imported " .. doc.title .. ". Save to keep it")
+  return true
+end
+
+-- Track files in the shared folder, newest first.
+local function sharedFiles()
+  local out = {}
+  for _, name in ipairs(love.filesystem.getDirectoryItems(SHARED)) do
+    local info = love.filesystem.getInfo(SHARED .. "/" .. name, "file")
+    if info and (name:sub(-#FILE_EXT) == FILE_EXT or name:sub(-4) == ".txt") then
+      out[#out + 1] = { name = name, time = info.modtime or 0 }
+    end
+  end
+  table.sort(out, function(a, b) return a.time > b.time end)
+  return out
+end
+
+function editor.openImport()
+  overlay = "import"
+end
+
+-- A file dropped on the editor's window, from anywhere on the computer.
+function editor.filedropped(file)
+  if file:getSize() > share.MAX_CODE * 2 then
+    say("That file is too big to be a track")
+    return
+  end
+  if not file:open("r") then
+    say("Couldn't read that file")
+    return
+  end
+  local text = file:read()
+  file:close()
+  local name = file:getFilename():match("[^/\\]+$") or "the file"
+  if importText(text, name) then overlay = nil end
 end
 
 local function goBack()
@@ -237,8 +292,9 @@ local function toolRows()
         setDocument(model.new(freshName()))
         say("New track")
       end },
-    { label = "IMPORT", activate = importTrack },
-    { label = "EXPORT", activate = exportTrack },
+    { label = "IMPORT", activate = editor.openImport },
+    { label = "EXPORT", activate = exportFile },
+    { label = "COPY CODE", activate = copyCode },
     { label = "NAME", activate = rename },
     { label = "SCENERY", value = function() return doc.theme:upper() end, activate = cycleTheme },
     { label = "SET START", value = "ENTER", disabled = selected == nil, activate = function()
@@ -366,7 +422,7 @@ end
 
 function editor.keypressed(key)
   if ui.editing or overlay then
-    if overlay == "open" and key == "escape" then
+    if (overlay == "open" or overlay == "import") and key == "escape" then
       overlay = nil
       return
     end
@@ -535,6 +591,35 @@ local function drawOpen(sw, sh, s)
   ui.list("editor-open", rows, x + 6 * s, y + 26 * s, w - 18 * s, 14 * s, 6 * s, s)
 end
 
+local function drawImport(sw, sh, s)
+  love.graphics.setColor(0, 0, 0, 0.6)
+  love.graphics.rectangle("fill", 0, 0, sw, sh)
+  local w, h = 260 * s, 230 * s
+  local x, y = (sw - w) / 2, (sh - h) / 2
+  ui.panel(x, y, w, h, 0.97)
+  ui.kerb(x, y, w, 3 * s, s)
+  ui.text("IMPORT A TRACK", x + 10 * s, y + 10 * s, 7 * s, colors.marshal)
+  ui.text("Or drop a track file on this window.", x + 10 * s, y + 22 * s, 5 * s, colors.muted)
+  local rows = {}
+  -- The newest files, as many as fit over the three rows below them.
+  local room = math.floor((h - 40 * s) / (14 * s)) - 3
+  for i, file in ipairs(sharedFiles()) do
+    if i > room then break end
+    rows[#rows + 1] = {
+      label = file.name:upper(),
+      activate = function()
+        if importText(love.filesystem.read(SHARED .. "/" .. file.name), file.name) then overlay = nil end
+      end,
+    }
+  end
+  rows[#rows + 1] = { label = "PASTE FROM CLIPBOARD", activate = function()
+      if importText(love.system.getClipboardText(), "the clipboard") then overlay = nil end
+    end }
+  rows[#rows + 1] = { label = "OPEN SHARED FOLDER", activate = openShared }
+  rows[#rows + 1] = { label = "CANCEL", activate = function() overlay = nil end }
+  ui.list("editor-import", rows, x + 6 * s, y + 34 * s, w - 18 * s, 14 * s, 6 * s, s)
+end
+
 local function drawLeave(sw, sh, s)
   love.graphics.setColor(0, 0, 0, 0.6)
   love.graphics.rectangle("fill", 0, 0, sw, sh)
@@ -589,6 +674,7 @@ function editor.draw(sw, sh)
   drawStats(sw, sh, s)
 
   if overlay == "open" then drawOpen(sw, sh, s)
+  elseif overlay == "import" then drawImport(sw, sh, s)
   elseif overlay == "leave" then drawLeave(sw, sh, s) end
 end
 

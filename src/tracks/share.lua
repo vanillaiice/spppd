@@ -1,6 +1,6 @@
--- Track codes: a whole track as one line of text, for passing around by hand.
--- The code is the same text online races send (src/tracks/wire.lua), deflated
--- and base64'd. Importing goes through wire.decode, so a code from a stranger is
+-- Tracks passed around by hand: as a file of the same text online races send
+-- (src/tracks/wire.lua), or as a code, one line of that text deflated and base64'd,
+-- for the clipboard. Importing goes through wire.decode, so a code from a stranger is
 -- held to the same limits as a track from another player online.
 local wire = require("src/tracks/wire")
 
@@ -10,6 +10,11 @@ share.PREFIX = "SPPPD-TRACK:"
 -- A deflated stream can inflate about a thousand times over, so a cap on the code
 -- caps what a bad one can make the game unpack. A 1500-node track comes to ~30 KB.
 share.MAX_CODE = 40000
+
+-- A track file's contents: the plain wire text, which can be read and edited.
+function share.text(def)
+  return wire.encode(def) .. "\n"
+end
 
 function share.export(def)
   local text = wire.encode(def)

@@ -148,6 +148,17 @@ h.describe("editor", function()
     end
   end)
 
+  h.it("a track file is the plain text, and reads back the same", function()
+    local share = require("src/tracks/share")
+    local wire = require("src/tracks/wire")
+    for _, entry in ipairs(catalog.builtin()) do
+      local def = model.definition(model.fromEntry(entry))
+      local text = share.text(def)
+      h.assertEq(text:match("^[^\n]*"), "spppd-track 1", entry.name)
+      h.assertEq(wire.encode(assert(share.import(text))), wire.encode(def), entry.name)
+    end
+  end)
+
   h.it("takes a track's plain text too, with Windows line endings", function()
     local share = require("src/tracks/share")
     local wire = require("src/tracks/wire")
