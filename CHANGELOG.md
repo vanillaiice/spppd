@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 4.0.1 (2026-11-18)
 
 - MY TRACKS, under TRACKS ONLINE, lists the tracks you've saved, got online or made in
   the editor, and deletes the ones you don't want. The built-in tracks stay.
