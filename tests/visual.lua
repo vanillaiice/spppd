@@ -140,6 +140,20 @@ local function tracksOnline()
   ui.focus.tracks = tonumber(os.getenv("SPPPD_FOCUS")) or 12
 end
 
+-- MY TRACKS with two saved tracks, the second waiting for its second press.
+-- Writes them to the test save folder; delete tracks/visual_*.lua after.
+local function myTracks()
+  for i, name in ipairs({ "harbour", "touge" }) do
+    local def = catalog.find(name).def
+    catalog.save("visual_" .. name, { title = def.title .. " COPY", author = i == 1 and "XOROZ" or nil,
+      theme = def.theme, scale = def.scale, runoff = def.runoff, nodes = def.nodes or require("src.sim.track").new(def):toNodes(26),
+      startPoint = def.startPoint })
+  end
+  menu.enter()
+  menu.openMyTracks()
+  ui.focus.mytracks = tonumber(os.getenv("SPPPD_FOCUS")) or 1
+end
+
 -- The editor's SEND ONLINE dialog, with a name and an email typed in.
 local function editorSend()
   local em = require("src.editor_model")
@@ -153,6 +167,8 @@ end
 local SCENES = {
   tracks = tracksOnline,
   phonetracks = function() phone() tracksOnline() end,
+  mytracks = myTracks,
+  phonemytracks = function() phone() myTracks() end,
   split = split,
   splitsetup = splitSetup,
   -- The finish with two: P1 home, P2 still out, then both and the results.

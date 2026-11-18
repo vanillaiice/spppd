@@ -52,6 +52,38 @@ h.describe("tracks online", function()
     catalog.remove(name)
   end)
 
+  h.it("knows it has a track with runoff once it's taken (MONTE CARLO GP)", function()
+    local def = sent("RUNOFF LOOP")
+    def.runoff = 4.5
+    def.scale = 2.5
+    local t = online.parse(reply({ { id = 2, code = share.export(def) } }))[1]
+    local name = online.take(t)
+    catalog.refresh()
+    h.assertTrue(online.have(t) ~= nil, "GOT after saving, not GET again")
+    h.assertEq(catalog.find(name).def.runoff, 4.5, "the runoff is saved")
+    h.assertEq(online.take(t), name, "no second copy")
+    catalog.remove(name)
+  end)
+
+  h.it("keeps the runoff through the editor", function()
+    local def = sent("EDITED RUNOFF")
+    def.runoff = 6
+    local doc = model.fromEntry({ name = "edited_runoff", title = def.title, def = def })
+    h.assertEq(model.definition(doc).runoff, 6)
+  end)
+
+  h.it("deletes saved tracks, never the built-ins", function()
+    local t = online.parse(reply({ { id = 3, code = share.export(sent("GONE LOOP")) } }))[1]
+    local name = online.take(t)
+    h.assertTrue(catalog.find(name) ~= nil, "saved")
+    h.assertTrue(catalog.remove(name), "deleted")
+    h.assertTrue(catalog.find(name) == nil, "gone from the list")
+    h.assertTrue(not online.have(t), "GET again")
+    h.assertTrue(not catalog.remove("mirage"), "a built-in stays")
+    h.assertTrue(catalog.find("mirage") ~= nil)
+    h.assertTrue(not catalog.remove("../settings"), "only a track's own file")
+  end)
+
   h.it("names a new track after its title, without taking a name in use", function()
     h.assertEq(catalog.uniqueName("Hill & Dale!"), "hill_dale")
     h.assertEq(catalog.uniqueName("MIRAGE"), "mirage_2", "a built-in's name is taken")

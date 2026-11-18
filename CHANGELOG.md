@@ -1,5 +1,14 @@
 # Changelog
 
+## Unreleased
+
+- MY TRACKS, under TRACKS ONLINE, lists the tracks you've saved, got online or made in
+  the editor, and deletes the ones you don't want. The built-in tracks stay.
+- MONTE CARLO GP (and any track with its own runoff) said GET again after you got it,
+  and each GET saved another copy without its runoff. It now saves whole and says
+  GOT. Delete the extra copies in MY TRACKS, then GET it once more.
+- The editor keeps a track's runoff when you open and save it.
+
 ## 4.0.0 (2026-11-18)
 
 Races 3.0 to 3.7: tracks match online as before. The server update only tells games

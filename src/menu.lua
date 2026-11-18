@@ -711,7 +711,73 @@ local function tracksRows()
   else
     rows[#rows + 1] = { label = "LOADING...", disabled = true }
   end
+  rows[#rows + 1] = { label = "MY TRACKS", activate = function() menu.openMyTracks() end }
   rows[#rows + 1] = { label = "BACK", activate = leaveTracks }
+  return rows
+end
+
+-- MY TRACKS: the saved ones, got online or made in the editor, to delete. The
+-- built-ins aren't listed. A track asks for a second press before it goes.
+local doomed = nil  -- the name waiting for its second press
+
+function menu.openMyTracks()
+  doomed = nil
+  catalog.refresh()
+  menu.go("mytracks")
+end
+
+-- A saved track's shape for the preview, fitted in the same 100 x 100 box the
+-- server fits its outlines in.
+local outlines = setmetatable({}, { __mode = "k" })
+function menu.trackOutline(def)
+  if outlines[def] then return outlines[def] end
+  local out = {}
+  local nodes = def.nodes or {}
+  local minX, minY, maxX, maxY = math.huge, math.huge, -math.huge, -math.huge
+  for _, n in ipairs(nodes) do
+    minX, maxX = math.min(minX, n.x), math.max(maxX, n.x)
+    minY, maxY = math.min(minY, n.y), math.max(maxY, n.y)
+  end
+  local span = math.max(maxX - minX, maxY - minY)
+  if #nodes >= 2 and span > 0 then
+    local ox, oy = (span - (maxX - minX)) / 2, (span - (maxY - minY)) / 2
+    for _, n in ipairs(nodes) do
+      out[#out + 1] = { (n.x - minX + ox) / span * 100, (n.y - minY + oy) / span * 100 }
+    end
+  end
+  outlines[def] = out
+  return out
+end
+
+local function myTracksRows()
+  local rows = {}
+  for _, entry in ipairs(catalog.user()) do
+    local name = entry.name
+    rows[#rows + 1] = {
+      label = doomed == name and "PRESS AGAIN TO DELETE" or entry.title,
+      value = doomed ~= name and "DELETE" or nil,
+      track = { title = entry.title, author = entry.author or "YOU", theme = entry.def.theme,
+        outline = menu.trackOutline(entry.def), hint = "DELETE TAKES IT OFF THIS DEVICE" },
+      activate = function()
+        if doomed ~= name then
+          doomed = name
+          return
+        end
+        doomed = nil
+        if catalog.remove(name) then
+          if settings.track == name then
+            settings.track = catalog.builtin()[1].name
+            save()
+          end
+          say("DELETED " .. entry.title)
+        else
+          say("COULDN'T DELETE IT")
+        end
+      end,
+    }
+  end
+  if #rows == 0 then rows[#rows + 1] = { label = "NO SAVED TRACKS", disabled = true } end
+  rows[#rows + 1] = { label = "BACK", activate = function() menu.go("tracks") end }
   return rows
 end
 
@@ -1081,6 +1147,7 @@ local SCREENS = {
   profile = { rows = profileRows },
   host = { rows = hostRows },
   tracks = { rows = tracksRows },
+  mytracks = { rows = myTracksRows },
 }
 
 -- A phone's rows are a thumb's height, about 6 mm on the A04, the same as its
@@ -1311,7 +1378,7 @@ local function drawOnlineTrack(track, sw, sh, boardW, s)
   local detail = THEME_NAMES[track.theme] or ""
   if track.added then detail = detail .. "  " .. track.added end
   ui.text(detail, x, ty + 14 * s, 6 * s, colors.muted, "right", w - 6 * s)
-  ui.text("GET SAVES IT TO YOUR TRACKS", x + 6 * s, ty + 26 * s, 5 * s, colors.muted,
+  ui.text(track.hint or "GET SAVES IT TO YOUR TRACKS", x + 6 * s, ty + 26 * s, 5 * s, colors.muted,
     "left", w - 12 * s)
 end
 
@@ -1417,7 +1484,7 @@ function menu.listLayout(screen, count, sh, s)
     return y, rowH, math.max(3, math.floor((bottom - y) / rowH))
   end
   -- The track list can be long, so it keeps its rows a thumb's height and scrolls.
-  if screen == "tracks" then
+  if screen == "tracks" or screen == "mytracks" then
     local y, rowH = 72 * s, 15 * s
     return y, rowH, math.max(3, math.floor((sh - y - 24 * s) / rowH))
   end
@@ -1448,10 +1515,10 @@ function drawScreen(sw, sh)
   local titles = {
     setup = MODES[settings.mode], settings = "SETTINGS", online = "ONLINE", host = "HOST A ROOM", profile = "PROFILE",
     controls = "CONTROLS", buttons = "BUTTON LIST", credits = "CREDITS", keys = "KEYBOARD", pad = "PAD",
-    tracks = "TRACKS ONLINE",
+    tracks = "TRACKS ONLINE", mytracks = "MY TRACKS",
   }
   local title, titleColor = titles[menu.screen], nil
-  if menu.screen == "tracks" and note then
+  if (menu.screen == "tracks" or menu.screen == "mytracks") and note then
     title, titleColor = note.text, colors.kerb
   elseif menu.screen == "keys" or menu.screen == "pad" then
     title, titleColor = remapTitle(title)
@@ -1489,7 +1556,8 @@ function drawScreen(sw, sh)
         leaveTracks()
         return
       end
-      local up = { host = "online", profile = "online", buttons = "controls", keys = "controls", pad = "controls" }
+      local up = { host = "online", profile = "online", buttons = "controls", keys = "controls", pad = "controls",
+        mytracks = "tracks" }
       menu.go(up[menu.screen] or "main")
     end
   end
@@ -1505,7 +1573,7 @@ function drawScreen(sw, sh)
       drawLobby(sw, sh, w, s)
     elseif menu.screen == "online" then
       drawSetupPreview(sw, sh, w, s, true)
-    elseif menu.screen == "tracks" and focused.track then
+    elseif (menu.screen == "tracks" or menu.screen == "mytracks") and focused.track then
       drawOnlineTrack(focused.track, sw, sh, w, s)
     end
     if menu.screen == "main" and focused.label == "QUICK RACE" and not ui.mobile then

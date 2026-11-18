@@ -61,6 +61,7 @@ function model.fromEntry(entry)
   doc.author = entry.author or def.author
   doc.theme = def.theme or "meadow"
   doc.scale = def.scale or config.TRACK_SCALE
+  doc.runoff = def.runoff
   doc.builtin = entry.builtin
   if def.nodes then
     doc.nodes = copyNodes(def.nodes)
@@ -74,7 +75,7 @@ end
 
 function model.definition(doc)
   return {
-    title = doc.title, author = doc.author, theme = doc.theme, scale = doc.scale,
+    title = doc.title, author = doc.author, theme = doc.theme, scale = doc.scale, runoff = doc.runoff,
     nodes = doc.nodes, startPoint = doc.startPoint,
   }
 end

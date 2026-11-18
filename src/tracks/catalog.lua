@@ -115,6 +115,7 @@ function catalog.save(name, def)
   if author then lines[#lines + 1] = string.format("  author = %q,", author) end
   lines[#lines + 1] = string.format("  theme = %q,", def.theme or "meadow")
   if def.scale then lines[#lines + 1] = string.format("  scale = %.3f,", def.scale) end
+  if def.runoff then lines[#lines + 1] = string.format("  runoff = %.2f,", def.runoff) end
   lines[#lines + 1] = "  nodes = {"
   for _, n in ipairs(def.nodes) do
     lines[#lines + 1] = string.format("    {x = %.2f, y = %.2f, wl = %.2f, wr = %.2f},", n.x, n.y, n.wl, n.wr)
@@ -130,8 +131,13 @@ function catalog.save(name, def)
   return love.filesystem.write(USER_DIR .. "/" .. name .. ".lua", table.concat(lines, "\n"))
 end
 
+-- Deletes a saved track. The built-ins aren't files, so they can't be.
 function catalog.remove(name)
   catalog.refresh()
+  if not name:match("^[%w_%-]+$") then return false end
+  for _, entry in ipairs(catalog.builtin()) do
+    if entry.name == name then return false end
+  end
   return love.filesystem.remove(USER_DIR .. "/" .. name .. ".lua")
 end
 
