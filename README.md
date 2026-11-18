@@ -208,7 +208,7 @@ without showing in its stats. See `ARCHITECTURE.md`.
     make apk                  # a test build for Android
     make site                 # the website, after the release builds
     make deploy-site          # the website, deployed to spppd.xyz
-    make itch                 # the release builds, uploaded to itch.io
+    make itch                 # the release builds, and the browser demo, to itch.io
 
 `ARCHITECTURE.md` explains how the game works, `SOUND.md` how it's meant to sound,
 and `ROADMAP.md` what's next.
