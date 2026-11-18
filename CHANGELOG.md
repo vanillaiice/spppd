@@ -9,7 +9,7 @@
   computer, DOWNLOAD the file and drop it on the editor. Any version with IMPORT reads
   them.
 - Send in your own on the same page: paste its code or pick its file. It shows up once
-  it's been checked.
+  it's been checked. Leave an email, if you like, to hear back about it.
 - The editor's IMPORT has BROWSE TRACKS ONLINE, which opens that page.
 - Tracks show who made them: SPPPD for the built-ins, and the sender's name for
   tracks from the site, in race setup and the editor's OPEN list. Your own tracks say

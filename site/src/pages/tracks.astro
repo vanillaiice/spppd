@@ -35,6 +35,10 @@ import Page from '../layouts/Page.astro';
       <input type="text" id="author" name="author" maxlength="12" autocomplete="nickname" aria-describedby="author-note" />
       <p class="muted" id="author-note">You'll be credited as the track's maker, here and in the game, which shows it as
         BY YOUR NAME. Leave it empty to stay anonymous.</p>
+      <label for="contact">Your email <span class="muted">(optional)</span></label>
+      <input type="email" id="contact" name="contact" maxlength="254" autocomplete="email" aria-describedby="contact-note" />
+      <p class="muted" id="contact-note">Only so we can write to you about your track, with feedback or questions. It's never
+        shown anywhere, and it's deleted with the track.</p>
       <label class="check">
         <input type="checkbox" name="agree" required />
         <span>I made this track, or its maker said I can share it, and it can be shared here under the <a href="/terms/#tracks">terms</a>.</span>
@@ -162,7 +166,7 @@ import Page from '../layouts/Page.astro';
       const response = await fetch('/api/tracks', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
-        body: JSON.stringify({ track: data.get('track'), author: data.get('author') }),
+        body: JSON.stringify({ track: data.get('track'), author: data.get('author'), contact: data.get('contact') }),
       });
       const body = await response.json().catch(() => ({}));
       if (response.ok) {
@@ -281,7 +285,8 @@ import Page from '../layouts/Page.astro';
   }
 
   .send textarea,
-  .send input[type='text'] {
+  .send input[type='text'],
+  .send input[type='email'] {
     font: 0.875rem ui-monospace, monospace;
     color: var(--paint);
     background: var(--panel-solid);

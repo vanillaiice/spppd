@@ -2197,7 +2197,9 @@ with bodies capped at 128 KB:
   about 80 points in a 100 by 100 box, length and theme. Made once and kept 30 s, or
   until a dashboard user changes a track.
 - `GET /api/tracks/ID.spppd`: a live track's file, to download.
-- `POST /api/tracks`: `{"track": CODE_OR_TEXT, "author": NAME}`. The track is held to
+- `POST /api/tracks`: `{"track": CODE_OR_TEXT, "author": NAME, "contact": EMAIL}`,
+  the last two optional. The contact is one plain address (`cleanContact`), shown only
+  on the dashboard as a mail link. The track is held to
   `wire.decode`'s limits in Go (`CheckTrack`), and only the lines the game reads are
   kept, title and theme first. `TestTrackLimitsMatchTheGame` reads the Lua constants,
   so the two can't drift apart, and `tests/test_editor.lua` imports a code the relay

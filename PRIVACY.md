@@ -20,8 +20,8 @@ Questions, or a request to see or delete what's held about you:
   ID or IP address with it. There are no ads or third-party trackers.
 - The server counts players for statistics, but stores a keyed hash of each IP
   address, never the address itself, and deletes the hashes after 30 days.
-- Send in a track and the server keeps the track, the name you gave with it, if any,
-  and when it came. Not your IP address.
+- Send in a track and the server keeps the track, the name and email you gave with
+  it, if any, and when it came. Not your IP address. The email is never shown.
 - The website counts visits and downloads with Umami, on the operator's own server.
   It sets no cookies and can't follow you to other sites.
 
@@ -49,11 +49,12 @@ Tracks sent in on [spppd.xyz/tracks](https://spppd.xyz/tracks/) go to the same s
 | What | Why | Kept |
 | --- | --- | --- |
 | The track, its title and scenery, the name you typed (optional), and when it was sent in | To check it, then show it on the tracks page for anyone to copy | Until it's rejected or deleted. A deleted track is gone from the backups within 7 days |
+| Your email, if you give one | So the operator can write to you about your track, with feedback or questions. Only the operator sees it, on the admin dashboard. It's never shown on the site, in the track or to other players, and never used for anything else | Until the track is rejected or deleted, then gone from the backups within 7 days. Ask and it's deleted sooner |
 | Your IP address | To stop one address sending more than 5 tracks an hour | In memory only, never on disk, for an hour. A restart forgets it |
 | Which admin approved or hid it, and when | To run the page | As long as the track |
 
 A line on the admin dashboard and in the log says a track came in, with its title and
-name, but no address. The proxy in front of the website logs the request, as it does
+name, but no IP address or email. The proxy in front of the website logs the request, as it does
 every page (see below).
 
 ### Drivers

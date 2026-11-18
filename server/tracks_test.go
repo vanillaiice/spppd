@@ -230,8 +230,16 @@ func trackServer(t *testing.T) (*TrackServer, http.Handler, *Relay, *time.Time) 
 	return ts, newStatusPage(relay, ts), relay, clock
 }
 
-func upload(h http.Handler, from, track, author string) *httptest.ResponseRecorder {
-	body, _ := json.Marshal(uploadRequest{Track: track, Author: author})
+func upload(h http.Handler, from, track, author string, contact ...string) *httptest.ResponseRecorder {
+	req := uploadRequest{Track: track, Author: author}
+	if len(contact) > 0 {
+		req.Contact = contact[0]
+	}
+	return send(h, from, req)
+}
+
+func send(h http.Handler, from string, upload uploadRequest) *httptest.ResponseRecorder {
+	body, _ := json.Marshal(upload)
 	req := httptest.NewRequest(http.MethodPost, "/api/tracks", bytes.NewReader(body))
 	req.RemoteAddr = "172.18.0.5:41000" // Caddy, on the kamal network
 	if from != "" {
@@ -251,7 +259,7 @@ func get(h http.Handler, path string) *httptest.ResponseRecorder {
 func TestASentTrackShowsOnceApproved(t *testing.T) {
 	ts, page, relay, _ := trackServer(t)
 	code := TrackCode(readFixture(t, "oasis.spppd"))
-	out := upload(page, "203.0.113.9", code, "xoroz")
+	out := upload(page, "203.0.113.9", code, "xoroz", " maker@example.org ")
 	if out.Code != http.StatusAccepted {
 		t.Fatalf("status %d: %s", out.Code, out.Body)
 	}
@@ -265,7 +273,7 @@ func TestASentTrackShowsOnceApproved(t *testing.T) {
 		t.Fatalf("a waiting track's file: %d", got)
 	}
 	pending, _ := ts.store.Tracks(trackPending)
-	if len(pending) != 1 || pending[0].Author != "XOROZ" || pending[0].Title != "OASIS" {
+	if len(pending) != 1 || pending[0].Author != "XOROZ" || pending[0].Title != "OASIS" || pending[0].Contact != "maker@example.org" {
 		t.Fatalf("pending %+v", pending)
 	}
 
@@ -282,6 +290,9 @@ func TestASentTrackShowsOnceApproved(t *testing.T) {
 	credited := strings.Replace(readFixture(t, "oasis.spppd"), "title OASIS\n", "title OASIS\nauthor XOROZ\n", 1)
 	if got := list.Tracks[0]; got.Code != TrackCode(credited) || got.Author != "XOROZ" || len(got.Outline) == 0 {
 		t.Fatalf("listed %+v", got)
+	}
+	if strings.Contains(get(page, "/api/tracks").Body.String(), "example.org") {
+		t.Fatal("the contact is public")
 	}
 	file := get(page, fmt.Sprintf("/api/tracks/%d.spppd", answer.ID))
 	if file.Code != http.StatusOK || file.Body.String() != credited ||
@@ -455,5 +466,23 @@ func TestTracksAreOffUnlessAskedFor(t *testing.T) {
 	}
 	if got := request(h, http.MethodPost, "/tracks/review", url.Values{"id": {"1"}, "action": {"approve"}}, nil).Code; got != http.StatusNotFound {
 		t.Fatalf("review: %d", got)
+	}
+}
+
+func TestContactsAreEmailsOrNothing(t *testing.T) {
+	for _, good := range []string{"", "  ", "a@b.co", "first.last+tag@example.org"} {
+		if _, err := cleanContact(good); err != nil {
+			t.Errorf("%q refused: %v", good, err)
+		}
+	}
+	for _, bad := range []string{"nope", "Bob <bob@example.org>", "a@b.co?subject=hi", `"x"@b.co`,
+		"a@b.co, c@d.co", strings.Repeat("a", 250) + "@b.co"} {
+		if _, err := cleanContact(bad); err == nil {
+			t.Errorf("%q taken", bad)
+		}
+	}
+	_, page, _, _ := trackServer(t)
+	if out := upload(page, "203.0.113.9", readFixture(t, "oasis.spppd"), "", "not an email"); out.Code != http.StatusBadRequest {
+		t.Fatalf("status %d", out.Code)
 	}
 }

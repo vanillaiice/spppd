@@ -75,6 +75,7 @@ CREATE TABLE IF NOT EXISTS tracks (
 	id INTEGER PRIMARY KEY AUTOINCREMENT, -- so a deleted track's number, and its file's link, never comes back
 	title TEXT NOT NULL,
 	author TEXT NOT NULL DEFAULT '', -- a name the sender typed, checked like a driver's
+	contact TEXT NOT NULL DEFAULT '', -- an email the sender gave, for the dashboard only
 	theme TEXT NOT NULL,
 	metres REAL NOT NULL,
 	text TEXT NOT NULL,             -- the wire text, only the lines the game reads
@@ -95,6 +96,7 @@ func migrate(db *sql.DB) error {
 		{"daily", "quick_races", "INTEGER NOT NULL DEFAULT 0"},
 		{"races", "kind", "TEXT NOT NULL DEFAULT ''"},
 		{"daily", "signups", "INTEGER NOT NULL DEFAULT 0"},
+		{"tracks", "contact", "TEXT NOT NULL DEFAULT ''"},
 	}
 	for _, c := range columns {
 		var found int

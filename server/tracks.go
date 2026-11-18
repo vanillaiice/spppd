@@ -23,6 +23,7 @@ import (
 	"math"
 	"net"
 	"net/http"
+	"net/mail"
 	"strconv"
 	"strings"
 	"sync"
@@ -82,6 +83,7 @@ type Track struct {
 	ID         int
 	Title      string
 	Author     string
+	Contact    string // an email for the operator to reply to; never public
 	Theme      string
 	Metres     float64
 	Text       string // the plain wire text, only lines the game reads
@@ -372,13 +374,13 @@ func TrackCode(text string) string {
 
 // Storing ------------------------------------------------------------------------
 
-const trackColumns = `id, title, author, theme, metres, text, outline, state, added, reviewed, reviewed_by`
+const trackColumns = `id, title, author, contact, theme, metres, text, outline, state, added, reviewed, reviewed_by`
 
 func scanTrack(row interface{ Scan(...any) error }) (Track, error) {
 	var t Track
 	var outlineJSON string
 	var added, reviewed int64
-	if err := row.Scan(&t.ID, &t.Title, &t.Author, &t.Theme, &t.Metres, &t.Text, &outlineJSON,
+	if err := row.Scan(&t.ID, &t.Title, &t.Author, &t.Contact, &t.Theme, &t.Metres, &t.Text, &outlineJSON,
 		&t.State, &added, &reviewed, &t.ReviewedBy); err != nil {
 		return t, err
 	}
@@ -401,9 +403,9 @@ func (s *Store) AddTrack(t Track, now time.Time) (int, error) {
 	}
 	sum := sha256.Sum256([]byte(t.Text))
 	outlineJSON, _ := json.Marshal(t.Outline)
-	result, err := s.db.Exec(`INSERT INTO tracks (title, author, theme, metres, text, outline, hash, state, added)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT (hash) DO NOTHING`,
-		t.Title, t.Author, t.Theme, t.Metres, t.Text, string(outlineJSON), hex.EncodeToString(sum[:]), trackPending, now.Unix())
+	result, err := s.db.Exec(`INSERT INTO tracks (title, author, contact, theme, metres, text, outline, hash, state, added)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT (hash) DO NOTHING`,
+		t.Title, t.Author, t.Contact, t.Theme, t.Metres, t.Text, string(outlineJSON), hex.EncodeToString(sum[:]), trackPending, now.Unix())
 	if err != nil {
 		return 0, err
 	}
@@ -607,8 +609,24 @@ func (ts *TrackServer) serveFile(w http.ResponseWriter, r *http.Request) {
 }
 
 type uploadRequest struct {
-	Track  string `json:"track"`
-	Author string `json:"author"`
+	Track   string `json:"track"`
+	Author  string `json:"author"`
+	Contact string `json:"contact"`
+}
+
+// cleanContact checks an email the sender gave, so the dashboard's link to it works.
+// An address with a display name, or anything that isn't one plain address, is refused.
+func cleanContact(raw string) (string, error) {
+	contact := strings.TrimSpace(raw)
+	if contact == "" {
+		return "", nil
+	}
+	parsed, err := mail.ParseAddress(contact)
+	if err != nil || parsed.Name != "" || parsed.Address != contact || len(contact) > 254 ||
+		strings.ContainsAny(contact, "<>\"'`?&") {
+		return "", errors.New("That email doesn't look right. Leave it empty if you'd rather not give one")
+	}
+	return contact, nil
 }
 
 func (ts *TrackServer) serveUpload(w http.ResponseWriter, r *http.Request) {
@@ -633,6 +651,10 @@ func (ts *TrackServer) serveUpload(w http.ResponseWriter, r *http.Request) {
 			refuse(http.StatusBadRequest, err.Error())
 			return
 		}
+	}
+	if t.Contact, err = cleanContact(req.Contact); err != nil {
+		refuse(http.StatusBadRequest, err.Error())
+		return
 	}
 	// Counted only once the track is good, so a typo doesn't use up a try.
 	if !ts.allowUpload(uploaderIP(r)) {
