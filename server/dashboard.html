@@ -276,7 +276,7 @@ a { color: var(--accent); }
   <svg viewBox="-4 -4 108 108" role="img" aria-label="The shape of {{.Title}}"><polygon points="{{points .Outline}}" vector-effect="non-scaling-stroke"/></svg>
   <h3>{{.Title}}</h3>
   <div class="muted">{{if .Author}}by {{.Author}} · {{end}}{{.Theme}} · {{km .Metres}} · no. {{.ID}}<br>sent in <time data-date datetime="{{instant .Added}}">{{date .Added}}</time>{{if .ReviewedBy}} · {{.State}} by {{.ReviewedBy}}{{end}}</div>
-  <textarea readonly aria-label="Track code for {{.Title}}" hx-on:click="this.select()">{{code .Text}}</textarea>
+  <textarea readonly aria-label="Track code for {{.Title}}" hx-on:click="this.select()">{{code .Wire}}</textarea>
 {{end}}
 
 {{define "tracks"}}

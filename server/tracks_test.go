@@ -156,12 +156,12 @@ func TestTracksTheGameWouldRefuseAreRefused(t *testing.T) {
 }
 
 func TestOnlyLinesTheGameReadsAreKept(t *testing.T) {
-	text := nodeTrack(5, "theme space", "advert visit my site", "  node 1 1 1 1") + "title  Hé <b>WOW</b>\n"
+	text := nodeTrack(5, "theme space", "advert visit my site", "  node 1 1 1 1", "author FAKE") + "title  Hé <b>WOW</b>\n"
 	track, err := CheckTrack(text)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if strings.Contains(track.Text, "advert") || strings.Contains(track.Text, "  node") {
+	if strings.Contains(track.Text, "advert") || strings.Contains(track.Text, "  node") || strings.Contains(track.Text, "FAKE") {
 		t.Errorf("kept lines the game ignores:\n%s", track.Text)
 	}
 	if track.Title != "H bWOWb" || track.Theme != "meadow" {
@@ -278,11 +278,13 @@ func TestASentTrackShowsOnceApproved(t *testing.T) {
 	if err := json.Unmarshal(get(page, "/api/tracks").Body.Bytes(), &list); err != nil || len(list.Tracks) != 1 {
 		t.Fatalf("list %+v %v", list, err)
 	}
-	if got := list.Tracks[0]; got.Code != code || got.Author != "XOROZ" || len(got.Outline) == 0 {
+	// The code and the file credit the sender, on the line after the title.
+	credited := strings.Replace(readFixture(t, "oasis.spppd"), "title OASIS\n", "title OASIS\nauthor XOROZ\n", 1)
+	if got := list.Tracks[0]; got.Code != TrackCode(credited) || got.Author != "XOROZ" || len(got.Outline) == 0 {
 		t.Fatalf("listed %+v", got)
 	}
 	file := get(page, fmt.Sprintf("/api/tracks/%d.spppd", answer.ID))
-	if file.Code != http.StatusOK || file.Body.String() != readFixture(t, "oasis.spppd") ||
+	if file.Code != http.StatusOK || file.Body.String() != credited ||
 		file.Header().Get("Content-Disposition") != `attachment; filename="oasis.spppd"` {
 		t.Fatalf("file %d %v", file.Code, file.Header())
 	}
@@ -306,6 +308,11 @@ func TestUploadsAreLimited(t *testing.T) {
 	}
 	if out := upload(page, "203.0.113.9", track(0), ""); out.Code != http.StatusConflict {
 		t.Fatalf("the same track twice: %d", out.Code)
+	}
+	// An author line in the text is the sender's claim, not the server's: it's
+	// dropped, so the same track under another name is still the same track.
+	if out := upload(page, "203.0.113.9", strings.Replace(track(0), "title", "author SOMEONE\ntitle", 1), "BOB"); out.Code != http.StatusConflict {
+		t.Fatalf("the same track with an author line: %d", out.Code)
 	}
 	for i := 1; i < uploadsPerHour; i++ {
 		upload(page, "203.0.113.9", track(i), "")

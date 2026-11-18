@@ -26,7 +26,8 @@ function catalog.builtin()
   local out = {}
   for _, name in ipairs(BUILTIN) do
     if manifest[name] then
-      out[#out + 1] = { name = name, title = manifest[name].title or name:upper(), def = manifest[name], builtin = true }
+      out[#out + 1] = { name = name, title = manifest[name].title or name:upper(), def = manifest[name], builtin = true,
+        author = "SPPPD" }
     end
   end
   return out
@@ -43,7 +44,7 @@ function catalog.user()
       local def = loadDefinition(USER_DIR .. "/" .. file)
       -- Old innerWall/outerWall files from v1 are skipped; those tracks are built in now.
       if def and (def.nodes or def.left) then
-        out[#out + 1] = { name = name, title = def.title or name:upper(), def = def }
+        out[#out + 1] = { name = name, title = def.title or name:upper(), def = def, author = wire.cleanAuthor(def.author) }
       end
     end
   end
@@ -74,7 +75,7 @@ local fingerprints = setmetatable({}, { __mode = "k" })
 function catalog.fingerprint(def)
   local known = fingerprints[def]
   if not known then
-    local text = wire.encode(def)
+    local text = wire.encode(def, true)
     local digest = love.data.encode("string", "hex", love.data.hash("md5", text))
     known = { text = text, hash = digest:sub(1, 16) }
     fingerprints[def] = known
@@ -95,6 +96,8 @@ function catalog.save(name, def)
   love.filesystem.createDirectory(USER_DIR)
   local lines = { "return {" }
   lines[#lines + 1] = string.format("  title = %q,", def.title or name:upper())
+  local author = wire.cleanAuthor(def.author)
+  if author then lines[#lines + 1] = string.format("  author = %q,", author) end
   lines[#lines + 1] = string.format("  theme = %q,", def.theme or "meadow")
   if def.scale then lines[#lines + 1] = string.format("  scale = %.2f,", def.scale) end
   lines[#lines + 1] = "  nodes = {"

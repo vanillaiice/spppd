@@ -589,7 +589,7 @@ local function drawOpen(sw, sh, s)
   for _, entry in ipairs(catalog.all()) do
     rows[#rows + 1] = {
       label = entry.title,
-      value = entry.builtin and "BUILT IN" or "YOURS",
+      value = entry.author or "YOURS",
       activate = function()
         setDocument(model.fromEntry(entry))
         say("Opened " .. entry.title)

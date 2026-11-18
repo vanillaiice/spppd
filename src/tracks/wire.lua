@@ -30,6 +30,14 @@ function wire.cleanTitle(title)
   return clean ~= "" and clean or "SHARED TRACK"
 end
 
+-- Who made the track: SPPPD for the built-ins, the name its sender gave on the track
+-- server. Shaped like a driver name, which is all the server lets through.
+local MAX_AUTHOR = 12
+function wire.cleanAuthor(author)
+  local clean = tostring(author or ""):upper():gsub("[^A-Z0-9_%-]", ""):sub(1, MAX_AUTHOR)
+  return clean ~= "" and clean or nil
+end
+
 local function point(p)
   return string.format("%.2f %.2f", p.x, p.y)
 end
@@ -42,8 +50,13 @@ local function encodeSegments(lines, side, segments)
   end
 end
 
-function wire.encode(def)
-  local lines = { HEADER, "title " .. wire.cleanTitle(def.title), "theme " .. (def.theme or "meadow") }
+-- shapeOnly leaves out the author, so the text (and its hash, which online rooms
+-- match tracks by) is the same whoever is credited.
+function wire.encode(def, shapeOnly)
+  local lines = { HEADER, "title " .. wire.cleanTitle(def.title) }
+  local author = not shapeOnly and wire.cleanAuthor(def.author)
+  if author then lines[#lines + 1] = "author " .. author end
+  lines[#lines + 1] = "theme " .. (def.theme or "meadow")
   if def.scale then lines[#lines + 1] = string.format("scale %.3f", def.scale) end
   if def.runoff then lines[#lines + 1] = string.format("runoff %.2f", def.runoff) end
   if def.startPoint then
@@ -93,6 +106,8 @@ function wire.decode(text)
     local key, rest = line:match("^(%S+)%s*(.*)$")
     if key == "title" then
       def.title = wire.cleanTitle(rest)
+    elseif key == "author" then
+      def.author = wire.cleanAuthor(rest)
     elseif key == "theme" then
       if THEMES[rest] then def.theme = rest end
     elseif key == "scale" then

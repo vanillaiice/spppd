@@ -172,6 +172,8 @@ func CheckTrack(text string) (Track, error) {
 		case "title":
 			t.Title = cleanTrackTitle(rest)
 			continue // written again below, cleaned
+		case "author":
+			continue // the server credits whoever sends it in, from the form (Track.Wire)
 		case "theme":
 			if trackThemes[rest] {
 				t.Theme = rest
@@ -272,6 +274,17 @@ func CheckTrack(text string) (Track, error) {
 	kept = append([]string{trackHeader, "title " + t.Title, "theme " + t.Theme}, kept[1:]...)
 	t.Text = strings.Join(kept, "\n") + "\n"
 	return t, nil
+}
+
+// Wire is the track as the game reads it, with the author credited on the line
+// after the title, as wire.encode writes it. Kept apart from Text, so the same
+// track sent in under two names is still the same track.
+func (t Track) Wire() string {
+	if t.Author == "" {
+		return t.Text
+	}
+	title, rest, _ := strings.Cut(strings.TrimPrefix(t.Text, trackHeader+"\n"), "\n")
+	return trackHeader + "\n" + title + "\nauthor " + t.Author + "\n" + rest
 }
 
 // outline thins a track's points to a few dozen, fitted to a 100 by 100 box.
@@ -491,7 +504,7 @@ func (ts *TrackServer) publicList() ([]byte, error) {
 	for _, t := range tracks {
 		out = append(out, publicTrack{
 			ID: t.ID, Title: t.Title, Author: t.Author, Theme: t.Theme, Metres: int(math.Round(t.Metres)),
-			Outline: t.Outline, Code: TrackCode(t.Text), Added: dayOf(t.Reviewed),
+			Outline: t.Outline, Code: TrackCode(t.Wire()), Added: dayOf(t.Reviewed),
 		})
 	}
 	list, err := json.Marshal(map[string]any{"tracks": out})
@@ -590,7 +603,7 @@ func (ts *TrackServer) serveFile(w http.ResponseWriter, r *http.Request) {
 	h.Set("Content-Type", "text/plain; charset=utf-8")
 	h.Set("Content-Disposition", fmt.Sprintf(`attachment; filename="%s.spppd"`, file))
 	h.Set("Cache-Control", "public, max-age=300")
-	_, _ = io.WriteString(w, t.Text)
+	_, _ = io.WriteString(w, t.Wire())
 }
 
 type uploadRequest struct {

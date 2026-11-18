@@ -11,6 +11,9 @@
 - Send in your own on the same page: paste its code or pick its file. It shows up once
   it's been checked.
 - The editor's IMPORT has BROWSE TRACKS ONLINE, which opens that page.
+- Tracks show who made them: SPPPD for the built-ins, and the sender's name for
+  tracks from the site, in race setup and the editor's OPEN list. Your own tracks say
+  YOURS there.
 
 ## 3.6.0 (2026-11-18)
 

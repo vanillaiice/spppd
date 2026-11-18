@@ -1500,6 +1500,12 @@ keeps what a hostile one can make the game unpack to about 30 MB; anything that
 inflates past `wire.MAX_BYTES` is refused after, and a dropped file over 80 KB isn't
 read. An imported track opens as a new, unsaved document, named after its title.
 
+A track can carry an `author` line, a name shaped like a driver's
+(`wire.cleanAuthor`). Built-ins are credited to SPPPD by the catalogue, a saved track
+keeps its author, and race setup and the editor's OPEN list show it. It's left out of
+`catalog.fingerprint` (`wire.encode(def, true)`), so online rooms match tracks by shape
+whoever is credited, and older games skip the line.
+
 IMPORT's BROWSE TRACKS ONLINE opens `config.TRACKS_URL`, the track server's page (see
 The track server). The game never talks to that server itself: a track from it comes
 in as a code or a file like any other.
@@ -2194,7 +2200,9 @@ with bodies capped at 128 KB:
   kept, title and theme first. `TestTrackLimitsMatchTheGame` reads the Lua constants,
   so the two can't drift apart, and `tests/test_editor.lua` imports a code the relay
   made (`server/testdata/oasis.code`). The author is optional and checked like a
-  driver name. Then it waits, `pending`, in the `tracks` table of `relay.db`.
+  driver name; an `author` line in the text is dropped, and the list's code and the
+  file put the sender's back after the title (`Track.Wire`), so the same track sent
+  under two names is still one track. Then it waits, `pending`, in the `tracks` table of `relay.db`.
 
 Nobody needs an account. Uploads are limited to 5 an hour per address, in memory only,
 and 100 waiting in all; the same text twice is refused by its hash. The address is

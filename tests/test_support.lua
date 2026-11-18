@@ -247,6 +247,24 @@ h.describe("catalog", function()
     return { nodes = nodes, title = "CACHED", startPoint = { x = radius, y = 0, angle = 1.57 } }
   end
 
+  h.it("credits SPPPD for built-ins and keeps a saved track's author", function()
+    for _, entry in ipairs(catalog.builtin()) do h.assertEq(entry.author, "SPPPD", entry.name) end
+    local def = circle(400)
+    def.author = "xoroz"
+    h.assertTrue(catalog.save("test_author", def))
+    h.assertEq(catalog.find("test_author").author, "XOROZ")
+    catalog.save("test_author", circle(400))
+    h.assertEq(catalog.find("test_author").author, nil, "a track of your own has none")
+    catalog.remove("test_author")
+  end)
+
+  h.it("matches tracks online by shape, whoever is credited", function()
+    local plain, credited = circle(450), circle(450)
+    credited.author = "BOB"
+    h.assertEq(select(2, catalog.fingerprint(plain)), select(2, catalog.fingerprint(credited)))
+    h.assertTrue(not catalog.fingerprint(credited):find("author"), "no author in the text online rooms send")
+  end)
+
   h.it("runs a saved track's file once, until the folder can have changed", function()
     catalog.save("test_cached", circle(500))
     local load, reads = love.filesystem.load, 0

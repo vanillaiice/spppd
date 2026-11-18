@@ -37,7 +37,7 @@ lose it and every device signed in, and the driver can't be got back.
 Anyone can send a track in on [spppd.xyz/tracks](https://spppd.xyz/tracks/). Only
 send a track you made yourself, or one whose maker has said you can. Sending one means
 it can be shown on that page and copied by anyone, for free, to race in SPPPD, and
-changed and shared again the same way. The name you give is shown with it. Don't send
+changed and shared again the same way. The name you give is credited with it, on that page and in the game. Don't send
 anything offensive in a track's name or shape.
 
 Tracks are checked before they appear, and the operator can hide or delete any track

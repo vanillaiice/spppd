@@ -32,7 +32,9 @@ import Page from '../layouts/Page.astro';
       <textarea id="track" name="track" rows="4" spellcheck="false" autocomplete="off" placeholder="SPPPD-TRACK:..."></textarea>
       <input type="file" id="file" accept=".spppd,.txt,text/plain" aria-label="Or pick a track file" />
       <label for="author">Your name <span class="muted">(optional, 3 to 12 letters, numbers, - or _)</span></label>
-      <input type="text" id="author" name="author" maxlength="12" autocomplete="nickname" />
+      <input type="text" id="author" name="author" maxlength="12" autocomplete="nickname" aria-describedby="author-note" />
+      <p class="muted" id="author-note">You'll be credited as the track's maker, here and in the game, which shows it as
+        BY YOUR NAME. Leave it empty to stay anonymous.</p>
       <label class="check">
         <input type="checkbox" name="agree" required />
         <span>I made this track, or its maker said I can share it, and it can be shared here under the <a href="/terms/#tracks">terms</a>.</span>

@@ -1056,6 +1056,10 @@ local function drawSetupPreview(sw, sh, boardW, s, carOnly)
     ui.text(entry.title, x + 6 * s, 14 * s + size + 8 * s, 8 * s, colors.marshal)
     local detail = string.format("%.2f KM", data.track.length / config.METER / 1000)
     ui.text(detail, x, 14 * s + size + 8 * s, 6 * s, colors.paint, "right", w - 6 * s)
+    -- Who made it: SPPPD, or whoever sent it in to spppd.xyz/tracks.
+    if entry.author then
+      ui.text("BY " .. entry.author, x, 14 * s + size + 20 * s, 6 * s, colors.muted, "right", w - 6 * s)
+    end
     -- Freestyle times nothing, so a best lap means nothing there.
     if settings.mode ~= "freestyle" then
       local best = settings.bestLap(entry.name, spec.id, settings.trialRules)
