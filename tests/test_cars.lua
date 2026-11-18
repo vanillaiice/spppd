@@ -35,3 +35,23 @@ h.describe("car stats", function()
     h.assertTrue(tofu.handling.score > bull.handling.score, "TOFU RUNNER handles better than BIG BULL")
   end)
 end)
+
+h.describe("formula kid", function()
+  local kid = garage.byId("formula_kid")
+
+  h.it("is in the garage, at the end so saved picks keep their car", function()
+    h.assertEq(kid.id, "formula_kid")
+    h.assertEq(garage[#garage], kid)
+  end)
+
+  h.it("has the grippiest tyres and the lowest top speed", function()
+    local mine = stats.of(kid)
+    for _, spec in ipairs(garage) do
+      if spec ~= kid then
+        local other = stats.of(spec)
+        h.assertTrue(mine.tires.value > other.tires.value, "tyres beat " .. spec.name)
+        h.assertTrue(mine.speed.value < other.speed.value, "slower than " .. spec.name)
+      end
+    end
+  end)
+end)

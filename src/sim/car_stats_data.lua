@@ -12,4 +12,5 @@ return {
   quad_turbo = { speed = 381.3, accel = 2.69, brake = 32.8, handling = 0.91, tires = 1.125 },
   baja_beast = { speed = 274.7, accel = 4.11, brake = 34.9, handling = 0.79, tires = 1.049 },
   open_wheeler = { speed = 337.7, accel = 4.06, brake = 30.6, handling = 0.841, tires = 1.235 },
+  formula_kid = { speed = 227.7, accel = 3.7, brake = 30.9, handling = 0.898, tires = 1.254 },
 }

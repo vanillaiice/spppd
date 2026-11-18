@@ -584,6 +584,7 @@ end.
 | 10 | QUAD TURBO | hyper | AWD | 1950 | 683 | 1250 | 7 | 328 | 16, 4 turbos | 190 |
 | 11 | BAJA BEAST | truck | AWD | 2900 | 466 | 880 | 8 | 415 | 8, supercharged | 210 |
 | 12 | OPEN WHEELER | formula | RWD | 920 | 502 | 470 | 8 | 337 | 6 race, 1 turbo | 120 |
+| 13 | FORMULA KID | formula | RWD | 640 | 154 | 250 | 6 | 223 | 4 race, 1 turbo | 90 |
 
 "Gearing limit" is redline in top gear. Drag stops most cars before that, and BAJA
 BEAST well before it. `cylinders`, `turbos`, `supercharged` and `raceExhaust` change

@@ -1,0 +1,36 @@
+local base = require("src/entities/vehicles/base")
+
+-- A junior single-seater: a small turbo four, slicks and short gears. It keeps
+-- huge speed through the corners and runs out of puff on the straights.
+return base.define({
+  id = "formula_kid",
+  name = "FORMULA KID",
+  blurb = "A junior single-seater. Sticky slicks, short gears, not much top end.",
+  bodyStyle = "formula",
+  color = { 0.08, 0.32, 0.78 },
+  mass = 640,
+  weightFront = 0.42,
+  cgHeight = 0.28,
+  wheelbase = 2.9,
+  track = 1.65,
+  length = 4.9,
+  width = 1.75,
+  rollBalance = 0.5,
+  grip = 1.295,
+  peakSlip = 0.12,
+  looseDrag = 1.0,
+  cylinders = 4,
+  turbos = 1,
+  raceExhaust = true,
+  peakTorque = 250,
+  redline = 7200,
+  gears = { 3.0, 2.3, 1.85, 1.55, 1.34, 1.18 },
+  finalDrive = 3.4,
+  dragArea = 0.65,
+  liftArea = 0.3,
+  brakeG = 1.4,
+  engineBrake = 400,
+  handbrakeForce = 4000,
+  steerSpeed = math.rad(380),
+  boostPower = 90000,
+})

@@ -12,7 +12,7 @@ Its website, with downloads, the changelog and a blog, is
 
 Race the AI, set time trials, play in freestyle's lot of cones and containers or
 cruise any circuit with no clock, build your own tracks, or race up to three
-friends online. There are 12 cars, 10 tracks and four times of day.
+friends online. There are 13 cars, 10 tracks and four times of day.
 
 ## Controls
 
@@ -92,6 +92,7 @@ phone, BUTTON LIST shows the touch controls.
 | QUAD TURBO | Quad-turbo 16-cyl | AWD | 683 kW (916 hp) | 1950 kg | 2.2 s | 6.5 s | 381 km/h |
 | BAJA BEAST | Supercharged 8-cyl | AWD | 466 kW (625 hp) | 2900 kg | 3.9 s | 15.1 s | 276 km/h |
 | OPEN WHEELER | Turbo 6-cyl | RWD | 502 kW (673 hp) | 920 kg | 3.1 s | 6.5 s | 338 km/h |
+| FORMULA KID | Turbo 4-cyl | RWD | 154 kW (206 hp) | 640 kg | 3.0 s | 11.5 s | 228 km/h |
 
 The times and speeds come from the game's own physics on Arcade handling: full throttle
 from a standstill, without boost. A good launch at the lights takes about half a second
