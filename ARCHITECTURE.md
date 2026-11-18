@@ -1454,6 +1454,18 @@ directly, and the document survives the trip, so the player comes back to their 
 Built-in tracks can be opened, and boundary tracks convert through `Track:toNodes`.
 Saving a built-in makes a `_edit` copy and never replaces it.
 
+### Track codes
+
+EXPORT and IMPORT pass a track around by hand as one line of text
+(`src/tracks/share.lua`): `SPPPD-TRACK:` and then the track's wire text
+(`src/tracks/wire.lua`, the same text online rooms send), deflated with zlib and
+base64'd. Built-in tracks come to 0.3 to 5.2 KB; a track drawn in the editor is a few hundred bytes to 2 KB. IMPORT also takes plain wire text, and
+everything goes through `wire.decode`, so a code from a stranger meets the same limits
+as a track from another player online. A code over 40 000 characters is refused before
+it's inflated, which keeps what a hostile one can make the game unpack to about 30 MB;
+anything that inflates past `wire.MAX_BYTES` is refused after. An imported track opens
+as a new, unsaved document, named after its title.
+
 ### Catalogue
 
 `catalog.lua` returns built-ins in a fixed order, then anything in the save folder's

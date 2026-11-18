@@ -6,6 +6,7 @@ local colors = require("src/colors")
 local config = require("src/config")
 local catalog = require("src/tracks/catalog")
 local model = require("src/editor_model")
+local share = require("src/tracks/share")
 local input = require("src/input")
 
 local editor = {}
@@ -174,6 +175,37 @@ local function rename()
   end, "^[%w_ ]$", 18)
 end
 
+-- The track as one line on the clipboard, to paste anywhere.
+local function exportTrack()
+  love.system.setClipboardText(share.export(model.definition(doc)))
+  say("Track code copied. Paste it anywhere to share")
+end
+
+-- A track code (or a track's plain text) from the clipboard, opened as a new,
+-- unsaved track.
+local function importTrack()
+  local def, why = share.import(love.system.getClipboardText())
+  if not def then
+    say("No track on the clipboard (" .. (why or "?") .. ")")
+    return
+  end
+  local name = def.title:lower():gsub("[^%w]+", "_"):gsub("^_+", ""):gsub("_+$", "")
+  if name == "" then name = "shared_track" end
+  local base, n = name, 1
+  while catalog.find(name) do
+    n = n + 1
+    name = base .. "_" .. n
+  end
+  local ok, imported = pcall(model.fromEntry, { name = name, title = def.title, def = def })
+  if not ok then
+    say("That track can't be opened")
+    return
+  end
+  setDocument(imported)
+  doc.dirty = true
+  say("Imported " .. doc.title .. ". Save to keep it")
+end
+
 local function goBack()
   overlay = nil
   state.screen = "menu"
@@ -205,6 +237,8 @@ local function toolRows()
         setDocument(model.new(freshName()))
         say("New track")
       end },
+    { label = "IMPORT", activate = importTrack },
+    { label = "EXPORT", activate = exportTrack },
     { label = "NAME", activate = rename },
     { label = "SCENERY", value = function() return doc.theme:upper() end, activate = cycleTheme },
     { label = "SET START", value = "ENTER", disabled = selected == nil, activate = function()

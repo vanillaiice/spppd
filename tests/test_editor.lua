@@ -132,4 +132,45 @@ h.describe("editor", function()
     h.assertTrue(model.build(reopened) ~= nil)
     catalog.remove("saved_one")
   end)
+
+  h.it("every track goes out as a code and comes back the same", function()
+    local share = require("src/tracks/share")
+    local wire = require("src/tracks/wire")
+    for _, entry in ipairs(catalog.builtin()) do
+      local code = share.export(entry.def)
+      h.assertTrue(code:sub(1, #share.PREFIX) == share.PREFIX, "starts with the prefix")
+      h.assertTrue(not code:find("[\r\n]"), "one line")
+      h.assertTrue(#code < share.MAX_CODE / 4, entry.name .. " code is " .. #code .. " characters")
+      local def = assert(share.import("  " .. code .. "\n"))
+      h.assertEq(wire.encode(def), wire.encode(entry.def), entry.name)
+      local doc = model.fromEntry({ name = entry.name, title = def.title, def = def })
+      h.assertTrue(model.build(doc) ~= nil, entry.name .. " opens in the editor")
+    end
+  end)
+
+  h.it("takes a track's plain text too, with Windows line endings", function()
+    local share = require("src/tracks/share")
+    local wire = require("src/tracks/wire")
+    local text = wire.encode(model.definition(model.new("plain")))
+    local def = assert(share.import(text:gsub("\n", "\r\n")))
+    h.assertEq(#def.nodes, #model.new("plain").nodes)
+  end)
+
+  h.it("turns away anything that isn't a track", function()
+    local share = require("src/tracks/share")
+    local wire = require("src/tracks/wire")
+    local function b64(raw) return love.data.encode("string", "base64", raw) end
+    local function zip(text) return love.data.compress("string", "zlib", text) end
+    local bad = {
+      nil, "", "   ", "hello there", "return { nodes = {} }",
+      share.PREFIX, share.PREFIX .. "!!!!", share.PREFIX .. b64("not deflated at all"),
+      share.PREFIX .. b64(zip("not a track")),
+      share.PREFIX .. b64(zip(wire.encode(model.definition(model.new("x"))) .. string.rep("\n", 70000))),
+      share.PREFIX .. string.rep("A", share.MAX_CODE),
+    }
+    for i = 1, 11 do
+      local def = share.import(bad[i])
+      h.assertTrue(def == nil, "case " .. i)
+    end
+  end)
 end)

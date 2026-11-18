@@ -56,6 +56,14 @@ local function clearMusic()
 end
 
 -- Each entry runs after `wait` frames have passed since the previous one.
+-- Clicks the editor toolbar's row `i`, as the editor lays it out.
+function flow.clickTool(i)
+  local sw, sh = love.graphics.getDimensions()
+  local s = ui.scale(sw, sh)
+  local rowH = math.min(14 * s, (sh - 40 * s) / 17)
+  click(40 * s, 28 * s + rowH * (i - 0.5))
+end
+
 local function steps()
   local list = {}
   local function step(wait, fn) list[#list + 1] = { wait = wait, fn = fn } end
@@ -343,6 +351,26 @@ local function steps()
   end)
   step(3, function()
     expect(#require("src/editor").currentDoc().nodes == flow.nodes, "ctrl+z undoes it")
+    love.system.setClipboardText("")
+    flow.clickTool(6)  -- EXPORT
+  end)
+  step(3, function()
+    local code = love.system.getClipboardText()
+    expect(code:sub(1, 12) == "SPPPD-TRACK:", "EXPORT puts a track code on the clipboard")
+    flow.exported = require("src/editor").currentDoc()
+    flow.clickTool(4)  -- NEW
+  end)
+  step(3, function()
+    expect(require("src/editor").currentDoc() ~= flow.exported, "NEW starts another track")
+    flow.clickTool(5)  -- IMPORT
+  end)
+  step(3, function()
+    local doc, old = require("src/editor").currentDoc(), flow.exported
+    expect(doc.title == old.title and #doc.nodes == #old.nodes, "IMPORT brings the exported track back")
+    local a, b = doc.nodes[3], old.nodes[3]
+    expect(math.abs(a.x - b.x) < 0.01 and math.abs(a.y - b.y) < 0.01 and math.abs(a.wl - b.wl) < 0.01,
+      "node for node, to the centimetre the code keeps")
+    expect(doc.dirty, "and it waits to be saved")
     press("t")
   end)
   step(4, function()
