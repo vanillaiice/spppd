@@ -1,0 +1,1 @@
+Browse the tracks players made and get them from the main menu with TRACKS ONLINE. QUICK RACE picks a new track and car each time. Phone menus fire when your finger lifts, have bigger rows, < > buttons and BACK at the top, and reach the screen's edges. The game goes quiet when you leave it. Now on LÖVE 12; needs Android 7.0 or later.

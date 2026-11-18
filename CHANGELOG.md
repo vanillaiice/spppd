@@ -1,6 +1,6 @@
 # Changelog
 
-## 4.0.0 (not released yet)
+## 4.0.0 (2026-11-18)
 
 Races 3.0 to 3.7: tracks match online as before. The server update only tells games
 where its track list is.
@@ -31,6 +31,22 @@ where its track list is.
 - QUICK RACE picks its own track and car at random: when the game opens, and again
   after every race you finish. The laps, grid and time of day are still RACE's, and
   RACE keeps what you set there.
+
+### Phones
+
+- A menu row fires when your finger lifts, not when it lands, and lights up while
+  you hold it. Slide off before lifting and nothing happens.
+- Rows are a thumb's height, and rows with choices have < and > buttons to tap.
+  Longer lists turn pages with MORE, and race setup keeps START at the bottom of
+  every page.
+- BACK sits at the top of every screen, in the same place each time, instead of at
+  the end of the list.
+- ONLINE puts QUICK MATCH, HOST A ROOM, ROOM CODE and JOIN A ROOM first.
+- The menus and the race reach the screen's edges again, keeping clear of only the
+  camera notch.
+- The notes on ONLINE no longer run into the car beside them.
+- RESET in a race also fires on the lift, so you can slide off it. Pause still
+  answers at once.
 
 ### New engine
 
