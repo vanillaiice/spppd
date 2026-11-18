@@ -1,5 +1,40 @@
 # Changelog
 
+## 3.6.0 (2026-11-18)
+
+3.6.0 races 3.0 to 3.5. No server change. An older game shows FORMULA KID as a HOT
+HATCH. The first launch after updating builds the sounds again, once.
+
+### Play in your browser
+
+- SPPPD runs in the browser at [spppd.xyz/play](https://spppd.xyz/play/), with
+  nothing to install. On a phone it has the touch controls and the big menus. Online
+  races, sharing tracks and the freestyle radio need the downloaded game. Your
+  settings and tracks stay in that browser.
+
+### Driving
+
+- EASY handling: ARCADE with half as much grip again, on every car. The computer
+  drivers stay on ARCADE beside you, and online EASY drives as ARCADE.
+- FORMULA KID, a junior single-seater: 640 kg, a small turbo four, the grippiest tyres
+  in the garage and the lowest top speed, 228 km/h.
+
+### Menus
+
+- QUICK RACE, first in the main menu, starts the race you last set up in one press.
+- Race setup shows each car's SPEED, ACCEL, BRAKE, HANDLING and TIRES, measured by
+  driving it.
+
+### Track editor
+
+- EXPORT saves the track as a `.spppd` file and opens the folder it's in, so you can
+  send it to anyone. COPY CODE puts it on the clipboard as one line instead.
+- IMPORT opens a track file from that folder or a code from the clipboard, and
+  dropping a track file on the editor opens it too.
+
+Thanks to [@xoroz](https://github.com/xoroz), whose fork started EASY handling, the car
+stats, QUICK RACE, FORMULA KID (their TATUS) and the browser version.
+
 ## 3.5.0 (2026-11-09)
 
 3.5.0 races 3.0 to 3.4. No server change.
