@@ -383,7 +383,7 @@ Set in `dynamics.ASSISTS`. `steer` and `caster` are real effects. Everything fro
 
 | | ARCADE | FULL | SPORT | SIM |
 | --- | --- | --- | --- | --- |
-| Selectable | Yes, default | No | Yes | Yes |
+| Selectable | Yes, default (EASY is this with 1.5× `grip`) | No | Yes | Yes |
 | `tc`, `abs`, `esc` | 1, 1, 0.7 | 1, 1, 1 | 0.8, 1, 0.5 | 0, 0, 0 |
 | `steer`, `caster` | 1, 0.85 | 1, 0.85 | 0.9, 0.75 | 0, 0.35 |
 | `grip` | 1.3 | 1 | 1 | 1 |
@@ -397,8 +397,14 @@ Set in `dynamics.ASSISTS`. `steer` and `caster` are real effects. Everything fro
 | `brake`, `shift` multipliers | 1.25, 0.5 | 1, 1 | 1, 1 | 1, 1 |
 | `tow` (slipstream pull, m/s²) | 0.9 | 0 | 0 | 0 |
 
-FULL exists for the AI and the demo race. AI cars use ARCADE when the player does and
-FULL otherwise, because arcade grip is much higher and the grid wouldn't match. Online,
+EASY is ARCADE with `grip` times `dynamics.EASY_GRIP` (1.5, so 1.95) and nothing else
+changed. It's a hand against the computer: AI cars drive ARCADE beside it, and online it
+isn't offered and a saved EASY drives ARCADE (`rm.start`, and the hello packet says
+`arcade`).
+
+FULL exists for the AI and the demo race. AI cars use ARCADE when the player is on EASY
+or ARCADE and FULL otherwise, because arcade grip is much higher and the grid wouldn't
+match. Online,
 each driver uses their own tier and gearbox: another driver's car runs no tyre model on
 this screen (see Remote cars), so their handling changes nothing for anyone else, and
 slipstream `tow` follows the handling of the car being pulled. 3.0 games still force

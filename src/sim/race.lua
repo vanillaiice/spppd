@@ -28,7 +28,8 @@ local AI_COLORS = {
   { 0.46, 0.14, 0.62 }, { 0.82, 0.82, 0.86 },
 }
 -- Arcade tyres grip harder, so a grid only matches the player's car on them.
-local AI_ASSIST = { arcade = "arcade" }
+-- EASY is the player's advantage: the AI drives ARCADE beside it.
+local AI_ASSIST = { easy = "arcade", arcade = "arcade" }
 local WRONG_WAY_TIME = 1.2
 local SHORTCUT_JUMP = 45 * M
 local FINISH_GRACE = 25

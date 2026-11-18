@@ -476,6 +476,17 @@ h.describe("race", function()
     race:destroy()
   end)
 
+  h.it("on EASY the computer drives ARCADE", function()
+    local dynamics = require("src/sim/dynamics")
+    local track = Track.new(catalog.builtin()[1].def)
+    local race = Race.new({ mode = "race", track = track, laps = 1, opponents = 2, seed = 3, assist = "easy" })
+    h.assertEq(race.player.model.assist.grip, dynamics.ASSISTS.easy.grip)
+    for i = 2, #race.cars do
+      h.assertEq(race.cars[i].model.assist.grip, dynamics.ASSISTS.arcade.grip, "AI on arcade")
+    end
+    race:destroy()
+  end)
+
   h.it("cars wait for the lights", function()
     local track = Track.new(catalog.builtin()[1].def)
     local race = Race.new({ mode = "race", track = track, laps = 1, opponents = 3, seed = 3, startDelay = 2 })
