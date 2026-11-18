@@ -1,0 +1,27 @@
+<!doctype html>
+<!-- The browser version on itch.io, where it plays as a free demo before buying.
+     bin/itch-web zips it as index.html with the files make web puts in
+     site/public/play/. itch serves it from its own address, so every path is
+     relative, and there's no analytics. -->
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no" />
+    <title>SPPPD</title>
+    <link rel="stylesheet" href="play.css" />
+  </head>
+  <body>
+    <div id="cover">
+      <p class="logo">SPPPD</p>
+      <p id="status">Downloading</p>
+      <noscript><p>The browser version needs JavaScript.</p></noscript>
+      <p class="note">
+        Version VERSION. Your settings and tracks stay in this browser.<br />
+        Online races need the downloaded game.
+      </p>
+    </div>
+    <canvas id="canvas"></canvas>
+    <script src="bridge.js"></script>
+    <script src="play.js"></script>
+  </body>
+</html>

@@ -1,0 +1,28 @@
+#!/bin/sh
+# Zips the browser version for itch.io, where it's the free demo played on the page:
+# the love.js files from make web (site/public/play/), with web/itch.html as
+# index.html and every path made relative, since itch serves it from its own address.
+#   bin/itch-web VERSION OUT.zip
+set -eu
+ver=$1
+out=$2
+play=site/public/play
+
+[ -f "$play/game.data" ] || { echo "$play is empty: run make web first"; exit 1; }
+# game.data is the packed game, a zip with src/config.lua in it.
+unzip -p "$play/game.data" src/config.lua | grep -q "VERSION = \"$ver\"" ||
+  { echo "$play isn't version $ver: run make web first"; exit 1; }
+
+work=$(mktemp -d)
+trap 'rm -rf "$work"' EXIT
+cp "$play/game.js" "$play/game.data" "$play/love.js" "$play/love.wasm" "$play/bridge.js" "$work/"
+sed "s/VERSION/$ver/" web/itch.html > "$work/index.html"
+sed 's|load("/play/|load("|g' "$play/play.js" > "$work/play.js"
+sed "s|url('/fonts/|url('|" "$play/play.css" > "$work/play.css"
+cp site/public/fonts/PressStart2P.woff2 site/public/fonts/PressStart2P-OFL.txt "$work/"
+grep -q 'load("/\|url(./\|src="/\|href="/' "$work/play.js" "$work/play.css" "$work/index.html" &&
+  { echo "an absolute path is left"; exit 1; }
+
+rm -f "$out"
+(cd "$work" && zip -qr - .) > "$out"
+echo "$out"

@@ -110,7 +110,11 @@ deploy-site: site
 # first. The channel names tell itch which platform each build is for.
 itch_game := vanillaiice/spppd
 
+# The browser version goes up too, as the demo played on the page before buying. It
+# needs make web first (make deploy-site runs it).
 itch: release-files
+	./bin/itch-web $(ver) dist/$(name)-$(ver)-web.zip
+	butler push dist/$(name)-$(ver)-web.zip $(itch_game):html5 --userversion $(ver)
 	butler push dist/$(name)-$(ver)-win64.zip $(itch_game):windows-64 --userversion $(ver)
 	butler push dist/$(name)-$(ver)-win32.zip $(itch_game):windows-32 --userversion $(ver)
 	butler push dist/$(name)-$(ver)-android.apk $(itch_game):android --userversion $(ver)
