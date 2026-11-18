@@ -1,5 +1,17 @@
 # Changelog
 
+## Unreleased
+
+### Tracks
+
+- [spppd.xyz/tracks](https://spppd.xyz/tracks/) has tracks made by players, to copy
+  into the editor: COPY CODE, then IMPORT and PASTE FROM CLIPBOARD in the game. On a
+  computer, DOWNLOAD the file and drop it on the editor. Any version with IMPORT reads
+  them.
+- Send in your own on the same page: paste its code or pick its file. It shows up once
+  it's been checked.
+- The editor's IMPORT has BROWSE TRACKS ONLINE, which opens that page.
+
 ## 3.6.0 (2026-11-18)
 
 3.6.0 races 3.0 to 3.5. No server change. An older game shows FORMULA KID as a HOT

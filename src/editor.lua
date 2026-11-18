@@ -201,7 +201,7 @@ end
 
 local function copyCode()
   love.system.setClipboardText(share.export(model.definition(doc)))
-  say("Track code copied. Paste it anywhere to share")
+  say("Track code copied. Share it anywhere, or at spppd.xyz/tracks")
 end
 
 -- A track's text, from a file or the clipboard, opened as a new, unsaved track.
@@ -610,8 +610,8 @@ local function drawImport(sw, sh, s)
   ui.text("IMPORT A TRACK", x + 10 * s, y + 10 * s, 7 * s, colors.marshal)
   ui.text("Or drop a track file on this window.", x + 10 * s, y + 22 * s, 5 * s, colors.muted)
   local rows = {}
-  -- The newest files, as many as fit over the three rows below them.
-  local room = math.floor((h - 40 * s) / (14 * s)) - 3
+  -- The newest files, as many as fit over the four rows below them.
+  local room = math.floor((h - 40 * s) / (14 * s)) - 4
   for i, file in ipairs(sharedFiles()) do
     if i > room then break end
     rows[#rows + 1] = {
@@ -624,6 +624,8 @@ local function drawImport(sw, sh, s)
   rows[#rows + 1] = { label = "PASTE FROM CLIPBOARD", activate = function()
       if importText(love.system.getClipboardText(), "the clipboard") then overlay = nil end
     end }
+  -- spppd.xyz/tracks: copy a track's code there, then PASTE FROM CLIPBOARD here.
+  rows[#rows + 1] = { label = "BROWSE TRACKS ONLINE", activate = function() love.system.openURL(config.TRACKS_URL) end }
   rows[#rows + 1] = { label = "OPEN SHARED FOLDER", activate = openShared }
   rows[#rows + 1] = { label = "CANCEL", activate = function() overlay = nil end }
   ui.list("editor-import", rows, x + 6 * s, y + 34 * s, w - 18 * s, 14 * s, 6 * s, s)

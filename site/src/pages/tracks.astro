@@ -1,0 +1,338 @@
+---
+import Page from '../layouts/Page.astro';
+---
+
+<Page title="Tracks" description="Tracks made by SPPPD players. Copy one into the game's editor, or send in your own.">
+  <p slot="lede" class="lede">
+    Tracks made by players. None of them ship with the game: copy one here, then open it in the game's track
+    editor and save it to race it.
+  </p>
+
+  <section class="how panel" aria-labelledby="how">
+    <h2 id="how">Getting a track into the game</h2>
+    <ol>
+      <li><b>On a phone:</b> tap <b>COPY CODE</b> on a track. In the game, open the <b>TRACK EDITOR</b>, then <b>IMPORT</b> and <b>PASTE FROM CLIPBOARD</b>.</li>
+      <li><b>On a computer:</b> the same, or <b>DOWNLOAD</b> the file and drop it on the editor's window.</li>
+      <li>Press <b>SAVE</b> in the editor. The track is then on the track list with the others.</li>
+    </ol>
+  </section>
+
+  <h2 class="section">All tracks</h2>
+  <p class="muted" data-list-state aria-live="polite">Loading the tracks...</p>
+  <ul class="tracks" data-tracks></ul>
+
+  <section class="send panel" aria-labelledby="send">
+    <h2 id="send">Send in a track</h2>
+    <p>
+      Made one in the editor? Press <b>COPY CODE</b> there and paste it below, or pick the file from <b>EXPORT</b>. It shows up
+      here once it's been checked, usually within a few days.
+    </p>
+    <form data-send novalidate>
+      <label for="track">Track code or file</label>
+      <textarea id="track" name="track" rows="4" spellcheck="false" autocomplete="off" placeholder="SPPPD-TRACK:..."></textarea>
+      <input type="file" id="file" accept=".spppd,.txt,text/plain" aria-label="Or pick a track file" />
+      <label for="author">Your name <span class="muted">(optional, 3 to 12 letters, numbers, - or _)</span></label>
+      <input type="text" id="author" name="author" maxlength="12" autocomplete="nickname" />
+      <label class="check">
+        <input type="checkbox" name="agree" required />
+        <span>I made this track, or its maker said I can share it, and it can be shared here under the <a href="/terms/#tracks">terms</a>.</span>
+      </label>
+      <button class="button" type="submit">Send track</button>
+      <p class="answer" data-answer aria-live="polite" hidden></p>
+    </form>
+  </section>
+
+  <noscript><p class="error">This page needs JavaScript to list the tracks.</p></noscript>
+</Page>
+
+<script>
+  type Track = {
+    id: number;
+    title: string;
+    author?: string;
+    theme: string;
+    metres: number;
+    outline: [number, number][];
+    code: string;
+  };
+
+  const list = document.querySelector<HTMLUListElement>('[data-tracks]')!;
+  const listState = document.querySelector<HTMLElement>('[data-list-state]')!;
+  const SVG = 'http://www.w3.org/2000/svg';
+
+  function make<K extends keyof HTMLElementTagNameMap>(tag: K, className?: string, text?: string) {
+    const el = document.createElement(tag);
+    if (className) el.className = className;
+    if (text !== undefined) el.textContent = text;
+    return el;
+  }
+
+  // Works where the clipboard API doesn't: over plain http, or an older browser.
+  function copy(text: string): Promise<void> {
+    if (navigator.clipboard && window.isSecureContext) return navigator.clipboard.writeText(text);
+    const area = make('textarea');
+    area.value = text;
+    area.setAttribute('readonly', '');
+    area.style.position = 'fixed';
+    area.style.opacity = '0';
+    document.body.append(area);
+    area.select();
+    const ok = document.execCommand('copy');
+    area.remove();
+    return ok ? Promise.resolve() : Promise.reject(new Error('copy refused'));
+  }
+
+  function card(track: Track) {
+    const li = make('li', 'track panel');
+    li.dataset.theme = track.theme;
+
+    const svg = document.createElementNS(SVG, 'svg');
+    svg.setAttribute('viewBox', '-6 -6 112 112');
+    svg.setAttribute('role', 'img');
+    svg.setAttribute('aria-label', `The shape of ${track.title}`);
+    const shape = document.createElementNS(SVG, 'polygon');
+    shape.setAttribute('points', track.outline.map((p) => p.join(',')).join(' '));
+    svg.append(shape);
+
+    const km = (track.metres / 1000).toFixed(1);
+    const facts = [track.author ? `by ${track.author}` : '', track.theme, `${km} km`].filter(Boolean).join(' · ');
+
+    const buttons = make('div', 'buttons');
+    const copyButton = make('button', 'button', 'COPY CODE');
+    copyButton.type = 'button';
+    copyButton.addEventListener('click', () => {
+      copy(track.code).then(
+        () => (copyButton.textContent = 'COPIED'),
+        () => (copyButton.textContent = "COULDN'T COPY"),
+      );
+      setTimeout(() => (copyButton.textContent = 'COPY CODE'), 2500);
+    });
+    const download = make('a', 'button secondary', 'DOWNLOAD');
+    download.href = `/api/tracks/${track.id}.spppd`;
+    download.setAttribute('download', '');
+    buttons.append(copyButton, download);
+
+    li.append(svg, make('h3', '', track.title), make('p', 'muted', facts), buttons);
+    return li;
+  }
+
+  async function load() {
+    try {
+      const response = await fetch('/api/tracks', { headers: { Accept: 'application/json' } });
+      if (!response.ok) throw new Error(String(response.status));
+      const { tracks } = (await response.json()) as { tracks: Track[] };
+      list.replaceChildren(...tracks.map(card));
+      listState.textContent = tracks.length ? `${tracks.length} tracks.` : 'No tracks yet. Send in the first one!';
+    } catch {
+      listState.textContent = "The tracks couldn't be loaded. The server may be down; try again in a minute.";
+    }
+  }
+
+  const form = document.querySelector<HTMLFormElement>('[data-send]')!;
+  const answer = form.querySelector<HTMLElement>('[data-answer]')!;
+  const trackField = form.querySelector<HTMLTextAreaElement>('#track')!;
+  const fileField = form.querySelector<HTMLInputElement>('#file')!;
+
+  function say(text: string, ok: boolean) {
+    answer.hidden = false;
+    answer.textContent = text;
+    answer.dataset.ok = String(ok);
+  }
+
+  fileField.addEventListener('change', async () => {
+    const file = fileField.files?.[0];
+    if (!file) return;
+    if (file.size > 128 * 1024) {
+      say("That file is too big to be a track.", false);
+      return;
+    }
+    trackField.value = await file.text();
+  });
+
+  form.addEventListener('submit', async (event) => {
+    event.preventDefault();
+    const data = new FormData(form);
+    if (!String(data.get('track') ?? '').trim()) return say('Paste a track code or pick a track file first.', false);
+    if (!data.get('agree')) return say('Tick the box to say you made the track.', false);
+    const button = form.querySelector<HTMLButtonElement>('button[type=submit]')!;
+    button.disabled = true;
+    try {
+      const response = await fetch('/api/tracks', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+        body: JSON.stringify({ track: data.get('track'), author: data.get('author') }),
+      });
+      const body = await response.json().catch(() => ({}));
+      if (response.ok) {
+        say(body.message ?? 'Thanks! It will show up once it has been checked.', true);
+        form.reset();
+      } else {
+        say(body.error ?? "The track couldn't be sent. Try again later.", false);
+      }
+    } catch {
+      say("The track couldn't be sent. The server may be down; try again later.", false);
+    } finally {
+      button.disabled = false;
+    }
+  });
+
+  load();
+</script>
+
+<style>
+  /* The cards are made by the script, so their rules are global. */
+  .lede {
+    max-width: 40rem;
+  }
+
+  .how ol {
+    margin: 0;
+    padding-left: 1.25rem;
+  }
+
+  .how li + li {
+    margin-top: 0.5rem;
+  }
+
+  h2 {
+    font-size: 1rem;
+    margin: 0 0 0.75rem;
+  }
+
+  .section {
+    margin-top: 2rem;
+  }
+
+  :global(.tracks) {
+    list-style: none;
+    padding: 0;
+    margin: 1rem 0 2rem;
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(min(100%, 14rem), 1fr));
+    gap: 1rem;
+  }
+
+  :global(.track) {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+  }
+
+  :global(.track svg) {
+    width: 100%;
+    aspect-ratio: 4 / 3;
+    background: var(--road);
+  }
+
+  :global(.track polygon) {
+    fill: none;
+    stroke: var(--paint);
+    stroke-width: 3;
+    stroke-linejoin: round;
+  }
+
+  :global(.track[data-theme='desert'] polygon) {
+    stroke: var(--sand);
+  }
+
+  :global(.track[data-theme='marina'] polygon) {
+    stroke: #6cc6ff;
+  }
+
+  :global(.track[data-theme='meadow'] polygon) {
+    stroke: var(--green);
+  }
+
+  :global(.track h3) {
+    font-family: var(--pixel);
+    font-size: 0.8125rem;
+    line-height: 1.5;
+    margin: 0.25rem 0 0;
+    overflow-wrap: anywhere;
+  }
+
+  :global(.buttons) {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.75rem;
+    margin-top: auto;
+    padding-top: 0.5rem;
+  }
+
+  :global(.buttons .button) {
+    font-size: 0.6875rem;
+    padding: 0.7rem 0.8rem;
+    cursor: pointer;
+  }
+
+  .send {
+    max-width: 40rem;
+  }
+
+  .send form {
+    display: grid;
+    gap: 0.6rem;
+  }
+
+  .send label {
+    font-weight: 600;
+  }
+
+  .send textarea,
+  .send input[type='text'] {
+    font: 0.875rem ui-monospace, monospace;
+    color: var(--paint);
+    background: var(--panel-solid);
+    border: 2px solid var(--paint-dim);
+    padding: 0.5rem;
+    width: 100%;
+    box-sizing: border-box;
+  }
+
+  .send textarea {
+    resize: vertical;
+  }
+
+  .check {
+    display: flex;
+    gap: 0.6rem;
+    align-items: flex-start;
+    font-weight: 400 !important;
+    margin-top: 0.4rem;
+  }
+
+  .check input {
+    margin-top: 0.3rem;
+  }
+
+  .send .button {
+    justify-self: start;
+    cursor: pointer;
+  }
+
+  .send .button:disabled {
+    opacity: 0.6;
+  }
+
+  .answer {
+    margin: 0;
+    padding-left: 0.75rem;
+    border-left: 4px solid var(--kerb);
+  }
+
+  .answer[data-ok='true'] {
+    border-color: var(--green);
+  }
+
+  .muted {
+    color: var(--paint-dim);
+    font-size: 0.9375rem;
+    margin: 0;
+  }
+
+  .error {
+    color: var(--paint);
+    border-left: 4px solid var(--kerb);
+    padding-left: 0.75rem;
+  }
+</style>

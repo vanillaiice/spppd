@@ -53,7 +53,7 @@ func dash(t *testing.T, relay *Relay) (http.Handler, *Store) {
 	if err := relay.AttachStore(store); err != nil {
 		t.Fatal(err)
 	}
-	return newDashboard(relay, store, 30), store
+	return newDashboard(relay, store, 30, NewTrackServer(store, relay.Note)), store
 }
 
 // remote is a browser on another machine, as everything looks in a container.

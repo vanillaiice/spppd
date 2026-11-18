@@ -20,6 +20,8 @@ Questions, or a request to see or delete what's held about you:
   ID or IP address with it. There are no ads or third-party trackers.
 - The server counts players for statistics, but stores a keyed hash of each IP
   address, never the address itself, and deletes the hashes after 30 days.
+- Send in a track and the server keeps the track, the name you gave with it, if any,
+  and when it came. Not your IP address.
 - The website counts visits and downloads with Umami, on the operator's own server.
   It sets no cookies and can't follow you to other sites.
 
@@ -39,6 +41,20 @@ Questions, or a request to see or delete what's held about you:
 | If you pick one: your driver name and number, the day you made it, the day you last raced with it, when you last renamed it, and whether it's banned | To show your name to the others in every room you race in | Until you delete the driver |
 | For each device signed in as that driver: a random key your game made, the kind of device it said it was ("Android", "Linux"), and the days it was added and last used | To check it's really you when you take a seat. Your game proves it holds the key without sending it again | Until you sign that device out, delete the driver, or sign in on more than 10 devices, when the one used least recently is dropped |
 | Your driver's recovery key | To sign another device in when you type the recovery code | Until you delete the driver |
+
+### Tracks
+
+Tracks sent in on [spppd.xyz/tracks](https://spppd.xyz/tracks/) go to the same server.
+
+| What | Why | Kept |
+| --- | --- | --- |
+| The track, its title and scenery, the name you typed (optional), and when it was sent in | To check it, then show it on the tracks page for anyone to copy | Until it's rejected or deleted. A deleted track is gone from the backups within 7 days |
+| Your IP address | To stop one address sending more than 5 tracks an hour | In memory only, never on disk, for an hour. A restart forgets it |
+| Which admin approved or hid it, and when | To run the page | As long as the track |
+
+A line on the admin dashboard and in the log says a track came in, with its title and
+name, but no address. The proxy in front of the website logs the request, as it does
+every page (see below).
 
 ### Drivers
 
@@ -61,8 +77,8 @@ counts, and say nothing about anyone.
 Only the operator can see the log and the dashboard. The dashboard isn't reachable
 from the internet, and it needs an admin login.
 
-The server's database (bans, drivers and their keys, admin logins and the statistics
-below) is backed up
+The server's database (bans, drivers and their keys, tracks, admin logins and the
+statistics below) is backed up
 to rented storage, so it survives the server failing. The backup holds copies from
 the last 7 days, so anything deleted from the server is gone from the backup 7 days
 later. The key that IP hashes are made with isn't backed up, and nor are the rooms

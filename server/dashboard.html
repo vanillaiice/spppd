@@ -57,6 +57,13 @@ button:hover { border-color: var(--accent); color: var(--accent); }
 .notice { margin: 8px 0 0; font-size: 13px; color: var(--ok); }
 .num { text-align: right; font-variant-numeric: tabular-nums; }
 a { color: var(--accent); }
+.tracks { display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 10px; margin-top: 10px; }
+.track { background: var(--panel); border: 1px solid var(--line); border-radius: 6px; padding: 10px; display: grid; gap: 6px; }
+.track svg { width: 100%; height: 120px; }
+.track polygon { fill: none; stroke: var(--text); stroke-width: 2.5; stroke-linejoin: round; }
+.track h3 { margin: 0; font-size: 14px; }
+.track textarea { width: 100%; height: 48px; font: 11px ui-monospace, monospace; resize: vertical; color: var(--muted); background: var(--bg); border: 1px solid var(--line); border-radius: 4px; }
+.track .actions { justify-content: flex-start; flex-wrap: wrap; }
 .login { max-width: 320px; margin: 15vh auto 0; padding: 0 16px; }
 .login form { display: grid; gap: 10px; margin-top: 16px; }
 .login input, .login button { padding: 8px 10px; font-size: 15px; }
@@ -91,6 +98,7 @@ a { color: var(--accent); }
   </form>
   {{if .Analytics}}<section id="analytics" hx-get="/analytics" hx-trigger="every 60s" hx-swap="innerHTML">{{template "analytics" .}}</section>{{end}}
   <section id="drivers">{{template "drivers" .}}</section>
+  <section id="tracks">{{template "tracks" .}}</section>
   <section id="users">{{template "users" .}}</section>
 </div>
 <script src="/htmx.js"></script>
@@ -261,6 +269,39 @@ a { color: var(--accent); }
   </tr>{{end}}
 </table></div>{{else}}<p class="empty" style="margin-top: 10px">{{if .DriverQuery}}No driver matches.{{else}}No drivers yet.{{end}}</p>{{end}}
 <p class="note">{{.DriverTotal}} drivers in all. The newest 50 that match are shown. A banned driver can't take a seat anywhere.</p>
+{{if .Error}}<p class="error">{{.Error}}</p>{{end}}
+{{end}}
+
+{{define "track"}}<div class="track">
+  <svg viewBox="-4 -4 108 108" role="img" aria-label="The shape of {{.Title}}"><polygon points="{{points .Outline}}" vector-effect="non-scaling-stroke"/></svg>
+  <h3>{{.Title}}</h3>
+  <div class="muted">{{if .Author}}by {{.Author}} · {{end}}{{.Theme}} · {{km .Metres}} · no. {{.ID}}<br>sent in <time data-date datetime="{{instant .Added}}">{{date .Added}}</time>{{if .ReviewedBy}} · {{.State}} by {{.ReviewedBy}}{{end}}</div>
+  <textarea readonly aria-label="Track code for {{.Title}}" hx-on:click="this.select()">{{code .Text}}</textarea>
+{{end}}
+
+{{define "tracks"}}
+<h2>Tracks waiting for review</h2>
+{{if .PendingTracks}}<div class="tracks">{{range .PendingTracks}}{{template "track" .}}
+  <div class="actions">
+    <form hx-post="/tracks/review" hx-target="#tracks"><input type="hidden" name="id" value="{{.ID}}"><input type="hidden" name="action" value="approve"><button>Approve</button></form>
+    <form hx-post="/tracks/review" hx-target="#tracks" hx-confirm="Reject and delete {{.Title}}?"><input type="hidden" name="id" value="{{.ID}}"><input type="hidden" name="action" value="reject"><button>Reject</button></form>
+  </div></div>{{end}}</div>
+{{else}}<p class="empty">Nothing is waiting.</p>{{end}}
+<p class="note">Sent in from spppd.xyz/tracks. To try one, copy its code and paste it in the game's editor under IMPORT.</p>
+
+<h2>Tracks on the website</h2>
+{{if .LiveTracks}}<div class="tracks">{{range .LiveTracks}}{{template "track" .}}
+  <div class="actions">
+    <form hx-post="/tracks/review" hx-target="#tracks"><input type="hidden" name="id" value="{{.ID}}"><input type="hidden" name="action" value="hide"><button>Hide</button></form>
+    <form hx-post="/tracks/review" hx-target="#tracks" hx-confirm="Delete {{.Title}} for good?"><input type="hidden" name="id" value="{{.ID}}"><input type="hidden" name="action" value="delete"><button>Delete</button></form>
+  </div></div>{{end}}</div>
+{{else}}<p class="empty">None yet.</p>{{end}}
+{{if .HiddenTracks}}<h2>Hidden tracks</h2>
+<div class="tracks">{{range .HiddenTracks}}{{template "track" .}}
+  <div class="actions">
+    <form hx-post="/tracks/review" hx-target="#tracks"><input type="hidden" name="id" value="{{.ID}}"><input type="hidden" name="action" value="show"><button>Show again</button></form>
+    <form hx-post="/tracks/review" hx-target="#tracks" hx-confirm="Delete {{.Title}} for good?"><input type="hidden" name="id" value="{{.ID}}"><input type="hidden" name="action" value="delete"><button>Delete</button></form>
+  </div></div>{{end}}</div>{{end}}
 {{if .Error}}<p class="error">{{.Error}}</p>{{end}}
 {{end}}
 

@@ -140,7 +140,8 @@ To share a track, EXPORT saves it as a `.spppd` file and opens the folder it's i
 you can send the file. COPY CODE puts the same track on the clipboard instead, as one
 line starting `SPPPD-TRACK:`. To open one, drop a track file on the editor, or use
 IMPORT: it lists the files in that folder and can paste a code from the clipboard. An
-imported track opens as a new track; SAVE keeps it.
+imported track opens as a new track; SAVE keeps it. More tracks, and a place to send
+yours, are at <https://spppd.xyz/tracks/>.
 
 ## Online
 
@@ -188,7 +189,9 @@ as keyed hashes, plus rooms, races and traffic, and the dashboard exports them a
 If you turn them on, tell your players, as `PRIVACY.md` does for the official server.
 `-status :8081` serves how many drivers are online, races running and drivers looking
 for a quick match as JSON at `/api/status`, which <https://spppd.xyz/status/> shows for
-the official server. `-quick-fill` (15s) is how long a quick match waits for more
+the official server. The same address serves the track server at `/api/tracks`, for
+<https://spppd.xyz/tracks/>; tracks sent in wait on the dashboard until approved.
+`-quick-fill` (15s) is how long a quick match waits for more
 drivers once a second has joined.
 
 `make deploy-relay` deploys the official server, and `make check-relay` checks it answers

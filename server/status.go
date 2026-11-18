@@ -31,8 +31,12 @@ func (r *Relay) Status() Status {
 	return out
 }
 
-func newStatusPage(relay *Relay) http.Handler {
+// newStatusPage serves /api/status, and /api/tracks when tracks isn't nil.
+func newStatusPage(relay *Relay, tracks *TrackServer) http.Handler {
 	mux := http.NewServeMux()
+	if tracks != nil {
+		tracks.handle(mux)
+	}
 	mux.HandleFunc("/api/status", func(w http.ResponseWriter, r *http.Request) {
 		h := w.Header()
 		h.Set("Content-Type", "application/json")
@@ -45,5 +49,8 @@ func newStatusPage(relay *Relay) http.Handler {
 		}
 		_ = json.NewEncoder(w).Encode(relay.Status())
 	})
-	return mux
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("X-Content-Type-Options", "nosniff")
+		mux.ServeHTTP(w, r)
+	})
 }

@@ -1,6 +1,6 @@
 # Terms of use
 
-Last updated 2026-11-07. What the server keeps is in [PRIVACY.md](PRIVACY.md).
+Last updated 2026-11-18. What the server keeps is in [PRIVACY.md](PRIVACY.md).
 
 These terms cover the official SPPPD online server at `spppd.xyz`, run by
 vanillaiice. The game itself is free software under the GNU General Public License,
@@ -31,6 +31,22 @@ as the server. You can rename once every 30 days.
 The operator can rename a driver to DRIVER and its number, ban a driver from every
 room, or delete one, at any time, with or without a reason. Keep your recovery code:
 lose it and every device signed in, and the driver can't be got back.
+
+## Tracks
+
+Anyone can send a track in on [spppd.xyz/tracks](https://spppd.xyz/tracks/). Only
+send a track you made yourself, or one whose maker has said you can. Sending one means
+it can be shown on that page and copied by anyone, for free, to race in SPPPD, and
+changed and shared again the same way. The name you give is shown with it. Don't send
+anything offensive in a track's name or shape.
+
+Tracks are checked before they appear, and the operator can hide or delete any track
+at any time, with or without a reason. To have a track of yours taken down, ask on the
+Discord or at the email above.
+
+Some tracks look like real circuits. They're made by fans, from memory or public
+maps, and have nothing to do with those circuits or their owners. If you own one and
+want a track taken down, ask as above and it's done.
 
 ## Being removed
 

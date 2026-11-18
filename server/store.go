@@ -71,6 +71,20 @@ CREATE TABLE IF NOT EXISTS driver_keys (
 	added TEXT NOT NULL,            -- days, not times
 	seen TEXT NOT NULL);
 CREATE INDEX IF NOT EXISTS driver_keys_driver ON driver_keys (driver);
+CREATE TABLE IF NOT EXISTS tracks (
+	id INTEGER PRIMARY KEY AUTOINCREMENT, -- so a deleted track's number, and its file's link, never comes back
+	title TEXT NOT NULL,
+	author TEXT NOT NULL DEFAULT '', -- a name the sender typed, checked like a driver's
+	theme TEXT NOT NULL,
+	metres REAL NOT NULL,
+	text TEXT NOT NULL,             -- the wire text, only the lines the game reads
+	outline TEXT NOT NULL,          -- JSON points for the previews
+	hash TEXT NOT NULL UNIQUE,      -- of the text, so the same track isn't sent twice
+	state TEXT NOT NULL,            -- pending, live or hidden
+	added INTEGER NOT NULL,
+	reviewed INTEGER NOT NULL DEFAULT 0,
+	reviewed_by TEXT NOT NULL DEFAULT '');
+CREATE INDEX IF NOT EXISTS tracks_state ON tracks (state);
 `
 
 // migrate brings a database from an older relay up to date. Each step checks

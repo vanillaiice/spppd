@@ -167,6 +167,21 @@ h.describe("editor", function()
     h.assertEq(#def.nodes, #model.new("plain").nodes)
   end)
 
+  h.it("takes a code the track server made", function()
+    -- server/testdata: a code from the relay's Go (TrackCode), and the file it came from.
+    local share = require("src/tracks/share")
+    local wire = require("src/tracks/wire")
+    local function read(path)
+      local f = assert(io.open(path, "rb"))
+      local text = f:read("*a")
+      f:close()
+      return text
+    end
+    local def = assert(share.import(read("server/testdata/oasis.code")))
+    h.assertEq(wire.encode(def), wire.encode(assert(share.import(read("server/testdata/oasis.spppd")))))
+    h.assertEq(def.title, "OASIS")
+  end)
+
   h.it("turns away anything that isn't a track", function()
     local share = require("src/tracks/share")
     local wire = require("src/tracks/wire")

@@ -2,6 +2,11 @@
 # and health checks /up. Caddy logs no requests (no `log` directive).
 {
 	admin off
+	# kamal-proxy, on the kamal network, says who the visitor is. {client_ip} is then
+	# the visitor, which the track server needs to count uploads.
+	servers {
+		trusted_proxies static private_ranges
+	}
 }
 
 :80 {
@@ -21,6 +26,17 @@
 	# kamal network, where its container is spppd-relay. It's down when the relay is.
 	handle /api/status {
 		reverse_proxy {$SPPPD_RELAY_STATUS:spppd-relay:8081}
+	}
+
+	# The track server, for /tracks/: the list, track files and uploads. Uploads are
+	# small, and the relay counts them by the visitor's address.
+	handle /api/tracks* {
+		request_body {
+			max_size 128KB
+		}
+		reverse_proxy {$SPPPD_RELAY_STATUS:spppd-relay:8081} {
+			header_up X-Real-IP {client_ip}
+		}
 	}
 
 	root * /srv

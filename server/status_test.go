@@ -11,7 +11,7 @@ func TestTheStatusPage(t *testing.T) {
 	pair(relay)
 	relay.Handle([]byte("event|lock|"), addr(1))
 	host(relay, "WXYZ", 3)
-	page := newStatusPage(relay)
+	page := newStatusPage(relay, nil)
 
 	out := httptest.NewRecorder()
 	page.ServeHTTP(out, httptest.NewRequest(http.MethodGet, "/api/status", nil))

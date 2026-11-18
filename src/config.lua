@@ -8,6 +8,8 @@ local config = {
   -- What the official server keeps, and its rules: PRIVACY.md on the website, which
   -- links to TERMS.md.
   PRIVACY_URL = "https://spppd.xyz/privacy/",
+  -- The track server's page: tracks to copy into the editor, and a form to send one.
+  TRACKS_URL = "https://spppd.xyz/tracks/",
 
   -- World units are pixels; the vehicle model works in SI units.
   METER = 12,          -- world px per metre

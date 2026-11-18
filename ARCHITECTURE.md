@@ -1500,6 +1500,10 @@ keeps what a hostile one can make the game unpack to about 30 MB; anything that
 inflates past `wire.MAX_BYTES` is refused after, and a dropped file over 80 KB isn't
 read. An imported track opens as a new, unsaved document, named after its title.
 
+IMPORT's BROWSE TRACKS ONLINE opens `config.TRACKS_URL`, the track server's page (see
+The track server). The game never talks to that server itself: a track from it comes
+in as a code or a file like any other.
+
 ### Catalogue
 
 `catalog.lua` returns built-ins in a fixed order, then anything in the save folder's
@@ -2174,6 +2178,34 @@ on `:8081` on the kamal network only, and the website's Caddy passes `/api/statu
 `spppd-relay:8081`, so a stopped relay shows as down. In `make site-dev`, Vite passes
 it to `127.0.0.1:8081` (`SPPPD_STATUS` to change that).
 
+### The track server
+
+`spppd.xyz/tracks/` holds tracks players made, so tracks that shouldn't ship with the
+game, such as lookalikes of real circuits, can still be had. The relay serves it on the
+same `-status` address (`server/tracks.go`), and Caddy passes `/api/tracks*` to it,
+with bodies capped at 128 KB:
+
+- `GET /api/tracks`: the live tracks as JSON, each with its code, an outline of up to
+  about 80 points in a 100 by 100 box, length and theme. Made once and kept 30 s, or
+  until a dashboard user changes a track.
+- `GET /api/tracks/ID.spppd`: a live track's file, to download.
+- `POST /api/tracks`: `{"track": CODE_OR_TEXT, "author": NAME}`. The track is held to
+  `wire.decode`'s limits in Go (`CheckTrack`), and only the lines the game reads are
+  kept, title and theme first. `TestTrackLimitsMatchTheGame` reads the Lua constants,
+  so the two can't drift apart, and `tests/test_editor.lua` imports a code the relay
+  made (`server/testdata/oasis.code`). The author is optional and checked like a
+  driver name. Then it waits, `pending`, in the `tracks` table of `relay.db`.
+
+Nobody needs an account. Uploads are limited to 5 an hour per address, in memory only,
+and 100 waiting in all; the same text twice is refused by its hash. The address is
+`X-Real-IP`, which Caddy sets to `{client_ip}` (kamal-proxy is a trusted proxy), and
+which the relay only believes from a loopback or private peer.
+
+The dashboard's Tracks section shows each waiting track's outline, facts and code, to
+paste into the game and try, with APPROVE and REJECT (deletes it). Live tracks can be
+hidden or deleted. Each decision is a line of activity. Numbers come from
+AUTOINCREMENT, so a deleted track's download link never points at another track.
+
 ### The website
 
 `site/` is an Astro site, served at `https://spppd.xyz` from the same name
@@ -2184,8 +2216,8 @@ does the TLS. Caddy logs no requests.
 
 It has no copy of anything the repository already says. The changelog page is
 `CHANGELOG.md` split at each `## version (date)` heading, leaving out `Unreleased`, and
-the privacy and terms pages are `PRIVACY.md` and `TERMS.md`. The status page is the one
-page with data from outside the build: see Server status. Their links to each other
+the privacy and terms pages are `PRIVACY.md` and `TERMS.md`. The status and tracks pages are the
+pages with data from outside the build: see Server status and The track server. Their links to each other
 become links to the pages (`siteLinks` in `site/src/lib/repo.ts`). The version comes
 from `src/config.lua`. The downloads link this version's GitHub release, so the site's server
 doesn't carry them. `make site-downloads` writes their sizes from `dist/` into
