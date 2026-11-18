@@ -1398,7 +1398,7 @@ Most screens show a panel down the left with a live demo race behind it.
 
 | Screen | Contents |
 | --- | --- |
-| `main` | RACE, TIME TRIAL, FREESTYLE, ONLINE, TRACK EDITOR (not on phones), SETTINGS, CONTROLS, CREDITS, QUIT |
+| `main` | QUICK RACE (the last race setup, in one press), RACE, TIME TRIAL, FREESTYLE, ONLINE, TRACK EDITOR (not on phones), SETTINGS, CONTROLS, CREDITS, QUIT |
 | `setup` | Track (THE LOT first in freestyle), PLAYERS (race and freestyle, desktop with a pad plugged in), car, paint, laps, opponents, difficulty, time, handling, radio rows in freestyle, START. With two players, car and paint give way to each driver's car, paint, handling and gearbox, and the shared handling row goes. P1's gearbox is CONTROLS > GEARBOX; P2's are `car2`, `hue2`, `assists2` and `gearbox2` |
 | `settings` | Volume, camera, zoom, gearbox, units, effects, toggles, touch and fullscreen on desktop |
 | `online` | Server, car, paint, HOST A ROOM, room code, JOIN A ROOM, with `menu.ONLINE_NOTES` beside them. Once in a room it shrinks to the code, START RACE for the host and CANCEL, with the race and its drivers beside it |

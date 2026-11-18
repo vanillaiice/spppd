@@ -108,7 +108,7 @@ local function steps()
     settings.server = assert(host, port) .. ":" .. port
     settings.track, settings.laps, settings.time = "harbour", 2, "dusk"
     saved = { track = settings.track, laps = settings.laps, time = settings.time }
-    ui.focus.main = 4
+    ui.focus.main = 5
     press("return")
   end)
   step(3, function()
@@ -252,7 +252,7 @@ local function steps()
   end)
   step(1, function()
     if bots[1].client.status ~= "lobby" then return "again" end
-    ui.focus.main = 4
+    ui.focus.main = 5
     press("return")
   end)
   step(3, function()
@@ -298,7 +298,7 @@ local function steps()
   step(2, function() press("return") end)
   step(5, function()
     expect(state.screen == "menu", "QUIT TO MENU leaves the shared race")
-    ui.focus.main = 4
+    ui.focus.main = 5
     press("return")
   end)
   step(3, function()
