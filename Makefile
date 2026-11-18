@@ -1,4 +1,4 @@
-.PHONY: run car-stats test test-serial test-visual test-server test-online test-online-visual listen sound-report server relay-linux deploy-relay check-relay deploy-backup site-downloads site site-dev deploy-site itch release-files zip apk aab apk-perf win64 win32 all clean
+.PHONY: run car-stats test test-serial test-visual test-server test-online test-online-visual listen sound-report server relay-linux deploy-relay check-relay deploy-backup site-downloads web site site-dev deploy-site itch release-files zip apk aab apk-perf win64 win32 all clean
 
 # src/config.lua holds the version.
 ver := $(shell sed -n 's/.*VERSION = "\(.*\)".*/\1/p' src/config.lua)
@@ -91,8 +91,13 @@ site-downloads: release-files
 	  sep=; for f in $(site_files); do printf '%s"%s":%s' "$$sep" "$$f" "$$(stat -c %s $$f)" >> ../site/src/downloads.json; sep=,; done && \
 	  printf '}}\n' >> ../site/src/downloads.json
 
-site: site-downloads
-	cd site && npm ci && npm run build
+# The browser version, into site/public/play/ for the site's /play/ page.
+web:
+	cd site && npm ci
+	./bin/web-build
+
+site: site-downloads web
+	cd site && npm run build
 
 site-dev: site-downloads
 	cd site && npm run dev

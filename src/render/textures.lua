@@ -1,6 +1,20 @@
 -- Procedural textures: nothing here needs an asset file.
 local textures = {}
 
+-- WebGL 1 (the browser build) can't mipmap a texture whose sides aren't powers of
+-- two. Such a texture goes without there.
+function textures.canMipmap(w, h)
+  local function pot(n) return n >= 1 and 2 ^ math.floor(math.log(n) / math.log(2) + 0.5) == n end
+  return love.graphics.getSupported().fullnpot or (pot(w) and pot(h))
+end
+
+local function mipmapped(data)
+  local mipmaps = textures.canMipmap(data:getDimensions())
+  local image = love.graphics.newImage(data, { mipmaps = mipmaps })
+  if mipmaps then image:setMipmapFilter("linear") end
+  return image
+end
+
 local function soft(size, falloff)
   local data = love.image.newImageData(size, size)
   local c = (size - 1) / 2
@@ -48,10 +62,9 @@ local function tilingNoise(size, baseCells, octaves)
     local blotch = sample(lattices[math.min(2, octaves)], u, v)
     return n, grain, blotch, 1
   end)
-  local image = love.graphics.newImage(data, { mipmaps = true })
+  local image = mipmapped(data)
   image:setWrap("repeat", "repeat")
   image:setFilter("linear", "linear")
-  image:setMipmapFilter("linear")
   return image
 end
 
@@ -79,7 +92,7 @@ local function canopy(size, green)
     local tone = light > 0.62 and 1.3 or (light > 0.2 and 1 or 0.72)
     return green[1] * tone, green[2] * tone, green[3] * tone, 1
   end)
-  local image = love.graphics.newImage(data, { mipmaps = true })
+  local image = mipmapped(data)
   image:setFilter("linear", "linear")
   return image
 end
@@ -112,7 +125,7 @@ local function palm(size)
   love.graphics.circle("fill", c, c, c * 0.11)
   love.graphics.setCanvas()
   love.graphics.setColor(1, 1, 1)
-  local image = love.graphics.newImage(canvas:newImageData(), { mipmaps = true })
+  local image = mipmapped(canvas:newImageData())
   image:setFilter("linear", "linear")
   canvas:release()
   return image

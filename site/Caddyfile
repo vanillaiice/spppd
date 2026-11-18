@@ -27,11 +27,22 @@
 	encode zstd gzip
 
 	header {
-		# Umami's script and its reports go to stats.hblabs.xyz; nothing else leaves.
-		Content-Security-Policy "default-src 'self'; script-src 'self' https://stats.hblabs.xyz; connect-src 'self' https://stats.hblabs.xyz; img-src 'self'; media-src 'self'; style-src 'self'; font-src 'self'; frame-ancestors 'none'; base-uri 'self'; form-action 'none'; object-src 'none'"
 		X-Content-Type-Options nosniff
 		Referrer-Policy strict-origin-when-cross-origin
 		Permissions-Policy "camera=(), microphone=(), geolocation=(), interest-cohort=()"
+	}
+
+	# Umami's script and its reports go to stats.hblabs.xyz; nothing else leaves.
+	@pages not path /play/*
+	header @pages Content-Security-Policy "default-src 'self'; script-src 'self' https://stats.hblabs.xyz; connect-src 'self' https://stats.hblabs.xyz; img-src 'self'; media-src 'self'; style-src 'self'; font-src 'self'; frame-ancestors 'none'; base-uri 'self'; form-action 'none'; object-src 'none'"
+
+	# The browser version (make web). The same, plus compiling LÖVE's WebAssembly.
+	# Its files keep their names from one version to the next, so the browser checks
+	# them each visit (a 304 when nothing's changed).
+	@play path /play/*
+	header @play {
+		Content-Security-Policy "default-src 'self'; script-src 'self' 'wasm-unsafe-eval' https://stats.hblabs.xyz; connect-src 'self' https://stats.hblabs.xyz; img-src 'self'; media-src 'self'; style-src 'self'; font-src 'self'; frame-ancestors 'none'; base-uri 'self'; form-action 'none'; object-src 'none'"
+		Cache-Control "no-cache"
 	}
 
 	# Astro names these by their contents, so they never change.

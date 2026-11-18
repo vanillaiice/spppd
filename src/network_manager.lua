@@ -11,7 +11,9 @@
 -- Packets only ever grow at the end. Every reader takes the fields it knows and
 -- ignores any after them, and ignores packets it doesn't know, so a later 3.x game
 -- can add to the protocol without leaving earlier ones behind. See FEATURES.
-local socket = require("socket")
+-- The browser build has no sockets, and no online play.
+local hasSocket, socket = pcall(require, "socket")
+if not hasSocket then socket = nil end
 local config = require("src/config")
 local catalog = require("src/tracks/catalog")
 local wire = require("src/tracks/wire")
@@ -554,6 +556,10 @@ function network.connect(host, port, role, code, me, race, mode)
     }
   end
 
+  if not socket then
+    network.fail("Online play needs the downloaded game")
+    return
+  end
   local udp = socket.udp()
   udp:settimeout(0)
   local ok, err = udp:setpeername(host, port)

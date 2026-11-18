@@ -1,6 +1,6 @@
 # Privacy policy
 
-Last updated 2026-11-07. The rules for using the server are in [TERMS.md](TERMS.md).
+Last updated 2026-11-18. The rules for using the server are in [TERMS.md](TERMS.md).
 
 This covers the official SPPPD online server at `spppd.xyz`, and the
 website at the same address, both run by vanillaiice. If you play through a server
@@ -11,8 +11,8 @@ Questions, or a request to see or delete what's held about you:
 
 ## In short
 
-- Racing offline sends nothing anywhere. Your settings, records and tracks stay on
-  your device.
+- Racing offline sends nothing anywhere, and neither does the browser version. Your
+  settings, records and tracks stay on your device.
 - Online, the server sees your IP address, because it can't send you anything without
   it. Other drivers never see it.
 - A driver name is optional. Pick one and the server keeps the name, a key for each
@@ -107,6 +107,10 @@ only to see how much the game is looked at and downloaded.
 The proxy in front of the website, which also serves the operator's other sites, logs
 each request with your IP address, the page and your browser, to run the server and
 deal with abuse. That log stays on the server.
+
+The browser version at `/play/` is the same game, run in your browser. It keeps your
+settings, records and tracks in your browser's own storage for this site, on your
+device; clearing the site's data deletes them. It sends nothing while you play.
 
 The downloads come from the game's releases on GitHub, so GitHub sees your IP address
 when you download, under the [GitHub Privacy Statement](https://docs.github.com/site-policy/privacy-policies/github-general-privacy-statement).

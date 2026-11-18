@@ -31,7 +31,12 @@ end
 local function pad(seat)
   if seat.joystick == false then return nil end
   local joystick = seat.joystick or (seat == first and input.gamepad or nil)
-  if joystick and joystick:isConnected() and joystick:isVibrationSupported() then return joystick end
+  -- love.js can hand back something that isn't a joystick object.
+  local kind = type(joystick)
+  if (kind == "userdata" or kind == "table") and joystick.isConnected and joystick:isConnected()
+    and joystick:isVibrationSupported() then
+    return joystick
+  end
   return nil
 end
 

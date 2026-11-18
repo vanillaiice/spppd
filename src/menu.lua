@@ -21,6 +21,7 @@ local dynamics = require("src/sim/dynamics")
 local carStats = require("src/sim/car_stats")
 local cheats = require("src/cheats")
 local input = require("src/input")
+local web = require("src/web")
 
 local menu = { screen = "main" }
 
@@ -253,8 +254,11 @@ local function mainRows()
         radio.scan()
         menu.go("setup")
       end },
-    { label = "ONLINE", activate = function() settings.mode = "race" menu.go("online") end },
   }
+  -- The browser has no sockets.
+  if not web.on then
+    rows[#rows + 1] = { label = "ONLINE", activate = function() settings.mode = "race" menu.go("online") end }
+  end
   -- The editor needs a keyboard and a right click.
   if not ui.mobile then
     rows[#rows + 1] = { label = "TRACK EDITOR", activate = function() menu.openEditor() end }
@@ -262,7 +266,8 @@ local function mainRows()
   rows[#rows + 1] = { label = "SETTINGS", activate = function() menu.go("settings") end }
   rows[#rows + 1] = { label = "CONTROLS", activate = function() menu.go("controls") end }
   rows[#rows + 1] = { label = "CREDITS", activate = function() menu.go("credits") end }
-  rows[#rows + 1] = { label = "QUIT", activate = function() love.event.quit() end }
+  -- Quitting a browser tab's game would leave a frozen page.
+  if not web.on then rows[#rows + 1] = { label = "QUIT", activate = function() love.event.quit() end } end
   return rows
 end
 
@@ -416,7 +421,7 @@ local function setupRows()
   rows[#rows + 1] = timeRow()
   if not two then rows[#rows + 1] = handlingRow("HANDLING", "assists") end
   -- A phone's save folder is out of reach, so there's no way to fill it there.
-  if mode == "freestyle" and not ui.mobile then
+  if mode == "freestyle" and not ui.mobile and not web.on then
     rows[#rows + 1] = stepper("RADIO", function() return settings.radioVolume end,
       function(v) settings.radioVolume = v end, VOLUMES, VOLUME_NAMES)
     rows[#rows + 1] = { label = "MUSIC FOLDER", value = function()
@@ -474,8 +479,8 @@ local function settingsRows()
     toggle("MINIMAP", "minimap"),
     toggle("SHOW FPS", "showFps"),
   }
-  -- A phone always fills the screen.
-  if not ui.mobile then
+  -- A phone always fills the screen, and a browser has its own (F11).
+  if not ui.mobile and not web.on then
     local flip = function()
       settings.fullscreen = not settings.fullscreen
       love.window.setFullscreen(settings.fullscreen, "desktop")

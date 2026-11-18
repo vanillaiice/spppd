@@ -101,6 +101,8 @@ android/fdroid.yml  The F-Droid build recipe; the listing is in fastlane/
 config/deploy.yml   The website as the Kamal app, and the relay as its accessory
 bin/relay-deploy    Builds the relay and deploys it
 bin/site-deploy     Deploys the website
+bin/web-build       Builds the browser version into site/public/play/ (make web)
+web/                The browser version's page scripts: bridge.js, play.js, play.css
 .env                The official server's details and dashboard password (not in git)
 site/               The website at spppd.xyz (Astro)
 .dockerignore       Lets only what the website needs into its image
@@ -144,9 +146,11 @@ src/
 
   audio.lua               Sound synthesis and the live mix
   sound_cache.lua         WAV cache in the save folder
+  web.lua                 The browser build: window size, saving to IndexedDB
   sound_worker.lua        Thread that renders sounds on a first launch
   radio.lua               Player's own music, freestyle only
   lib/sfxr.lua            Third-party arcade effects synth (MIT)
+  lib/bit.lua             LuaJIT's bit, or arithmetic in the browser
   rumble.lua              Pad motors and phone buzzer
 
   input.lua, touch.lua    Keyboard, pad, on-screen controls
@@ -2232,7 +2236,8 @@ positions, hence "new cars go on the end".
 | `make relay-linux` | `dist/relay-linux`, static, for the server |
 | `make deploy-relay` | Tests the relay, deploys it, then checks it answers. See [Deploying](#deploying) |
 | `make check-relay` | Checks the official relay answers, without showing in its stats |
-| `make site` | The website in `site/dist`, with this version's builds to download. See [The website](#the-website) |
+| `make web` | The browser version in `site/public/play/`, for the site's `/play/`. See [The browser version](#the-browser-version) |
+| `make site` | The website in `site/dist`, with the browser version and this version's builds to download. See [The website](#the-website) |
 | `make deploy-site` | Builds the website, then deploys it |
 | `make zip` | `dist/spppd-3.5.0.love`. Tests stay out |
 | `make win64 win32` | Windows zips. To this project, these are what a release means |
@@ -2266,6 +2271,46 @@ there. `VERSION_CODE` beside it is the Android version code, major * 10000 +
 minor * 100 + patch; a test checks the two agree. F-Droid builds each new `v*` tag
 from source and offers it only if the code went up, and shows
 `fastlane/metadata/android/en-US/changelogs/<VERSION_CODE>.txt` as its notes. There is no CI.
+
+### The browser version
+
+`make web` (`bin/web-build`) builds the game for `spppd.xyz/play/` with love.js 11.4.1,
+pinned as a dev dependency in `site/package.json`. love.js runs LÖVE 11.4 on plain Lua
+5.1 in WebAssembly, in compatibility mode, so there are no threads and no cross-origin
+isolation headers. The web copy's `conf.lua` asks for 11.4 and no high-DPI window. What
+the browser lacks, and what stands in:
+
+| Missing | Instead |
+| --- | --- |
+| LuaJIT's `bit` | `src/lib/bit.lua`, arithmetic, for whole numbers below 2^32 |
+| Yielding across `pcall` | `audio.load` runs its body in a coroutine of its own (`pcallYielding`) |
+| Threads | No threaded first-launch render; the build ships the sound cache instead (below) |
+| Sockets | `account` and `network_manager` load without them; ONLINE isn't in the menu |
+| Mipmaps on textures that aren't a power of two (WebGL 1) | `textures.canMipmap` leaves them off there |
+| A window | `src/web.lua` sizes the game to the browser window |
+
+`web/bridge.js` talks to the game through lines the game prints that start
+`SPPPD_WEB|`. It writes the browser window's size, and whether it's a touch screen,
+into the save folder as `viewport.txt`, and `web.lua` follows it: a touch screen gets
+the phone's menus and touch controls. love.js keeps the save folder in IndexedDB but
+copies it there only on `beforeunload`, which a phone often never sends, so `web.lua`
+wraps `love.filesystem.write`, `append` and `remove`, and a second after the last
+write asks the page to copy it; the page also does when it's hidden. `bin/web-build`
+exports `FS.syncfs` from `love.js` for that, a one-line patch it checks.
+
+Without threads, rendering the sounds took 11 s on a desktop, and 39 s and 56 s with
+Chrome's CPU slowed four and six times, so the build renders them with
+`love . --sound-cache` (`audio.buildCache`, its own save folder) and packs the
+finished cache into the game. LÖVE reads a file from the game when the save folder
+hasn't got it, so the browser finds a complete cache: 4, 10 and 14 s to the menu. It
+adds 4.8 MB; the whole page is about 7 MB over the wire, the WebAssembly compressed.
+
+The page is `site/src/pages/play.astro`, with `web/play.js` (love.js's start-up,
+which its own page does in inline script) and `web/play.css`. The site's
+Content-Security-Policy allows no inline script and no WebAssembly, so Caddy gives
+`/play/` its own, with `'wasm-unsafe-eval'`, and `Cache-Control: no-cache`, because
+love.js's file names don't change between versions. The heap starts at 64 MB and grows;
+a race never took it past that.
 
 ### Tests
 

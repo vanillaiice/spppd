@@ -12,5 +12,7 @@ set -a; . "$env_file"; set +a
 
 # make site has written this version's download sizes; the files are on GitHub.
 [ -f site/src/downloads.json ] || { echo "Run make site first." >&2; exit 1; }
+# And the browser version, served at /play/.
+[ -f site/public/play/love.wasm ] || { echo "Run make site first (the browser version is missing)." >&2; exit 1; }
 
 exec "${KAMAL_BIN:-kamal}" deploy "$@"
