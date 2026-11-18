@@ -72,6 +72,7 @@ const (
 
 var (
 	errDuplicateTrack = errors.New("That track is already here")
+	errNoTrack        = errors.New("That track isn't here any more")
 	errQueueFull      = errors.New("Too many tracks are waiting to be checked. Try again in a few days")
 )
 
@@ -444,6 +445,25 @@ func (s *Store) Track(id int) (Track, bool) {
 	return t, err == nil
 }
 
+// RenameTrack gives a track a new title, both in its title column and on the title
+// line of the text the game downloads. The hash follows the text, so the same track
+// sent in again under its new name is still caught as already here.
+func (s *Store) RenameTrack(id int, title string) error {
+	t, found := s.Track(id)
+	if !found {
+		return errNoTrack
+	}
+	_, rest, _ := strings.Cut(strings.TrimPrefix(t.Text, trackHeader+"\n"), "\n")
+	text := trackHeader + "\ntitle " + title + "\n" + rest
+	sum := sha256.Sum256([]byte(text))
+	_, err := s.db.Exec(`UPDATE tracks SET title = ?, text = ?, hash = ? WHERE id = ?`,
+		title, text, hex.EncodeToString(sum[:]), id)
+	if err != nil && strings.Contains(err.Error(), "UNIQUE") {
+		return errDuplicateTrack
+	}
+	return err
+}
+
 func (s *Store) SetTrackState(id int, state, by string, now time.Time) bool {
 	result, err := s.db.Exec(`UPDATE tracks SET state = ?, reviewed = ?, reviewed_by = ? WHERE id = ?`, state, now.Unix(), by, id)
 	if err != nil {
@@ -677,6 +697,28 @@ func (ts *TrackServer) serveUpload(w http.ResponseWriter, r *http.Request) {
 	ts.note("[TRACK] %q%s sent in, waiting for review (no. %d)", t.Title, by, id)
 	writeJSON(w, http.StatusAccepted, map[string]any{"id": id, "title": t.Title,
 		"message": "Thanks! " + t.Title + " will show up here once it's been checked."})
+}
+
+// Rename is a dashboard user's new title for a track, cleaned as a sent-in title is.
+func (ts *TrackServer) Rename(id int, title, by string) error {
+	title = strings.TrimSpace(strings.ToUpper(title))
+	if title == "" {
+		return errors.New("Give the track a name")
+	}
+	clean := cleanTrackTitle(title)
+	t, found := ts.store.Track(id)
+	if !found {
+		return errNoTrack
+	}
+	if clean == t.Title {
+		return nil
+	}
+	if err := ts.store.RenameTrack(id, clean); err != nil {
+		return err
+	}
+	ts.changed()
+	ts.note("[TRACK] %q renamed %q by %s", t.Title, clean, by)
+	return nil
 }
 
 // Review is a dashboard user's decision on a track.

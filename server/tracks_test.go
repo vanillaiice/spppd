@@ -426,6 +426,78 @@ func TestTheDashboardReviewsTracks(t *testing.T) {
 	}
 }
 
+func TestTheDashboardRenamesTracks(t *testing.T) {
+	relay, _, _ := setup()
+	h, store := dash(t, relay)
+	oasis, _ := CheckTrack(readFixture(t, "oasis.spppd"))
+	oasis.Author = "XOROZ"
+	id, err := store.AddTrack(oasis, time.Now())
+	if err != nil {
+		t.Fatal(err)
+	}
+	rename := func(title string, headers map[string]string) *httptest.ResponseRecorder {
+		if headers == nil {
+			headers = map[string]string{}
+		}
+		headers["HX-Prompt"] = title
+		return request(h, http.MethodPost, "/tracks/rename", url.Values{"id": {strconv.Itoa(id)}}, headers)
+	}
+
+	// Before it's approved, as the browser's prompt sends it: cleaned and upper case.
+	if out := rename("  sand Dunes!  ", nil); out.Code != http.StatusOK || !strings.Contains(out.Body.String(), "SAND DUNES") {
+		t.Fatalf("rename: %d %s", out.Code, out.Body)
+	}
+	got, _ := store.Track(id)
+	if got.Title != "SAND DUNES" || !strings.HasPrefix(got.Text, trackHeader+"\ntitle SAND DUNES\n") {
+		t.Fatalf("renamed track: %q %q", got.Title, got.Text[:40])
+	}
+	if !strings.Contains(got.Wire(), "title SAND DUNES\nauthor XOROZ\n") {
+		t.Fatalf("the file the game gets: %q", got.Wire()[:60])
+	}
+	// The rest of the track is untouched, and the game still opens it.
+	if again, err := CheckTrack(got.Text); err != nil || again.Title != "SAND DUNES" || again.Metres != oasis.Metres {
+		t.Fatalf("renamed text: %v %+v", err, again)
+	}
+	// Sent in again under the new name, it's still the same track.
+	if _, err := store.AddTrack(got, time.Now()); err != errDuplicateTrack {
+		t.Fatalf("resend after rename: %v", err)
+	}
+	// The original text is free again.
+	other, err := store.AddTrack(oasis, time.Now())
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Two tracks can't end up as the same text.
+	if out := request(h, http.MethodPost, "/tracks/rename", url.Values{"id": {strconv.Itoa(other)}, "title": {"sand dunes"}}, nil); !strings.Contains(out.Body.String(), "already here") {
+		t.Fatalf("rename onto another track: %s", out.Body)
+	}
+	if out := rename("   ", nil); !strings.Contains(out.Body.String(), "Give the track a name") {
+		t.Fatalf("empty name: %s", out.Body)
+	}
+	if got := request(h, http.MethodGet, "/tracks/rename?id=1&title=x", nil, nil).Code; got != http.StatusMethodNotAllowed {
+		t.Fatalf("GET rename: %d", got)
+	}
+	if out := rename("STRANGER", remote()); out.Code == http.StatusOK {
+		t.Fatal("a stranger renamed a track")
+	}
+	if got, _ := store.Track(id); got.Title != "SAND DUNES" {
+		t.Fatalf("title now %q", got.Title)
+	}
+
+	// Once live, the list the game reads shows the new name.
+	ts := NewTrackServer(store, relay.Note)
+	if err := ts.Review(id, "approve", "test"); !err {
+		t.Fatal("approve")
+	}
+	if err := ts.Rename(id, "Dune Run", "test"); err != nil {
+		t.Fatal(err)
+	}
+	list, _ := ts.publicList()
+	if !strings.Contains(string(list), `"title":"DUNE RUN"`) {
+		t.Fatalf("list: %s", list)
+	}
+}
+
 // testdata/oasis.code is a code this relay made, which tests/test_editor.lua
 // imports in the game. Rewrite it with SPPPD_WRITE_CODE=1 go test -run TestTheGame.
 func TestTheGameReadsTheRelaysCodes(t *testing.T) {

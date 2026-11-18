@@ -284,15 +284,17 @@ a { color: var(--accent); }
 {{if .PendingTracks}}<div class="tracks">{{range .PendingTracks}}{{template "track" .}}
   <div class="actions">
     <form hx-post="/tracks/review" hx-target="#tracks"><input type="hidden" name="id" value="{{.ID}}"><input type="hidden" name="action" value="approve"><button>Approve</button></form>
+    <form hx-post="/tracks/rename" hx-target="#tracks" hx-prompt="New name for {{.Title}}"><input type="hidden" name="id" value="{{.ID}}"><button>Rename</button></form>
     <form hx-post="/tracks/review" hx-target="#tracks" hx-confirm="Reject and delete {{.Title}}?"><input type="hidden" name="id" value="{{.ID}}"><input type="hidden" name="action" value="reject"><button>Reject</button></form>
   </div></div>{{end}}</div>
 {{else}}<p class="empty">Nothing is waiting.</p>{{end}}
-<p class="note">Sent in from spppd.xyz/tracks. To try one, copy its code and paste it in the game's editor under IMPORT.</p>
+<p class="note">Sent in from spppd.xyz/tracks. To try one, copy its code and paste it in the game's editor under IMPORT. Renaming a live track makes it look new to players who already got it, so GET would save a second copy.</p>
 
 <h2>Tracks on the website</h2>
 {{if .LiveTracks}}<div class="tracks">{{range .LiveTracks}}{{template "track" .}}
   <div class="actions">
     <form hx-post="/tracks/review" hx-target="#tracks"><input type="hidden" name="id" value="{{.ID}}"><input type="hidden" name="action" value="hide"><button>Hide</button></form>
+    <form hx-post="/tracks/rename" hx-target="#tracks" hx-prompt="New name for {{.Title}}"><input type="hidden" name="id" value="{{.ID}}"><button>Rename</button></form>
     <form hx-post="/tracks/review" hx-target="#tracks" hx-confirm="Delete {{.Title}} for good?"><input type="hidden" name="id" value="{{.ID}}"><input type="hidden" name="action" value="delete"><button>Delete</button></form>
   </div></div>{{end}}</div>
 {{else}}<p class="empty">None yet.</p>{{end}}
@@ -300,6 +302,7 @@ a { color: var(--accent); }
 <div class="tracks">{{range .HiddenTracks}}{{template "track" .}}
   <div class="actions">
     <form hx-post="/tracks/review" hx-target="#tracks"><input type="hidden" name="id" value="{{.ID}}"><input type="hidden" name="action" value="show"><button>Show again</button></form>
+    <form hx-post="/tracks/rename" hx-target="#tracks" hx-prompt="New name for {{.Title}}"><input type="hidden" name="id" value="{{.ID}}"><button>Rename</button></form>
     <form hx-post="/tracks/review" hx-target="#tracks" hx-confirm="Delete {{.Title}} for good?"><input type="hidden" name="id" value="{{.ID}}"><input type="hidden" name="action" value="delete"><button>Delete</button></form>
   </div></div>{{end}}</div>{{end}}
 {{if .Error}}<p class="error">{{.Error}}</p>{{end}}

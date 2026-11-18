@@ -436,6 +436,28 @@ func (d *dashboard) trackRoutes(mux *http.ServeMux) {
 		d.listTracks(&data)
 		d.render(w, "tracks", data)
 	}))
+	// The new name comes from the browser's prompt (htmx's HX-Prompt header), or a
+	// title field.
+	mux.HandleFunc("/tracks/rename", d.authed(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			http.Error(w, "POST only", http.StatusMethodNotAllowed)
+			return
+		}
+		data := d.data(r)
+		title := r.Header.Get("HX-Prompt")
+		if title == "" {
+			title = r.FormValue("title")
+		}
+		id, err := strconv.Atoi(r.FormValue("id"))
+		if err == nil {
+			err = d.tracks.Rename(id, title, orLocal(data.Viewer.Name))
+		}
+		if err != nil {
+			data.Error = "That track couldn't be renamed: " + err.Error() + "."
+		}
+		d.listTracks(&data)
+		d.render(w, "tracks", data)
+	}))
 }
 
 func (d *dashboard) listTracks(data *pageData) {

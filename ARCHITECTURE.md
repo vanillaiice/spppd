@@ -2237,7 +2237,11 @@ which the relay only believes from a loopback or private peer.
 
 The dashboard's Tracks section shows each waiting track's outline, facts and code, to
 paste into the game and try, with APPROVE and REJECT (deletes it). Live tracks can be
-hidden or deleted. Each decision is a line of activity. Numbers come from
+hidden or deleted. RENAME, on any track, asks for a new title, cleans it as a
+sent-in title is, and rewrites the title line of the stored text and its hash, so a
+resend under the new name is still a duplicate. The game knows tracks it has by a
+hash of their text, title included, so a renamed live track looks new to anyone who
+got it before. Each decision is a line of activity. Numbers come from
 AUTOINCREMENT, so a deleted track's download link never points at another track.
 
 ### The website
