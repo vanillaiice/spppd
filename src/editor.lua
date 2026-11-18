@@ -7,6 +7,7 @@ local config = require("src/config")
 local catalog = require("src/tracks/catalog")
 local model = require("src/editor_model")
 local share = require("src/tracks/share")
+local web = require("src/web")
 local input = require("src/input")
 
 local editor = {}
@@ -284,7 +285,7 @@ local function cycleTheme()
 end
 
 local function toolRows()
-  return {
+  local rows = {
     { label = "TEST DRIVE", value = "T", activate = testDrive },
     { label = "SAVE", value = "CTRL S", activate = saveTrack },
     { label = "OPEN", activate = function() overlay = "open" end },
@@ -292,9 +293,9 @@ local function toolRows()
         setDocument(model.new(freshName()))
         say("New track")
       end },
-    { label = "IMPORT", activate = editor.openImport },
-    { label = "EXPORT", activate = exportFile },
-    { label = "COPY CODE", activate = copyCode },
+    { label = "IMPORT", activate = editor.openImport, sharing = true },
+    { label = "EXPORT", activate = exportFile, sharing = true },
+    { label = "COPY CODE", activate = copyCode, sharing = true },
     { label = "NAME", activate = rename },
     { label = "SCENERY", value = function() return doc.theme:upper() end, activate = cycleTheme },
     { label = "SET START", value = "ENTER", disabled = selected == nil, activate = function()
@@ -313,6 +314,14 @@ local function toolRows()
     { label = "FIT VIEW", value = "F", activate = fitView },
     { label = "BACK", value = "ESC", activate = requestBack },
   }
+  -- In a browser the save folder is the page's storage, and love.js keeps its own
+  -- clipboard, so neither files nor codes could leave or arrive: no sharing there.
+  if web.on then
+    for i = #rows, 1, -1 do
+      if rows[i].sharing then table.remove(rows, i) end
+    end
+  end
+  return rows
 end
 
 -- Mouse -------------------------------------------------------------------------

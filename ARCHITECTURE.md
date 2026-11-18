@@ -2288,6 +2288,7 @@ the browser lacks, and what stands in:
 | Sockets | `account` and `network_manager` load without them; ONLINE isn't in the menu |
 | Mipmaps on textures that aren't a power of two (WebGL 1) | `textures.canMipmap` leaves them off there |
 | A window | `src/web.lua` sizes the game to the browser window |
+| A save folder or clipboard the player can reach | The editor hides IMPORT, EXPORT and COPY CODE |
 
 `web/bridge.js` talks to the game through lines the game prints that start
 `SPPPD_WEB|`. It writes the browser window's size, and whether it's a touch screen,
