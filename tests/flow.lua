@@ -89,8 +89,10 @@ local function steps()
   end)
   step(2, function()
     expect(ui.focus.main == 1, "up moves it back")
-    press("return")
+    -- QUICK RACE is first; RACE is next.
+    press("down")
   end)
+  step(2, function() press("return") end)
   step(3, function()
     expect(menu.screen == "setup", "enter opens race setup")
     settings.track = "harbour"
@@ -321,10 +323,26 @@ local function steps()
     expect(state.screen == "menu", "quit returns to the menu")
     expect(menu.screen == "main", "at the main menu")
     expect(music.isPlaying(), "and the music comes back")
+    settings.mode = "trial"
+    ui.focus.main = 1
+    press("return")
+  end)
+  step(3, function()
+    expect(state.screen == "race", "QUICK RACE starts a race straight away")
+    expect(rm.race().mode == "race", "a race, whatever was set up last")
+    expect(rm.race().track == menu.cachedTrack(catalog.find("harbour")).track, "on the last track")
+    expect(#rm.race().cars == 4, "with the last grid")
+    press("escape")
+  end)
+  step(3, function() press("down") end)
+  step(2, function() press("down") end)
+  step(2, function() press("return") end)
+  step(4, function()
+    expect(menu.screen == "main", "and quits back to the menu")
     settings.mode = "race"
-    -- Mouse: click TRACK EDITOR, the fifth row
+    -- Mouse: click TRACK EDITOR, the sixth row
     local s = ui.scale()
-    click(100 * s, 62 * s + 15 * s * 4.5)
+    click(100 * s, 62 * s + 15 * s * 5.5)
   end)
   step(4, function()
     expect(state.screen == "editor", "clicking TRACK EDITOR opens it")
@@ -375,7 +393,7 @@ local function steps()
       if text:match("^ON AIR") then flow.onAir = text end
       flow.toast(text, ...)
     end
-    ui.focus.main = 3
+    ui.focus.main = 4
     press("return")
   end)
   step(3, function()

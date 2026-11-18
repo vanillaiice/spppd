@@ -232,8 +232,19 @@ end
 
 -- Screens ------------------------------------------------------------------
 
+-- What QUICK RACE starts: the race as it was last set up.
+local function quickHint()
+  local entry = currentEntry()
+  local laps = settings.laps == 1 and "1 LAP" or settings.laps .. " LAPS"
+  return (entry and entry.title or "") .. "  " .. currentCar().name .. "  " .. laps
+end
+
 local function mainRows()
   local rows = {
+    { label = "QUICK RACE", activate = function()
+        settings.mode = "race"
+        menu.startRace()
+      end },
     { label = "RACE", activate = function() settings.mode = "race" menu.go("setup") end },
     { label = "TIME TRIAL", activate = function() settings.mode = "trial" menu.go("setup") end },
     { label = "FREESTYLE", activate = function()
@@ -1188,6 +1199,9 @@ function drawScreen(sw, sh)
       drawLobby(sw, sh, w, s)
     elseif menu.screen == "online" then
       drawSetupPreview(sw, sh, w, s, true)
+    end
+    if menu.screen == "main" and focused.label == "QUICK RACE" and not ui.mobile then
+      ui.text(quickHint(), 14 * s, sh - 34 * s, 5 * s, colors.muted, "left", w - 28 * s)
     end
     if menu.screen == "setup" then
       if focused.label == "HANDLING" then
