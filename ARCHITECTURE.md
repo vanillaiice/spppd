@@ -1459,7 +1459,9 @@ Saving a built-in makes a `_edit` copy and never replaces it.
 EXPORT and IMPORT pass a track around by hand as one line of text
 (`src/tracks/share.lua`): `SPPPD-TRACK:` and then the track's wire text
 (`src/tracks/wire.lua`, the same text online rooms send), deflated with zlib and
-base64'd. Built-in tracks come to 0.3 to 5.2 KB; a track drawn in the editor is a few hundred bytes to 2 KB. IMPORT also takes plain wire text, and
+base64'd. The editor exports nodes, about 10 characters each once packed: 300 to
+2 800 characters for the built-in tracks, a few hundred for most drawn ones. Over
+2 000, Discord sends a paste as a file. IMPORT also takes plain wire text, and
 everything goes through `wire.decode`, so a code from a stranger meets the same limits
 as a track from another player online. A code over 40 000 characters is refused before
 it's inflated, which keeps what a hostile one can make the game unpack to about 30 MB;
