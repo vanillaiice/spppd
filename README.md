@@ -123,6 +123,12 @@ desktops online. What differs:
 | Vibration | Pad rumble, road and hits | Phone buzz on hits |
 | Fullscreen | Optional | Always |
 
+There's also a browser version at [spppd.xyz/play](https://spppd.xyz/play/), with
+nothing to install. It's the same game, laid out like the desktop or the phone to suit
+the device, without online races, the freestyle radio or fullscreen (the browser's own
+works). It keeps your settings and tracks in that browser. `make web` builds it into
+`site/public/play/`.
+
 ## Track editor
 
 Open it from the main menu, on a desktop. Click to add a node, drag to move it, right

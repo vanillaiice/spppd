@@ -10,6 +10,16 @@ for i, a in ipairs(arg or {}) do
     end
     return
   end
+  -- `love . --sound-cache` fills the sound cache and prints where it is, for
+  -- bin/web-build.
+  if a == "--sound-cache" then
+    function love.load()
+      local folder = require("src/audio").buildCache()
+      if folder then print(love.filesystem.getSaveDirectory() .. "/" .. folder) end
+      love.event.quit(folder and 0 or 1)
+    end
+    return
+  end
   if a == "--test" then
     function love.load(args)
       local filter
@@ -40,6 +50,7 @@ local textures = require("src/render/textures")
 local catalog = require("src/tracks/catalog")
 local network = require("src/network_manager")
 local cheats = require("src/cheats")
+local web = require("src/web")
 
 -- Slow phones take seconds over this, so it runs a step at a time between
 -- frames, with the splash on screen.
@@ -109,6 +120,7 @@ function love.quit()
 end
 
 function love.update(dt)
+  web.update(dt)
   -- Menus only. It renders ahead anywhere but a race, where frames matter.
   if not loading then
     music.update(dt, state.screen == "menu" and settings.music, settings.music and state.screen ~= "race")

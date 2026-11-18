@@ -1,0 +1,46 @@
+---
+// The browser version, at /play/. love.js's files are put in public/play/ by
+// `make web` (bin/web-build); this page is all the site adds to them. It fills the
+// window, with no header or footer, so the game has the whole screen. Caddy serves
+// /play/ with its own Content-Security-Policy, which lets WebAssembly run.
+import site from '../site.config';
+import { gameVersion } from '../lib/repo';
+
+const version = gameVersion();
+---
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no" />
+    <title>Play SPPPD in your browser</title>
+    <meta name="description" content="Play SPPPD in your browser: race the AI, slide for boost, build your own tracks. Online races need the downloaded game." />
+    <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+    <link rel="stylesheet" href="/play/play.css" />
+    {
+      site.umami.websiteId && (
+        <script
+          is:inline
+          defer
+          src={site.umami.src}
+          data-website-id={site.umami.websiteId}
+          data-domains={site.umami.domains}
+        />
+      )
+    }
+  </head>
+  <body>
+    <div id="cover">
+      <p class="logo">SPPPD</p>
+      <p id="status">Downloading</p>
+      <noscript><p>The browser version needs JavaScript.</p></noscript>
+      <p class="note">
+        Version {version}. Your settings and tracks stay in this browser.<br />
+        Online races need the <a href="/#download">downloaded game</a>.
+      </p>
+    </div>
+    <canvas id="canvas"></canvas>
+    <script is:inline src="/play/bridge.js"></script>
+    <script is:inline src="/play/play.js"></script>
+  </body>
+</html>

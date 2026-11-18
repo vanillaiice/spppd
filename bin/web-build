@@ -1,0 +1,50 @@
+#!/usr/bin/env bash
+# Builds the browser version into site/public/play/, where the site serves it as
+# /play/ (site/src/pages/play.astro is the page). Run through `make web`, which
+# installs the site's packages first: love.js is one of them, pinned there.
+#
+# love.js runs LÖVE 11.4 on plain Lua 5.1, in compatibility mode (no threads, so the
+# server needs no cross-origin isolation headers). The game asks for 11.5, which
+# 11.4 would warn about, and asks for a high-DPI window, which a phone's browser
+# would then refuse to size; the web copy asks for neither.
+set -euo pipefail
+cd "$(dirname "$0")/.."
+
+out=site/public/play
+lovejs=site/node_modules/.bin/love.js
+[ -x "$lovejs" ] || { echo "love.js is missing: run (cd site && npm ci) first" >&2; exit 1; }
+
+work=$(mktemp -d)
+trap 'rm -rf "$work"' EXIT
+
+mkdir "$work/game"
+cp -r main.lua conf.lua LICENSE assets src "$work/game/"
+sed -i 's/t.version = "11.5"/t.version = "11.4"/; s/t.window.highdpi = true/t.window.highdpi = false/' "$work/game/conf.lua"
+grep -q 't.version = "11.4"' "$work/game/conf.lua" || { echo "couldn't patch conf.lua's version" >&2; exit 1; }
+grep -q 't.window.highdpi = false' "$work/game/conf.lua" || { echo "couldn't patch conf.lua's highdpi" >&2; exit 1; }
+# The browser has no threads, so a first visit would spend most of a minute on a
+# phone rendering sounds. The build renders them here instead and ships the cache:
+# LÖVE reads a file from the game when the save folder hasn't got it, so the
+# browser finds this complete cache and loads it. Its folder is named after a hash
+# of src/audio.lua and src/lib/sfxr.lua, which the web copy doesn't change.
+folder=$(love . --sound-cache | tail -n 1)
+[ -f "$folder/complete" ] || { echo "rendering the sound cache failed" >&2; exit 1; }
+mkdir -p "$work/game/soundcache"
+cp -r "$folder" "$work/game/soundcache/"
+
+(cd "$work/game" && zip -q -9 -r ../game.love .)
+
+# The heap size here only fills love.js's template, which isn't used: web/play.js
+# sets the real one. love.js refuses one smaller than the game.
+"$lovejs" -c -t SPPPD -m 67108864 "$work/game.love" "$work/lovejs" >/dev/null
+
+# love.js saves the save folder to IndexedDB only as the page closes. web/bridge.js
+# saves it after the game writes too, which needs FS.syncfs.
+sed -i 's/Module\["FS_unlink"\]=FS.unlink/Module["FS_unlink"]=FS.unlink;Module["FS_syncfs"]=FS.syncfs/' "$work/lovejs/love.js"
+grep -q 'Module\["FS_syncfs"\]=FS.syncfs' "$work/lovejs/love.js" || { echo "couldn't export FS.syncfs from love.js" >&2; exit 1; }
+
+rm -rf "$out"
+mkdir -p "$out"
+cp "$work/lovejs/game.js" "$work/lovejs/game.data" "$work/lovejs/love.js" "$work/lovejs/love.wasm" "$out/"
+cp web/bridge.js web/play.js web/play.css "$out/"
+echo "Built $out/ ($(du -sh "$out" | cut -f1))"

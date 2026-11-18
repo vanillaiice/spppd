@@ -27,7 +27,7 @@ together with the *awesome* [LÖVE](https://love2d.org) game framework.
 ]]--
 -- @module sfxr
 local sfxr = {}
-local bit = bit32 or require("bit")
+local bit = require("src/lib/bit")  -- the browser build has no `bit`
 
 -- Constants
 

@@ -8,8 +8,10 @@
 -- A driver belongs to one server, so the file keeps one for each server address.
 -- Requests use a socket of their own and wait on nothing: each is repeated four
 -- times a second until the server answers, as the room requests are.
-local socket = require("socket")
-local bit = require("bit")
+-- The browser build has no sockets, and no online play.
+local hasSocket, socket = pcall(require, "socket")
+if not hasSocket then socket = nil end
+local bit = require("src/lib/bit")
 local settings = require("src/settings")
 
 local account = {
@@ -234,6 +236,7 @@ end
 -- Starts a request. `fields(cookie)` gives what follows the cookie.
 local function request(intent, fields, onDriver)
   if account.busy then return end
+  if not socket then return end
   local udp = socket.udp()
   udp:settimeout(0)
   local host, port = settings.serverAddress()

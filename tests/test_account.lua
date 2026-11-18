@@ -263,3 +263,27 @@ h.describe("network drivers", function()
     end)
   end)
 end)
+
+h.describe("bit fallback", function()
+  h.it("does what LuaJIT's bit does, for the numbers the game gives it", function()
+    local real = require("bit")
+    -- Load src/lib/bit as the browser does, with no `bit` to find.
+    package.loaded["src/lib/bit"], package.loaded.bit = nil, nil
+    local preload = package.preload.bit
+    package.preload.bit = function() error("no bit here") end
+    local ok, fallback = pcall(require, "src/lib/bit")
+    package.preload.bit, package.loaded.bit, package.loaded["src/lib/bit"] = preload, real, nil
+    h.assertTrue(ok and fallback ~= real, "got the fallback")
+    local function same(a, b) return a % 2 ^ 32 == b % 2 ^ 32 end
+    local rng = love.math.newRandomGenerator(7)
+    for _ = 1, 2000 do
+      local a, b = rng:random(0, 2 ^ 31 - 1) * 2 + rng:random(0, 1), rng:random(0, 2 ^ 16)
+      local n = rng:random(0, 24)
+      h.assertTrue(same(fallback.band(a, b), real.band(a, b)), "band")
+      h.assertTrue(same(fallback.bor(a, b), real.bor(a, b)), "bor")
+      h.assertTrue(same(fallback.bxor(a, b), real.bxor(a, b)), "bxor")
+      h.assertTrue(same(fallback.rshift(a, n), real.rshift(a, n)), "rshift")
+      h.assertTrue(same(fallback.lshift(b, n), real.lshift(b, n)), "lshift")
+    end
+  end)
+end)

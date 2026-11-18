@@ -1,6 +1,7 @@
 -- Draws each car model once into canvases. Paint is white so the sprite can
 -- be tinted to any colour; glass, lights and details sit on a second layer.
 local plans = require("src/render/car_plans")
+local textures = require("src/render/textures")
 
 local sprites = {}
 
@@ -384,7 +385,8 @@ function sprites.get(spec)
   local width, height = (spec.length * RES + 16) * SHARPNESS, (spec.width * RES + 16) * SHARPNESS
 
   local function layer(draw)
-    local canvas = love.graphics.newCanvas(width, height, { mipmaps = "auto" })
+    local mipmaps = textures.canMipmap(width, height)
+    local canvas = love.graphics.newCanvas(width, height, { mipmaps = mipmaps and "auto" or "none" })
     love.graphics.push("all")
     love.graphics.reset()
     love.graphics.setCanvas(canvas)
@@ -394,7 +396,7 @@ function sprites.get(spec)
     draw()
     love.graphics.pop()
     canvas:setFilter("linear", "linear")
-    canvas:setMipmapFilter("linear")
+    if mipmaps then canvas:setMipmapFilter("linear") end
     return canvas
   end
 

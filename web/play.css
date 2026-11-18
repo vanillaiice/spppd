@@ -1,0 +1,49 @@
+/* The browser version's page: the game fills the window, and a cover sits over it
+   while it downloads. Colours and the pixel font follow the site's. */
+@font-face {
+  font-family: 'Press Start 2P';
+  src: url('/fonts/PressStart2P.woff2') format('woff2');
+  font-display: swap;
+}
+html, body {
+  margin: 0;
+  height: 100%;
+  overflow: hidden;
+  background: #1d1c2a;
+  color: #f2efe6;
+  font-family: system-ui, sans-serif;
+}
+canvas {
+  display: block;
+  margin: 0 auto;
+  touch-action: none;
+  visibility: hidden;
+}
+#cover {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.8rem;
+  padding: 16px;
+  text-align: center;
+}
+#cover[hidden] { display: none; }
+.logo {
+  margin: 0;
+  font: clamp(2rem, 10vw, 4rem) / 1 'Press Start 2P', ui-monospace, monospace;
+  color: #f5c518;
+}
+#status {
+  margin: 0;
+  font: 0.8rem / 1.6 'Press Start 2P', ui-monospace, monospace;
+}
+.note {
+  margin: 1.5rem 0 0;
+  font-size: 0.85rem;
+  line-height: 1.5;
+  color: #c9c6d6;
+}
+.note a { color: #f5c518; }

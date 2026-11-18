@@ -42,6 +42,13 @@ function love.conf(t)
     t.modules.window = false
     t.modules.graphics = false
     t.modules.audio = false
+  elseif hasArg("--sound-cache") then
+    -- Its own save folder, so a build never touches the player's.
+    t.identity = "spppd-soundcache"
+    t.window = nil
+    t.modules.window = false
+    t.modules.graphics = false
+    t.modules.audio = false
   elseif hasArg("--visual") then
     t.identity = "spppd-test"
     t.window.vsync = 0
