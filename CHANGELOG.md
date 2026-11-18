@@ -1,6 +1,10 @@
 # Changelog
 
-## Unreleased
+## 3.7.0 (2026-11-18)
+
+3.7.0 races 3.0 to 3.6. Online races match tracks as before, and older games can
+import tracks from the new tracks page too. The server update adds that page's track
+server.
 
 ### Tracks
 
