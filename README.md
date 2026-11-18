@@ -130,6 +130,12 @@ Open it from the main menu, on a desktop. Click to add a node, drag to move it, 
 click to delete it, and select one to change its width. Press **T** to drive the track
 at any time. Kerbs, barriers and the racing line are worked out for you.
 
+To share a track, EXPORT saves it as a `.spppd` file and opens the folder it's in, so
+you can send the file. COPY CODE puts the same track on the clipboard instead, as one
+line starting `SPPPD-TRACK:`. To open one, drop a track file on the editor, or use
+IMPORT: it lists the files in that folder and can paste a code from the clipboard. An
+imported track opens as a new track; SAVE keeps it.
+
 ## Online
 
 Two to four players race through a relay server. One player picks HOST A ROOM, sets the

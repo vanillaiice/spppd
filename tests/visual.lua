@@ -203,6 +203,16 @@ local SCENES = {
     require("src/editor").open(doc)
     state.screen = "editor"
   end,
+  -- The editor's IMPORT dialog, with a file in the shared folder.
+  editorimport = function()
+    local em = require("src/editor_model")
+    local doc = em.fromEntry(catalog.find("highlands"))
+    love.filesystem.createDirectory("shared")
+    love.filesystem.write("shared/highlands.spppd", require("src/tracks/share").text(em.definition(doc)))
+    require("src/editor").open(doc)
+    require("src/editor").openImport()
+    state.screen = "editor"
+  end,
   boost = function()
     race({ track = "highlands", time = "day", opponents = 2 })
     autopilot()

@@ -273,7 +273,8 @@ function love.joystickremoved(joystick)
 end
 
 function love.filedropped(file)
-  radio.addFile(file)
+  -- In the editor a dropped file is a track to import; elsewhere, a song.
+  if state.screen == "editor" then editor.filedropped(file) else radio.addFile(file) end
 end
 
 function love.focus(focused)

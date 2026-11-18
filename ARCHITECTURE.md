@@ -1475,6 +1475,27 @@ directly, and the document survives the trip, so the player comes back to their 
 Built-in tracks can be opened, and boundary tracks convert through `Track:toNodes`.
 Saving a built-in makes a `_edit` copy and never replaces it.
 
+### Sharing tracks
+
+A track goes from one player to another by hand (`src/tracks/share.lua`), as the same
+wire text online rooms send (`src/tracks/wire.lua`):
+
+- EXPORT writes it to `shared/<name>.spppd` in the save folder (`share.text`, the plain
+  text) and opens that folder, so the file can be sent anywhere.
+- COPY CODE puts it on the clipboard as one line: `SPPPD-TRACK:` and the text deflated
+  with zlib and base64'd (`share.export`). The editor exports nodes, about 10
+  characters each packed, so the built-in tracks come to 300 to 2 800 characters.
+- IMPORT lists the `.spppd` and `.txt` files in `shared/`, newest first, and can paste
+  from the clipboard. A file dropped on the editor's window is imported too
+  (`love.filedropped`; anywhere else a dropped file is a song for the radio).
+
+Everything goes through `share.import`, which takes a code or plain text, and then
+`wire.decode`, so a track from a stranger meets the same limits as one from another
+player online. A code over 40 000 characters is refused before it's inflated, which
+keeps what a hostile one can make the game unpack to about 30 MB; anything that
+inflates past `wire.MAX_BYTES` is refused after, and a dropped file over 80 KB isn't
+read. An imported track opens as a new, unsaved document, named after its title.
+
 ### Catalogue
 
 `catalog.lua` returns built-ins in a fixed order, then anything in the save folder's

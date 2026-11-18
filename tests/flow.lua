@@ -56,6 +56,14 @@ local function clearMusic()
 end
 
 -- Each entry runs after `wait` frames have passed since the previous one.
+-- Clicks the editor toolbar's row `i`, as the editor lays it out.
+function flow.clickTool(i)
+  local sw, sh = love.graphics.getDimensions()
+  local s = ui.scale(sw, sh)
+  local rowH = math.min(14 * s, (sh - 40 * s) / 18)
+  click(40 * s, 28 * s + rowH * (i - 0.5))
+end
+
 local function steps()
   local list = {}
   local function step(wait, fn) list[#list + 1] = { wait = wait, fn = fn } end
@@ -361,6 +369,64 @@ local function steps()
   end)
   step(3, function()
     expect(#require("src/editor").currentDoc().nodes == flow.nodes, "ctrl+z undoes it")
+    love.system.setClipboardText("")
+    -- EXPORT opens the shared folder in a file manager; not during a test.
+    flow.openURL, flow.opened = love.system.openURL, nil
+    love.system.openURL = function(url) flow.opened = url end
+    flow.exported = require("src/editor").currentDoc()
+    love.filesystem.remove("shared/" .. flow.exported.name .. ".spppd")
+    flow.clickTool(6)  -- EXPORT
+  end)
+  step(3, function()
+    local file = "shared/" .. flow.exported.name .. ".spppd"
+    flow.file = file
+    expect(love.filesystem.getInfo(file) ~= nil, "EXPORT writes a track file")
+    expect(love.filesystem.read(file):sub(1, 13) == "spppd-track 1", "of the track's plain text")
+    expect(flow.opened and flow.opened:match("/shared$"), "and opens the folder it's in")
+    flow.clickTool(7)  -- COPY CODE
+  end)
+  step(3, function()
+    expect(love.system.getClipboardText():sub(1, 12) == "SPPPD-TRACK:", "COPY CODE puts a track code on the clipboard")
+    flow.clickTool(4)  -- NEW
+  end)
+  local function sameTrack(what)
+    local doc, old = require("src/editor").currentDoc(), flow.exported
+    expect(doc ~= old and doc.title == old.title and #doc.nodes == #old.nodes, what)
+    local a, b = doc.nodes[3], old.nodes[3]
+    expect(math.abs(a.x - b.x) < 0.01 and math.abs(a.y - b.y) < 0.01 and math.abs(a.wl - b.wl) < 0.01,
+      "node for node, to the centimetre the text keeps")
+    expect(doc.dirty, "and it waits to be saved")
+  end
+  step(3, function()
+    expect(require("src/editor").currentDoc() ~= flow.exported, "NEW starts another track")
+    -- As if the file were dragged in from a file manager.
+    love.filedropped(love.filesystem.newFile(flow.file))
+  end)
+  step(3, function()
+    sameTrack("a track file dropped on the editor opens")
+    flow.clickTool(4)  -- NEW
+  end)
+  step(3, function() flow.clickTool(5) end)  -- IMPORT
+  step(3, function()
+    -- The dialog lists the shared folder's files, then PASTE FROM CLIPBOARD.
+    local files = 0
+    for _, name in ipairs(love.filesystem.getDirectoryItems("shared")) do
+      if name:match("%.spppd$") or name:match("%.txt$") then files = files + 1 end
+    end
+    ui.focus["editor-import"] = files + 1
+    press("return")
+  end)
+  step(3, function()
+    sameTrack("IMPORT reads a code from the clipboard")
+    flow.clickTool(5)  -- IMPORT
+  end)
+  step(3, function()
+    ui.focus["editor-import"] = 1  -- the newest file: the one just exported
+    press("return")
+  end)
+  step(3, function()
+    sameTrack("IMPORT opens a file from the shared folder")
+    love.system.openURL = flow.openURL
     press("t")
   end)
   step(4, function()
