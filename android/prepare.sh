@@ -45,6 +45,13 @@ grep -q "abiFilters 'armeabi-v7a', 'arm64-v8a'$" "$love/app/build.gradle"
 grep -q useLegacyPackaging "$love/app/build.gradle" ||
   printf '\nandroid.packaging.jniLibs.useLegacyPackaging = true\n' >> "$love/app/build.gradle"
 
+# The safe area is the camera notch alone, as on LÖVE 11. SDL 3 also counts the
+# strips along every edge that a swipe works from, which on an A04 kept 24 to 54
+# dp clear on all four sides and left the menu board short of the top and bottom.
+sdl_surface="$love/app/src/main/cpp/megasource/libs/SDL3/android-project/app/src/main/java/org/libsdl/app/SDLSurface.java"
+sed -z -i 's/getInsets(WindowInsets\.Type\.systemBars()[^;]*WindowInsets\.Type\.displayCutout())/getInsets(WindowInsets.Type.displayCutout())/' "$sdl_surface"
+grep -q 'getInsets(WindowInsets.Type.displayCutout())' "$sdl_surface"
+
 # SPPPD never records, so the noRecord flavour drops the microphone permission
 # LÖVE's manifest asks for.
 mkdir -p "$love/app/src/noRecord"

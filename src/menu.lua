@@ -1103,11 +1103,14 @@ end
 
 local function drawBoard(sw, sh, s, title, titleColor)
   local w = menu.boardWidth(sw, sh, s)
-  -- The board's backing reaches under a notch on the left, to the screen's edge.
-  local left = math.min(0, (love.graphics.inverseTransformPoint(0, 0)))
-  ui.panel(left, 0, w - left, sh, 0.9)
+  -- The board's backing reaches past the safe area to the screen's edges: under
+  -- a notch on the left, and to the top and bottom.
+  local left, top = love.graphics.inverseTransformPoint(0, 0)
+  local _, bottom = love.graphics.inverseTransformPoint(0, love.graphics.getHeight())
+  left, top, bottom = math.min(0, left), math.min(0, top), math.max(sh, bottom)
+  ui.panel(left, top, w - left, bottom - top, 0.9)
   love.graphics.setColor(colors.kerb)
-  love.graphics.rectangle("fill", w, 0, 2 * s, sh)
+  love.graphics.rectangle("fill", w, top, 2 * s, bottom - top)
   local drop = headerDrop(s)
   if drop > 0 then
     ui.kerb(14 * s, 20 * s, w - 28 * s, 3 * s, s)
@@ -1158,26 +1161,48 @@ local function drawCarStats(spec, x, y, w, s)
   end
 end
 
-local function drawOnlineNotes(x, y, w, s)
-  local size = 6 * s
-  local font = ui.font(size)
-  local inner = w - 12 * s
-  local gap = 4 * s
-  local height = 22 * s
-  local heights = {}
+-- The notes in one column. Where that would run past bottom, as on a phone, they
+-- go in two, and then two in the smaller print the car stats use.
+local NOTE_LAYOUTS = { { columns = 1, size = 6, gap = 4 }, { columns = 2, size = 6, gap = 2 },
+  { columns = 2, size = 5, gap = 2 } }
+
+local function layOutNotes(w, s, layout)
+  local font = ui.font(layout.size * s)
+  local inner = (w - 12 * s - (layout.columns - 1) * 8 * s) / layout.columns
+  local heights, total = {}, 0
   for i, note in ipairs(menu.ONLINE_NOTES) do
     local _, lines = font:getWrap(note, inner)
-    heights[i] = #lines * font:getHeight() * font:getLineHeight() + gap
-    height = height + heights[i]
+    heights[i] = #lines * font:getHeight() * font:getLineHeight() + layout.gap * s
+    total = total + heights[i]
   end
-  ui.panel(x, y, w, height, 0.82)
-  ui.text("BEFORE YOU RACE", x + 6 * s, y + 7 * s, size, colors.kerb)
-  local ty = y + 20 * s
+  -- Where the second column starts, so the taller of the two is as short as it gets.
+  local split, tall = #heights, total
+  if layout.columns == 2 then
+    local sum = 0
+    for i, h in ipairs(heights) do
+      sum = sum + h
+      local taller = math.max(sum, total - sum)
+      if taller < tall then tall, split = taller, i end
+    end
+  end
+  return { inner = inner, heights = heights, split = split, height = 22 * s + tall, size = layout.size * s }
+end
+
+local function drawOnlineNotes(x, y, w, s, bottom)
+  local fit
+  for _, layout in ipairs(NOTE_LAYOUTS) do
+    fit = layOutNotes(w, s, layout)
+    if y + fit.height <= bottom then break end
+  end
+  ui.panel(x, y, w, fit.height, 0.82)
+  ui.text("BEFORE YOU RACE", x + 6 * s, y + 7 * s, 6 * s, colors.kerb)
+  local tx, ty = x + 6 * s, y + 20 * s
   for i, note in ipairs(menu.ONLINE_NOTES) do
-    ui.text(note, x + 6 * s, ty, size, colors.paint, "left", inner)
-    ty = ty + heights[i]
+    ui.text(note, tx, ty, fit.size, colors.paint, "left", fit.inner)
+    ty = ty + fit.heights[i]
+    if i == fit.split then tx, ty = tx + fit.inner + 8 * s, y + 20 * s end
   end
-  return y + height
+  return y + fit.height
 end
 
 local function drawSetupPreview(sw, sh, boardW, s, carOnly)
@@ -1218,7 +1243,7 @@ local function drawSetupPreview(sw, sh, boardW, s, carOnly)
   -- The stats need a taller panel. Online, they give way to the notes over it.
   local withStats = true
   if carOnly then
-    local notesBottom = drawOnlineNotes(x, 14 * s, w, s)
+    local notesBottom = drawOnlineNotes(x, 14 * s, w, s, sh - (14 + 72 + 6) * s)
     withStats = notesBottom + 6 * s <= sh - 114 * s
   end
 
