@@ -188,6 +188,11 @@ function ui.startEditing(value, done, pattern, maxLength)
   return ui.editing
 end
 
+-- Drops what's typed, as Escape would: the screen it was on is going.
+function ui.cancelEditing()
+  if ui.editing then stopEditing() end
+end
+
 -- Takes what's typed so far, as Enter would.
 function ui.commitEditing()
   local e = ui.editing
@@ -290,6 +295,18 @@ local function arrowBox(glyph, x, y, w, h, size, s, held, bright, onBar)
     love.graphics.rectangle("line", bx, by, bw, bh)
   end
   ui.text(glyph, x, y + (h - size) / 2, size, c, "center", w)
+end
+
+-- A lone button, such as a phone's BACK in a screen's header. It fires as a row
+-- does, on the lift, and returns true in that frame.
+function ui.button(id, label, x, y, w, h, size, s)
+  local held, fired = pressState(id, "button", "button", x, y, w, h)
+  arrowBox(label, x, y, w, h, size, s, held, true)
+  if fired then
+    ui.clicked = false
+    ui.played = "select"
+  end
+  return fired
 end
 
 function ui.panel(x, y, w, h, alpha)

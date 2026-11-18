@@ -260,5 +260,56 @@ h.describe("ui", function()
     fresh()
   end)
 
+  h.it("a lone button fires on the lift, and not when slid off", function()
+    local function button()
+      love.graphics.push()
+      love.graphics.origin()
+      local fired = ui.button("header", "BACK", 300, 0, 48, 24, SIZE, 1)
+      love.graphics.pop()
+      ui.endFrame()
+      return fired
+    end
+    fresh(true)
+    press(320, 10)
+    h.assertTrue(not button(), "nothing while the finger is down")
+    lift(320, 10)
+    h.assertTrue(button(), "fires on the lift")
+    h.assertTrue(not button(), "and only once")
+    press(320, 10)
+    button()
+    lift(100, 200)
+    h.assertTrue(not button(), "sliding off cancels")
+    fresh()
+  end)
+
+  h.it("a phone's screens have no BACK rows, as BACK is in the header", function()
+    local menu = require("src.menu")
+    local settings = require("src.settings")
+    local before = settings.mode
+    for _, mobile in ipairs({ false, true }) do
+      fresh(mobile)
+      for _, screen in ipairs({ "setup", "settings", "controls", "pad", "keys", "online", "host", "profile", "tracks" }) do
+        local backs = 0
+        for _, row in ipairs(menu.rows(screen)) do
+          if row.label == "BACK" then backs = backs + 1 end
+        end
+        h.assertEq(backs, mobile and 0 or 1, screen .. (mobile and " on a phone" or " on a desktop"))
+      end
+    end
+    settings.mode = "race"
+    h.assertTrue(menu.rows("setup").pinLast, "a phone's race setup still pins START")
+    settings.mode = before
+    fresh()
+  end)
+
+  h.it("leaving a screen drops what was being typed there", function()
+    local menu = require("src.menu")
+    local was = menu.screen
+    ui.startEditing("AB", function() error("should not be taken") end)
+    menu.go("main")
+    h.assertTrue(ui.editing == nil)
+    menu.go(was or "main")
+  end)
+
   if not real then love.graphics, ui.fonts = nil, fonts end
 end)

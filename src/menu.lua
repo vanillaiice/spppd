@@ -184,6 +184,7 @@ function menu.go(screen)
   menu.screen = screen
   ui.focus[screen] = ui.focus[screen] or 1
   ui.cancelPress()
+  ui.cancelEditing()
   capture, note = nil, nil
 end
 
@@ -1092,9 +1093,23 @@ local function headerDrop(s)
   return ui.mobile and menu.screen ~= "main" and 28 * s or 0
 end
 
--- A screen's rows as they stand, for the layout tests.
+-- A screen's rows as they stand. On a phone the header's BACK button does what a
+-- BACK row would, so the rows go and the lists are a row shorter.
 function menu.rows(screen)
-  return SCREENS[screen].rows()
+  local rows = SCREENS[screen].rows()
+  if not ui.mobile then return rows end
+  local kept = { pinLast = rows.pinLast }
+  for _, row in ipairs(rows) do
+    if row.label ~= "BACK" then kept[#kept + 1] = row end
+  end
+  return kept
+end
+
+-- Where a phone's BACK button sits: in the compact header, at the right end of
+-- the kerb, as tall as a row.
+function menu.backButton(w, s)
+  local bw = 48 * s
+  return w - 14 * s - bw, 2 * s, bw, 24 * s
 end
 
 function menu.boardWidth(sw, sh, s)
@@ -1113,7 +1128,8 @@ local function drawBoard(sw, sh, s, title, titleColor)
   love.graphics.rectangle("fill", w, top, 2 * s, bottom - top)
   local drop = headerDrop(s)
   if drop > 0 then
-    ui.kerb(14 * s, 20 * s, w - 28 * s, 3 * s, s)
+    local bx = menu.backButton(w, s)
+    ui.kerb(14 * s, 20 * s, bx - 20 * s, 3 * s, s)
     ui.text("SPPPD", 14 * s, 7 * s, 10 * s, colors.marshal)
   else
     ui.kerb(14 * s, 44 * s, w - 28 * s, 4 * s, s)
@@ -1370,8 +1386,9 @@ end
 local function drawButtonList(sw, sh, s, w)
   local rows = menu.buttonRows()
   local y = 72 * s - headerDrop(s)
-  -- Clear of BACK.
-  local step = math.min(13 * s, (menu.backRowY(sh, s) - 4 * s - y) / #rows)
+  -- Clear of BACK, which a phone has in the header instead.
+  local bottom = ui.mobile and sh - 12 * s or menu.backRowY(sh, s) - 4 * s
+  local step = math.min(13 * s, (bottom - y) / #rows)
   for i, row in ipairs(rows) do
     ui.text(row[1], 14 * s, y + (i - 1) * step, 6 * s, colors.paint)
     ui.text(row[2], 0, y + (i - 1) * step, 6 * s, colors.marshal, "right", w - 14 * s)
@@ -1412,9 +1429,9 @@ function menu.listLayout(screen, count, sh, s)
   return screen == "main" and 62 * s or 72 * s, rowH
 end
 
--- The lone BACK row under CREDITS and BUTTON LIST.
+-- The lone BACK row under CREDITS and BUTTON LIST, off a phone.
 function menu.backRowY(sh, s)
-  return ui.mobile and sh - (16 + PHONE_ROW) * s or sh - 34 * s
+  return sh - 34 * s
 end
 
 local drawScreen
@@ -1456,6 +1473,12 @@ function drawScreen(sw, sh)
   local listW = w - 22 * s
   local size = 7 * s
 
+  -- A phone's BACK in the header goes the way Escape or Android's back does.
+  if headerDrop(s) > 0 then
+    local bx, by, bw, bh = menu.backButton(w, s)
+    if ui.button("header", "BACK", bx, by, bw, bh, 7 * s, s) then ui.nav.back = true end
+  end
+
   if ui.consumeBack() then
     if menu.screen == "main" then
       -- nothing to go back to
@@ -1473,7 +1496,7 @@ function drawScreen(sw, sh)
 
   local def = SCREENS[menu.screen]
   if def then
-    local rows = def.rows()
+    local rows = menu.rows(menu.screen)
     local y, rowH, maxRows = menu.listLayout(menu.screen, #rows, sh, s)
     local focused = ui.list(menu.screen, rows, x, y, listW, rowH, size, s, maxRows)
     if menu.screen == "setup" or menu.screen == "host" then
@@ -1512,7 +1535,8 @@ function drawScreen(sw, sh)
     local rows = { { label = "BACK", activate = function() menu.go(back) end } }
     if menu.screen == "buttons" then drawButtonList(sw, sh, s, w)
     else drawCredits(sw, sh, s, w) end
-    ui.list(menu.screen, rows, x, menu.backRowY(sh, s), listW, ui.mobile and PHONE_ROW * s or 15 * s, size, s)
+    -- A phone has BACK in the header.
+    if not ui.mobile then ui.list(menu.screen, rows, x, menu.backRowY(sh, s), listW, 15 * s, size, s) end
   end
 end
 
