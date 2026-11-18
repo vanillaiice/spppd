@@ -429,3 +429,31 @@ func TestTheGameReadsTheRelaysCodes(t *testing.T) {
 		t.Fatalf("the kept code isn't oasis any more: %v", err)
 	}
 }
+
+// Without -tracks there's no track server: nothing at /api/tracks, and no Tracks
+// section on the dashboard.
+func TestTracksAreOffUnlessAskedFor(t *testing.T) {
+	relay, _, _ := setup()
+	page := newStatusPage(relay, nil)
+	if got := get(page, "/api/tracks").Code; got != http.StatusNotFound {
+		t.Fatalf("list: %d", got)
+	}
+	if got := upload(page, "203.0.113.9", readFixture(t, "oasis.spppd"), "").Code; got != http.StatusNotFound {
+		t.Fatalf("upload: %d", got)
+	}
+	if got := get(page, "/api/status").Code; got != http.StatusOK {
+		t.Fatalf("status: %d", got)
+	}
+
+	store := memoryStore(t)
+	if err := relay.AttachStore(store); err != nil {
+		t.Fatal(err)
+	}
+	h := newDashboard(relay, store, 30, nil)
+	if body := request(h, http.MethodGet, "/", nil, nil).Body.String(); strings.Contains(body, "Tracks waiting") {
+		t.Fatal("the dashboard shows tracks")
+	}
+	if got := request(h, http.MethodPost, "/tracks/review", url.Values{"id": {"1"}, "action": {"approve"}}, nil).Code; got != http.StatusNotFound {
+		t.Fatalf("review: %d", got)
+	}
+}

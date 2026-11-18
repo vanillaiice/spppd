@@ -2187,8 +2187,10 @@ it to `127.0.0.1:8081` (`SPPPD_STATUS` to change that).
 ### The track server
 
 `spppd.xyz/tracks/` holds tracks players made, so tracks that shouldn't ship with the
-game, such as lookalikes of real circuits, can still be had. The relay serves it on the
-same `-status` address (`server/tracks.go`), and Caddy passes `/api/tracks*` to it,
+game, such as lookalikes of real circuits, can still be had. With `-tracks` (off unless
+asked for, like `-analytics`; it needs `-status`) the relay serves it on the `-status`
+address (`server/tracks.go`) and the dashboard shows its Tracks section; without it
+`/api/tracks` is a 404. The official server runs with it, and Caddy passes `/api/tracks*` to it,
 with bodies capped at 128 KB:
 
 - `GET /api/tracks`: the live tracks as JSON, each with its code, an outline of up to

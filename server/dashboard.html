@@ -98,7 +98,7 @@ a { color: var(--accent); }
   </form>
   {{if .Analytics}}<section id="analytics" hx-get="/analytics" hx-trigger="every 60s" hx-swap="innerHTML">{{template "analytics" .}}</section>{{end}}
   <section id="drivers">{{template "drivers" .}}</section>
-  <section id="tracks">{{template "tracks" .}}</section>
+  {{if .TracksOn}}<section id="tracks">{{template "tracks" .}}</section>{{end}}
   <section id="users">{{template "users" .}}</section>
 </div>
 <script src="/htmx.js"></script>

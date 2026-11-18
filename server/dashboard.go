@@ -172,7 +172,8 @@ type pageData struct {
 	Drivers     []DriverView
 	DriverTotal int
 	DriverQuery string
-	// The tracks section: sent in and waiting, and on the website.
+	// The tracks section: sent in and waiting, and on the website. Only with -tracks.
+	TracksOn      bool
 	PendingTracks []Track
 	LiveTracks    []Track
 	HiddenTracks  []Track
@@ -263,24 +264,9 @@ func newDashboard(relay *Relay, store *Store, analyticsDays int, tracks *TrackSe
 	mux.HandleFunc("/drivers/ban", d.driversAction(func(id int, by string) bool { return relay.BanDriver(id, true, by) }))
 	mux.HandleFunc("/drivers/unban", d.driversAction(func(id int, by string) bool { return relay.BanDriver(id, false, by) }))
 
-	mux.HandleFunc("/tracks", d.authed(func(w http.ResponseWriter, r *http.Request) {
-		data := d.data(r)
-		d.listTracks(&data)
-		d.render(w, "tracks", data)
-	}))
-	mux.HandleFunc("/tracks/review", d.authed(func(w http.ResponseWriter, r *http.Request) {
-		if r.Method != http.MethodPost {
-			http.Error(w, "POST only", http.StatusMethodNotAllowed)
-			return
-		}
-		data := d.data(r)
-		id, err := strconv.Atoi(r.FormValue("id"))
-		if err != nil || !d.tracks.Review(id, r.FormValue("action"), orLocal(data.Viewer.Name)) {
-			data.Error = "That track couldn't be changed. Try again."
-		}
-		d.listTracks(&data)
-		d.render(w, "tracks", data)
-	}))
+	if tracks != nil {
+		d.trackRoutes(mux)
+	}
 
 	mux.HandleFunc("/users/add", d.usersAction(d.addUser))
 	mux.HandleFunc("/users/password", d.usersAction(d.changePassword))
@@ -333,7 +319,9 @@ func (d *dashboard) full(r *http.Request) pageData {
 	data := d.data(r)
 	data.Users, _ = d.store.Users()
 	d.findDrivers(r, &data)
-	d.listTracks(&data)
+	if d.tracks != nil {
+		d.listTracks(&data)
+	}
 	if d.relay.AnalyticsOn() {
 		data.Analytics = d.analytics()
 	}
@@ -428,7 +416,30 @@ func outlinePath(points []Point) string {
 	return b.String()
 }
 
+// trackRoutes is the Tracks section, there only when the relay runs with -tracks.
+func (d *dashboard) trackRoutes(mux *http.ServeMux) {
+	mux.HandleFunc("/tracks", d.authed(func(w http.ResponseWriter, r *http.Request) {
+		data := d.data(r)
+		d.listTracks(&data)
+		d.render(w, "tracks", data)
+	}))
+	mux.HandleFunc("/tracks/review", d.authed(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			http.Error(w, "POST only", http.StatusMethodNotAllowed)
+			return
+		}
+		data := d.data(r)
+		id, err := strconv.Atoi(r.FormValue("id"))
+		if err != nil || !d.tracks.Review(id, r.FormValue("action"), orLocal(data.Viewer.Name)) {
+			data.Error = "That track couldn't be changed. Try again."
+		}
+		d.listTracks(&data)
+		d.render(w, "tracks", data)
+	}))
+}
+
 func (d *dashboard) listTracks(data *pageData) {
+	data.TracksOn = true
 	data.PendingTracks, _ = d.store.Tracks(trackPending)
 	data.LiveTracks, _ = d.store.Tracks(trackLive)
 	data.HiddenTracks, _ = d.store.Tracks(trackHidden)
