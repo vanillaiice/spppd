@@ -121,12 +121,22 @@ end
 dynamics.LAUNCH_LOW, dynamics.LAUNCH_HIGH = 0.62, 0.82
 
 dynamics.DEFAULT_ASSIST = "arcade"
+local ARCADE = {
+  tc = 1.0, abs = 1.0, esc = 0.7, steer = 1.0, caster = 0.85,
+  grip = 1.3, tyreC = 1.15, transfer = 0.6, keyRate = 1.9, turn = 7, carry = 0.75,
+  drift = 1, offroad = 0.6, brake = 1.25, shift = 0.5, tow = 0.9,
+}
+
+-- EASY is ARCADE with half as much grip again, on every car. The AI drives ARCADE
+-- beside it, and online it is ARCADE, so it never races anyone else.
+dynamics.EASY_GRIP = 1.5
+local EASY = {}
+for k, v in pairs(ARCADE) do EASY[k] = v end
+EASY.grip = ARCADE.grip * dynamics.EASY_GRIP
+
 dynamics.ASSISTS = {
-  arcade = tier({
-    tc = 1.0, abs = 1.0, esc = 0.7, steer = 1.0, caster = 0.85,
-    grip = 1.3, tyreC = 1.15, transfer = 0.6, keyRate = 1.9, turn = 7, carry = 0.75,
-    drift = 1, offroad = 0.6, brake = 1.25, shift = 0.5, tow = 0.9,
-  }),
+  easy = tier(EASY),
+  arcade = tier(ARCADE),
   full  = tier({ tc = 1.0, abs = 1.0, esc = 1.0, steer = 1.0, caster = 0.85 }),
   sport = tier({ tc = 0.8, abs = 1.0, esc = 0.5, steer = 0.9, caster = 0.75, offroad = 0.14 }),
   sim   = tier({ tc = 0.0, abs = 0.0, esc = 0.0, steer = 0.0, caster = 0.35 }),

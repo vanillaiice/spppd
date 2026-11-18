@@ -151,9 +151,12 @@ function rm.start(opts)
     readers = opts.readers or { input.splitReaders() }
     if readers[1] and readers[2] then player2 = opts.player2 end
   end
+  local assist = opts.assist or settings.assists
+  -- EASY is a hand against the computer. Online it drives ARCADE, as everyone does.
+  if opts.online and assist == "easy" then assist = "arcade" end
   local race = Race.new({
     mode = opts.mode, track = track, laps = opts.laps, opponents = opts.opponents,
-    spec = opts.spec, color = opts.color, assist = opts.assist or settings.assists,
+    spec = opts.spec, color = opts.color, assist = assist,
     difficulty = opts.difficulty, seed = opts.seed, startDelay = opts.startDelay,
     online = opts.online,
     rules = opts.rules,

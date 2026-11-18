@@ -778,3 +778,45 @@ h.describe("burnouts", function()
     h.assertEq(c.wheels[1].spin, 0, "and stop when it lets go")
   end)
 end)
+
+h.describe("easy handling", function()
+  local function peakG(spec, assist)
+    local s = sim(spec, assist)
+    s.vx = 30
+    local peak = 0
+    for i = 1, 6 / DT do
+      s:step(input({ steer = 1, throttle = speedOf(s) < 30 and 0.5 or 0 }))
+      if i > 2 / DT then peak = math.max(peak, math.abs(s.c.ay)) end
+    end
+    return peak / G
+  end
+
+  h.it("is ARCADE with more grip and nothing else", function()
+    local easy, arcade = dynamics.ASSISTS.easy, dynamics.ASSISTS.arcade
+    for k, v in pairs(arcade) do
+      if k == "grip" then
+        h.assertNear(easy.grip, v * dynamics.EASY_GRIP, 1e-9)
+      else
+        h.assertEq(easy[k], v, k)
+      end
+    end
+  end)
+
+  h.it("corners harder than ARCADE on every car", function()
+    for _, spec in ipairs(garage) do
+      local easy, arcade = peakG(spec, "easy"), peakG(spec, "arcade")
+      h.assertTrue(easy > arcade * 1.15, string.format("%s easy %.2f g, arcade %.2f g", spec.name, easy, arcade))
+    end
+  end)
+
+  h.it("still drifts on a handbrake flick", function()
+    local s = sim(garage[1], "easy")
+    s.vx = 30
+    local slide = 0
+    for _ = 1, 0.45 / DT do
+      s:step(input({ steer = 1, handbrake = true, keyboard = true }))
+      slide = math.max(slide, math.abs(s.c.beta))
+    end
+    h.assertTrue(math.deg(slide) > 20, string.format("slid %.0f deg", math.deg(slide)))
+  end)
+end)

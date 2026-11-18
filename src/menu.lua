@@ -42,8 +42,10 @@ local TIMES = { "day", "dusk", "night", "midnight" }
 local TIME_NAMES = { day = "DAY", dusk = "DUSK", night = "NIGHT", midnight = "MIDNIGHT" }
 local DIFFICULTIES = { "rookie", "pro", "ace" }
 local DIFFICULTY_NAMES = { rookie = "ROOKIE", pro = "PRO", ace = "ACE" }
-local ASSISTS = { "arcade", "sport", "sim" }
-local ASSIST_NAMES = { arcade = "ARCADE", sport = "SPORT", sim = "SIM" }
+local ASSISTS = { "easy", "arcade", "sport", "sim" }
+-- EASY is only for racing the computer: online it drives ARCADE.
+local ONLINE_ASSISTS = { "arcade", "sport", "sim" }
+local ASSIST_NAMES = { easy = "EASY", arcade = "ARCADE", sport = "SPORT", sim = "SIM" }
 local RULES = { "open", "clean" }
 local RULE_NAMES = { open = "OPEN", clean = "CLEAN" }
 local RULE_HINTS = {
@@ -51,6 +53,7 @@ local RULE_HINTS = {
   clean = "Off the road, a cut, a reset or a wreck voids the lap.",
 }
 local ASSIST_HINTS = {
+  easy = "ARCADE with 50% more grip on every car. Online it drives ARCADE.",
   arcade = "Big grip and easy drifts. Hold the handbrake to slide.",
   sport = "Realistic grip, with driver aids as a safety net.",
   sim = "No aids. The car does exactly what you ask.",
@@ -347,6 +350,15 @@ end
 local function handlingRow(label, key)
   return stepper(label, function() return settings[key] end,
     function(v) settings[key] = v end, ASSISTS, ASSIST_NAMES)
+end
+
+-- The handling a driver races with online, where there is no EASY.
+local function onlineHandling()
+  return settings.assists == "easy" and "arcade" or settings.assists
+end
+
+local function onlineHandlingRow()
+  return stepper("HANDLING", onlineHandling, function(v) settings.assists = v end, ONLINE_ASSISTS, ASSIST_NAMES)
 end
 
 -- Picks whose car the rows under it set.
@@ -699,7 +711,7 @@ end
 -- What a driver brings to an online race: car, paint, and the handling and
 -- gearbox they drive with.
 local function onlineSelf()
-  return { car = currentCar().id, paint = settings.hue, handling = settings.assists, gearbox = settings.gearbox }
+  return { car = currentCar().id, paint = settings.hue, handling = onlineHandling(), gearbox = settings.gearbox }
 end
 
 -- How a driver's car is set up, for the lobby and the results. A 3.0 game
@@ -751,7 +763,7 @@ local function onlineRows()
         ui.editing.field = "server"
       end },
     carRow(), paintRow(),
-    handlingRow("HANDLING", "assists"),
+    onlineHandlingRow(),
     stepper("GEARBOX", function() return settings.gearbox end, function(v) settings.gearbox = v end,
       { "auto", "manual" }, { auto = "AUTO", manual = "MANUAL" }),
     { label = "PROFILE", value = function()
@@ -1241,7 +1253,7 @@ function menu.startOnline()
   menu.startRace({
     entry = entry, laps = cfg.laps, time = TIME_NAMES[cfg.time] and cfg.time or "day",
     online = { slot = cfg.slot, peers = peers, startIn = network.startIn,
-      setup = setupText(settings.assists, settings.gearbox) },
+      setup = setupText(onlineHandling(), settings.gearbox) },
   })
   network.raceLoaded()
 end
