@@ -595,6 +595,20 @@ end.
 BEAST well before it. `cylinders`, `turbos`, `supercharged` and `raceExhaust` change
 the sound and nothing else. `motor` does change the physics.
 
+### Car stats
+
+Race setup shows SPEED, ACCEL, BRAKE, HANDLING and TIRES under each car, as ten-step
+bars. `src/sim/car_stats.lua` measures them by driving the car through `dynamics.step`
+on SPORT as a free body: top speed and 0-100 km/h at full throttle, 100-0 km/h in
+metres, the mean yaw rate through a 90 km/h slalom, and peak sideways g in a held
+corner. Each scores 0 to 1 against fixed ranges in `stats.RANGES`, so a new car
+doesn't move the others' bars.
+
+Measuring the garage takes about half a second with the JIT off, as on a phone, so
+the numbers ship in `src/sim/car_stats_data.lua`, written by `make car-stats`. A
+test measures every car again and fails when the file no longer matches, so after
+changing a car or the SPORT tier, run `make car-stats`.
+
 ### Slipstream
 
 `slipstream.wake(car, other)` returns how far `car` sits in `other`'s wake, 0 to 1:

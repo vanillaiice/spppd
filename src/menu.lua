@@ -18,6 +18,7 @@ local music = require("src/music")
 local network = require("src/network_manager")
 local account = require("src/account")
 local dynamics = require("src/sim/dynamics")
+local carStats = require("src/sim/car_stats")
 local cheats = require("src/cheats")
 local input = require("src/input")
 
@@ -982,6 +983,29 @@ local function drawCar(spec, color, cx, cy, s, spin)
   love.graphics.draw(sprite.detail, cx, cy, spin, scale, scale, sprite.ox, sprite.oy)
 end
 
+-- SPEED, ACCEL, BRAKE, HANDLING and TIRES across the foot of the car panel: a
+-- ten-step bar each, with the measured number under it.
+local function drawCarStats(spec, x, y, w, s)
+  local measured = carStats.of(spec)
+  local count = #carStats.ORDER
+  local gap = 6 * s
+  local cell = (w - gap * (count - 1)) / count
+  local segments, segGap = 10, 1 * s
+  local segW = (cell - segGap * (segments - 1)) / segments
+  for i, key in ipairs(carStats.ORDER) do
+    local cx = x + (i - 1) * (cell + gap)
+    local stat = measured[key]
+    ui.text(carStats.LABELS[key], cx, y, 5 * s, colors.muted)
+    local lit = math.max(1, math.floor(stat.score * segments + 0.5))
+    for j = 1, segments do
+      local c = j <= lit and colors.marshal or colors.asphalt
+      love.graphics.setColor(c[1], c[2], c[3], j <= lit and 1 or 0.9)
+      love.graphics.rectangle("fill", cx + (j - 1) * (segW + segGap), y + 9 * s, segW, 4 * s)
+    end
+    ui.text(stat.text, cx, y + 16 * s, 5 * s, colors.paint)
+  end
+end
+
 local function drawOnlineNotes(x, y, w, s)
   local size = 6 * s
   local font = ui.font(size)
@@ -1001,6 +1025,7 @@ local function drawOnlineNotes(x, y, w, s)
     ui.text(note, x + 6 * s, ty, size, colors.paint, "left", inner)
     ty = ty + heights[i]
   end
+  return y + height
 end
 
 local function drawSetupPreview(sw, sh, boardW, s, carOnly)
@@ -1020,7 +1045,7 @@ local function drawSetupPreview(sw, sh, boardW, s, carOnly)
   if entry then
     local data = cachedTrack(entry)
     -- Stops short of the car panel on a screen as low as a phone's.
-    local size = math.min(w, sh * 0.5, sh - 138 * s)
+    local size = math.min(w, sh * 0.5, sh - 166 * s)
     ui.panel(x, 14 * s, w, size + 34 * s, 0.82)
     minimap.drawOutline(data.track, data.line, x + (w - size) / 2 + 10 * s, 20 * s, size - 20 * s, 3, colors.paint)
     ui.text(entry.title, x + 6 * s, 14 * s + size + 8 * s, 8 * s, colors.marshal)
@@ -1034,18 +1059,24 @@ local function drawSetupPreview(sw, sh, boardW, s, carOnly)
     end
   end
 
-  if carOnly then drawOnlineNotes(x, 14 * s, w, s) end
+  -- The stats need a taller panel. Online, they give way to the notes over it.
+  local withStats = true
+  if carOnly then
+    local notesBottom = drawOnlineNotes(x, 14 * s, w, s)
+    withStats = notesBottom + 6 * s <= sh - 114 * s
+  end
 
-  local panelH = 72 * s
+  local panelH = (withStats and 100 or 72) * s
   local py = sh - panelH - 14 * s
   ui.panel(x, py, w, panelH, 0.82)
-  drawCar(spec, color, x + 42 * s, py + panelH / 2, s, 0)
+  drawCar(spec, color, x + 42 * s, py + 36 * s, s, 0)
   local tx = x + 84 * s
   ui.text(spec.name, tx, py + 7 * s, 8 * s, colors.paint)
   if two then ui.text("P" .. menu.driver, x, py + 7 * s, 8 * s, colors.marshal, "right", w - 6 * s) end
   ui.text(string.format("%.0f KW  %s  %.0f KG", dynamics.peakPower(spec) / 1000, spec.drive, spec.mass),
     tx, py + 21 * s, 6 * s, colors.marshal)
   ui.text(spec.blurb, tx, py + 33 * s, 6 * s, colors.muted, "left", w - 90 * s)
+  if withStats then drawCarStats(spec, x + 6 * s, py + 70 * s, w - 12 * s, s) end
 end
 
 -- Who's in the room and what they're racing for, down the side of the lobby.
