@@ -261,6 +261,7 @@ function love.mousepressed(x, y, button, istouch)
 end
 
 function love.mousereleased(x, y, button, istouch)
+  ui.mousereleased(x, y, button)
   if state.screen == "editor" then editor.mousereleased(x, y, button) end
   if button == 1 and not istouch then touch.released("mouse") end
 end

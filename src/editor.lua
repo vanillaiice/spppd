@@ -768,13 +768,13 @@ function editor.draw(sw, sh)
   love.graphics.rectangle("fill", w, 0, s, sh)
   ui.text(doc.title .. (doc.dirty and " *" or ""), 8 * s, 8 * s, 6 * s, colors.marshal, "left", w - 12 * s)
   -- While a dialog is open it owns the input, not the toolbar behind it.
-  local nav, clicked = ui.nav, ui.clicked
+  local nav, clicked, press = ui.nav, ui.clicked, ui.press
   local modal = overlay ~= nil or ui.editing ~= nil
-  if modal then ui.nav, ui.clicked = {}, false end
+  if modal then ui.nav, ui.clicked, ui.press = {}, false, nil end
   local rows = toolRows()
   local rowH = math.min(14 * s, (sh - 40 * s) / #rows)
   ui.list("editor-tools", rows, 2 * s, 28 * s, w - 8 * s, rowH, 5 * s, s)
-  if modal then ui.nav, ui.clicked = nav, clicked end
+  if modal then ui.nav, ui.clicked, ui.press = nav, clicked, press end
 
   if ui.editing and overlay ~= "send" then
     ui.text("NAME: " .. ui.editing.value .. "_", 0, 24 * s, 8 * s, colors.paint, "center", sw + w)

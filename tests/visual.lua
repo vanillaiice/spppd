@@ -331,12 +331,17 @@ local SCENES = {
   phonefreepause = function() phone() race({ mode = "freestyle", time = "day", opponents = 0 }) circle() end,
   splitpause = split,
   results = function() race({ track = "boat", time = "day", opponents = 3 }) autopilot() end,
+  phonepause = function() phone() race({ track = "mirage", time = "day" }) autopilot() end,
+  phoneresults = function() phone() race({ track = "boat", time = "day", opponents = 7 }) autopilot() end,
+  -- SETTINGS with a finger held on MUSIC, or on VOLUME's > with SPPPD_HOLD=arrow.
+  phoneheld = function() phone() menu.enter() menu.go("settings") end,
   -- Only the player over the line: 40 frames shows the banner, 120 the results.
   finish = function() race({ track = "boat", time = "day", opponents = 3 }) autopilot() end,
 }
 
 local waitFrames = 180
-local PAUSED = { pause = true, freepause = true, phonefreepause = true, splitpause = true }
+local PAUSED = { pause = true, freepause = true, phonefreepause = true, splitpause = true, phonepause = true }
+local RESULTS = { results = true, phoneresults = true }
 
 function visual.start(args)
   local scene, out, frames
@@ -361,7 +366,7 @@ function visual.start(args)
     update(1 / 30)
     -- Real time, for recording the mix (SPPPD_PACE=1).
     if os.getenv("SPPPD_PACE") then love.timer.sleep(1 / 30) end
-    if scene == "results" and rm.race() and frame == 5 then
+    if RESULTS[scene] and rm.race() and frame == 5 then
       local r = rm.race()
       for _, car in ipairs(r.cars) do
         car.finished = true
@@ -381,6 +386,17 @@ function visual.start(args)
       r.player.distance = r.track.length * r.laps + 1
     end
     if PAUSED[scene] and frame == waitFrames - 2 then rm.setPaused(true) end
+    if scene == "phoneheld" and frame == waitFrames - 10 then
+      local sw, sh = love.graphics.getDimensions()
+      local s = ui.scale(sw, sh)
+      local y, rowH = menu.listLayout("settings", 13, sh, s)
+      local arrow = os.getenv("SPPPD_HOLD") == "arrow"
+      local x = arrow and menu.boardWidth(sw, sh, s) - 14 * s - rowH / 2 or 60 * s
+      local row = arrow and 0 or 1
+      local ox, oy = ui.safeArea(sw, sh)
+      ui.mousemoved(ox + x, oy + y + rowH * (row + 0.5))
+      ui.mousepressed(ox + x, oy + y + rowH * (row + 0.5), 1)
+    end
   end
   love.draw = function()
     draw()

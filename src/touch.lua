@@ -7,7 +7,7 @@ local input = require("src.input")
 local colors = require("src.colors")
 local settings = require("src.settings")
 
-local touch = { active = ui.mobile, stick = nil, fingers = {} }
+local touch = { active = ui.mobile, stick = nil, fingers = {}, armed = {} }
 
 local STICK_RADIUS = 34
 -- The thumb wanders while steering, so the pedals only wake up past this.
@@ -147,6 +147,10 @@ local function hold(id, action)
   input.press(keyFor(action))
 end
 
+-- RESET throws the car back, so it waits for the thumb to lift and lets it off if
+-- the thumb slides away first. Everything else acts the moment it's touched.
+local ON_LIFT = { respawn = true }
+
 local function steerSide(layout, x)
   return x < layout.divide and "steerLeft" or "steerRight"
 end
@@ -158,7 +162,9 @@ function touch.pressed(id, x, y, sw, sh)
     local d = math.sqrt((x - b.x) ^ 2 + (y - b.y) ^ 2)
     if d < b.r * HIT_SLOP and d < nearest then hit, nearest = b, d end
   end
-  if hit then
+  if hit and ON_LIFT[hit.action] then
+    touch.armed[id] = { action = hit.action, x = hit.x, y = hit.y, reach = hit.r * HIT_SLOP, inside = true }
+  elseif hit then
     hold(id, hit.action)
   elseif x < sw / 2 and layout.divide then
     hold(id, steerSide(layout, x))
@@ -199,6 +205,11 @@ local function clamp(v)
 end
 
 function touch.moved(id, x, y)
+  local armed = touch.armed[id]
+  if armed then
+    armed.inside = (x - armed.x) ^ 2 + (y - armed.y) ^ 2 < armed.reach ^ 2
+    return
+  end
   -- A steering thumb rocks from one arrow to the other without lifting.
   local steering = touch.steering and touch.steering[id]
   if steering then
@@ -221,6 +232,14 @@ function touch.moved(id, x, y)
 end
 
 function touch.released(id)
+  local armed = touch.armed[id]
+  if armed then
+    touch.armed[id] = nil
+    if armed.inside then
+      input.press(keyFor(armed.action))
+      input.release(keyFor(armed.action))
+    end
+  end
   local action = touch.fingers[id]
   if action then
     touch.fingers[id] = nil
@@ -239,6 +258,7 @@ function touch.reset()
   touch.stick = nil
   touch.steering = nil
   touch.pedals = nil
+  touch.armed = {}
 end
 
 local function pedal(v)
@@ -398,6 +418,7 @@ local function drawButton(b, car, s)
   local c = buttonColor(b.action, car)
   -- Boost stays lit for as long as it's on, not just while it's pressed.
   local held = input.isDown(b.action) or (b.action == "boost" and car.model.boostState == "active")
+  for _, armed in pairs(touch.armed) do held = held or (armed.action == b.action and armed.inside) end
   local a = held and math.max(opacity(), HELD_FLOOR) or opacity()
   local key = string.format("%s|%s|%.2f|%.2f|%s|%s|%.3f|%.2f", b.action, b.label or b.shape,
     b.r, b.size or 0, tostring(c), tostring(held), a, s)

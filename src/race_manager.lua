@@ -262,6 +262,7 @@ end
 function rm.setPaused(paused)
   if not session then return end
   session.paused = paused
+  require("src.ui").cancelPress()
   if paused then
     audio.silence()
     rumble.stop()

@@ -183,6 +183,7 @@ function menu.go(screen)
   if screen == "setup" then menu.driver = 1 end
   menu.screen = screen
   ui.focus[screen] = ui.focus[screen] or 1
+  ui.cancelPress()
   capture, note = nil, nil
 end
 
@@ -463,8 +464,15 @@ local function setupRows()
         return count == 1 and "1 SONG" or count .. " SONGS"
       end, activate = function() radio.openFolder() end }
   end
-  rows[#rows + 1] = { label = "START", activate = function() menu.startRace() end }
-  rows[#rows + 1] = { label = "BACK", activate = function() menu.go("main") end }
+  local start = { label = "START", activate = function() menu.startRace() end }
+  local back = { label = "BACK", activate = function() menu.go("main") end }
+  if ui.mobile then
+    -- A phone's list pages, so START stays in the bottom slot of every page.
+    rows[#rows + 1], rows[#rows + 2] = back, start
+    rows.pinLast = true
+  else
+    rows[#rows + 1], rows[#rows + 2] = start, back
+  end
   return rows
 end
 
@@ -880,8 +888,8 @@ local function onlineRows()
     rows[#rows + 1] = back
     return rows
   end
-  return {
-    serverRow(),
+  local server = serverRow()
+  local setup = {
     carRow(), paintRow(),
     onlineHandlingRow(),
     stepper("GEARBOX", function() return settings.gearbox end, function(v) settings.gearbox = v end,
@@ -890,13 +898,23 @@ local function onlineRows()
         local driver = account.driver()
         return driver and driver.name or "NO NAME"
       end, activate = function() menu.openProfile() end },
+  }
+  local actions = {
     { label = "QUICK MATCH", activate = function() menu.quickMatch() end },
     { label = "HOST A ROOM", activate = function() menu.go("host") end },
     room,
     { label = "JOIN A ROOM", disabled = network.roomCode == "", activate = function() menu.connect("join") end },
-    { label = "PRIVACY & TERMS", activate = function() love.system.openURL(config.PRIVACY_URL) end },
-    back,
   }
+  local privacy = { label = "PRIVACY & TERMS", activate = function() love.system.openURL(config.PRIVACY_URL) end }
+  -- A phone's list pages, so the ways in come first and the server, which is
+  -- seldom changed, goes down with the rest.
+  local order = ui.mobile and { actions, setup, { server, privacy, back } }
+    or { { server }, setup, actions, { privacy, back } }
+  local rows = {}
+  for _, group in ipairs(order) do
+    for _, row in ipairs(group) do rows[#rows + 1] = row end
+  end
+  return rows
 end
 menu.onlineRows = onlineRows
 
@@ -1064,17 +1082,42 @@ local SCREENS = {
   tracks = { rows = tracksRows },
 }
 
+-- A phone's rows are a thumb's height, about 6 mm on the A04, the same as its
+-- main menu. A list longer than the screen turns pages with MORE rows.
+local PHONE_ROW = 22
+
+-- On a phone, a screen under the main menu shrinks the logo so the list has
+-- room, and everything below the header moves up by this much.
+local function headerDrop(s)
+  return ui.mobile and menu.screen ~= "main" and 28 * s or 0
+end
+
+-- A screen's rows as they stand, for the layout tests.
+function menu.rows(screen)
+  return SCREENS[screen].rows()
+end
+
+function menu.boardWidth(sw, sh, s)
+  return sw > sh and math.min(sw, math.max(250 * s, sw * 0.4)) or sw
+end
+
 local function drawBoard(sw, sh, s, title, titleColor)
-  local w = sw > sh and math.min(sw, math.max(250 * s, sw * 0.4)) or sw
+  local w = menu.boardWidth(sw, sh, s)
   -- The board's backing reaches under a notch on the left, to the screen's edge.
   local left = math.min(0, (love.graphics.inverseTransformPoint(0, 0)))
   ui.panel(left, 0, w - left, sh, 0.9)
   love.graphics.setColor(colors.kerb)
   love.graphics.rectangle("fill", w, 0, 2 * s, sh)
-  ui.kerb(14 * s, 44 * s, w - 28 * s, 4 * s, s)
-  ui.text("SPPPD", 14 * s, 14 * s, 22 * s, colors.marshal)
+  local drop = headerDrop(s)
+  if drop > 0 then
+    ui.kerb(14 * s, 20 * s, w - 28 * s, 3 * s, s)
+    ui.text("SPPPD", 14 * s, 7 * s, 10 * s, colors.marshal)
+  else
+    ui.kerb(14 * s, 44 * s, w - 28 * s, 4 * s, s)
+    ui.text("SPPPD", 14 * s, 14 * s, 22 * s, colors.marshal)
+  end
   if title then
-    ui.text(title, 14 * s, 56 * s, 7 * s, titleColor or colors.marshal)
+    ui.text(title, 14 * s, 56 * s - drop, 7 * s, titleColor or colors.marshal)
   end
   ui.text("v" .. config.VERSION, 14 * s, sh - 12 * s, 5 * s, colors.muted)
   return w
@@ -1301,9 +1344,9 @@ end
 
 local function drawButtonList(sw, sh, s, w)
   local rows = menu.buttonRows()
-  local y = 72 * s
-  -- Clear of BACK, which sits 34 up from the bottom.
-  local step = math.min(13 * s, (sh - 38 * s - y) / #rows)
+  local y = 72 * s - headerDrop(s)
+  -- Clear of BACK.
+  local step = math.min(13 * s, (menu.backRowY(sh, s) - 4 * s - y) / #rows)
   for i, row in ipairs(rows) do
     ui.text(row[1], 14 * s, y + (i - 1) * step, 6 * s, colors.paint)
     ui.text(row[2], 0, y + (i - 1) * step, 6 * s, colors.marshal, "right", w - 14 * s)
@@ -1311,15 +1354,26 @@ local function drawButtonList(sw, sh, s, w)
 end
 
 local function drawCredits(sw, sh, s, w)
-  ui.text("Created by VANILLAIICE", 14 * s, 76 * s, 6 * s, colors.paint)
-  ui.text("Font: Press Start 2P by CodeMan38", 14 * s, 92 * s, 6 * s, colors.muted, "left", w - 28 * s)
-  ui.text("Built with LOVE", 14 * s, 118 * s, 6 * s, colors.muted)
+  local drop = headerDrop(s)
+  ui.text("Created by VANILLAIICE", 14 * s, 76 * s - drop, 6 * s, colors.paint)
+  ui.text("Font: Press Start 2P by CodeMan38", 14 * s, 92 * s - drop, 6 * s, colors.muted, "left", w - 28 * s)
+  ui.text("Built with LOVE", 14 * s, 118 * s - drop, 6 * s, colors.muted)
 end
 
 -- Where a screen's list sits, and how tall its rows are. Standard rows are about
 -- 4 mm tall on a phone, too close for a thumb to pick RACE over TIME TRIAL, so
 -- the main menu spreads out over the whole height there.
+--
+-- On a phone every other screen has thumb-sized rows and pages when it's long.
+-- The screens with a line of text under the list keep room for it.
+local ROOM_BELOW = { setup = true, online = true, profile = true }
+
 function menu.listLayout(screen, count, sh, s)
+  if ui.mobile and screen ~= "main" then
+    local y, rowH = 44 * s, PHONE_ROW * s
+    local bottom = sh - (ROOM_BELOW[screen] and 40 or 16) * s
+    return y, rowH, math.max(3, math.floor((bottom - y) / rowH))
+  end
   -- The track list can be long, so it keeps its rows a thumb's height and scrolls.
   if screen == "tracks" then
     local y, rowH = 72 * s, 15 * s
@@ -1331,6 +1385,11 @@ function menu.listLayout(screen, count, sh, s)
   end
   local rowH = math.min(15 * s, (sh - 96 * s) / count)
   return screen == "main" and 62 * s or 72 * s, rowH
+end
+
+-- The lone BACK row under CREDITS and BUTTON LIST.
+function menu.backRowY(sh, s)
+  return ui.mobile and sh - (16 + PHONE_ROW) * s or sh - 34 * s
 end
 
 local drawScreen
@@ -1363,9 +1422,10 @@ function drawScreen(sw, sh)
   -- A failure takes over the title, because the full list leaves no room below it.
   local failed = menu.screen == "online" and network.status == "error"
   local w = drawBoard(sw, sh, s, not failed and title or nil, titleColor)
-  if failed then ui.text(network.statusText(), 14 * s, 53 * s, 5 * s, colors.kerb, "left", w - 28 * s) end
+  local drop = headerDrop(s)
+  if failed then ui.text(network.statusText(), 14 * s, 53 * s - drop, 5 * s, colors.kerb, "left", w - 28 * s) end
   if menu.screen == "tracks" and online.status == "error" then
-    ui.text(online.message, 14 * s, 64 * s, 5 * s, colors.kerb, "left", w - 28 * s)
+    ui.text(online.message, 14 * s, 64 * s - drop, 5 * s, colors.kerb, "left", w - 28 * s)
   end
   local x = 8 * s
   local listW = w - 22 * s
@@ -1415,18 +1475,19 @@ function drawScreen(sw, sh)
         ui.text(splitHint(), 14 * s, sh - 34 * s, 5 * s, colors.muted, "left", w - 28 * s)
       end
     end
+    local below = y + math.min(#rows, maxRows or #rows) * rowH + 8 * s
     if menu.screen == "profile" then
-      ui.text(menu.profileText(), 14 * s, y + #rows * rowH + 8 * s, 6 * s, colors.marshal, "left", w - 28 * s)
+      ui.text(menu.profileText(), 14 * s, below, 6 * s, colors.marshal, "left", w - 28 * s)
     end
     if menu.screen == "online" and not failed then
-      ui.text(network.statusText(), 14 * s, y + #rows * rowH + 8 * s, 6 * s, colors.marshal, "left", w - 28 * s)
+      ui.text(network.statusText(), 14 * s, below, 6 * s, colors.marshal, "left", w - 28 * s)
     end
   else
     local back = menu.screen == "buttons" and "controls" or "main"
     local rows = { { label = "BACK", activate = function() menu.go(back) end } }
     if menu.screen == "buttons" then drawButtonList(sw, sh, s, w)
     else drawCredits(sw, sh, s, w) end
-    ui.list(menu.screen, rows, x, sh - 34 * s, listW, 15 * s, size, s)
+    ui.list(menu.screen, rows, x, menu.backRowY(sh, s), listW, ui.mobile and PHONE_ROW * s or 15 * s, size, s)
   end
 end
 
@@ -1573,13 +1634,16 @@ function menu.drawPause(sw, sh)
   -- Wide enough for "PAINT  < SUNSET ORANGE >".
   local w = (cars and 230 or 190) * s
   local x = (sw - w) / 2
-  local y = sh * 0.3
-  ui.panel(x, y, w, 28 * s + #rows * 16 * s, 0.95)
+  -- A phone's rows are a thumb's height, so its panel is taller and centred.
+  local rowH = (ui.mobile and PHONE_ROW or 16) * s
+  local h = 28 * s + #rows * rowH
+  local y = ui.mobile and math.floor((sh - h) / 2) or sh * 0.3
+  ui.panel(x, y, w, h, 0.95)
   ui.kerb(x, y, w, 3 * s, s)
   -- An online race can't stop for one player, and their car is coasting.
   ui.text(heading or (rm.isOnline() and "RACE STILL RUNNING" or "PAUSED"), x, y + 10 * s, 8 * s, colors.marshal,
     "center", w)
-  ui.list(list, rows, x + 8 * s, y + 24 * s, w - 16 * s, 16 * s, 7 * s, s)
+  ui.list(list, rows, x + 8 * s, y + 24 * s, w - 16 * s, rowH, 7 * s, s)
   if ui.consumeBack() then
     if menu.voting then menu.voting = false else rm.setPaused(false) end
   end
@@ -1593,10 +1657,31 @@ function menu.drawResults(sw, sh)
   love.graphics.setColor(0, 0, 0, 0.5 * ease)
   love.graphics.rectangle("fill", 0, 0, sw, sh)
 
+  local rows = {}
+  if not rm.isOnline() then
+    rows[1] = { label = "RACE AGAIN", activate = function() rm.restart() end }
+  elseif network.canRematch() then
+    local voted, total = network.rematchCount()
+    if network.hasVoted() then
+      rows[1] = { label = string.format("WAITING %d/%d", voted, total), disabled = true }
+    else
+      rows[1] = { label = voted > 0 and string.format("REMATCH %d/%d", voted, total) or "REMATCH",
+        activate = function() network.voteRematch() end }
+    end
+  end
+  if rm.isOnline() and network.isMatch() then
+    rows[#rows + 1] = { label = "FIND ANOTHER", activate = findAnother }
+  end
+  rows[#rows + 1] = { label = rm.opts().fromEditor and "BACK TO EDITOR" or "QUIT TO MENU", activate = quitRace }
+
   local order = race.order
   local w = math.min(sw - 16 * s, 300 * s)
-  local rowH = 13 * s
-  local h = 52 * s + rowH * #order + 40 * s
+  -- A phone's buttons are a thumb's height. If that leaves too little room, the
+  -- finishing order closes up before the buttons shrink.
+  local buttonH = ui.mobile and PHONE_ROW * s or 15 * s
+  local buttons = ui.mobile and #rows * buttonH + 6 * s or 40 * s
+  local rowH = math.min(13 * s, (sh - 8 * s - 52 * s - buttons) / #order)
+  local h = 52 * s + rowH * #order + buttons
   local x, y = (sw - w) / 2, sh + ((sh - h) / 2 - sh) * ease
   ui.panel(x, y, w, h, 0.95)
   ui.kerb(x, y, w, 3 * s, s)
@@ -1623,23 +1708,7 @@ function menu.drawResults(sw, sh)
 
   -- No buttons until it lands, so a press meant for the car can't hit one.
   if slide < 1 then return end
-  local rows = {}
-  if not rm.isOnline() then
-    rows[1] = { label = "RACE AGAIN", activate = function() rm.restart() end }
-  elseif network.canRematch() then
-    local voted, total = network.rematchCount()
-    if network.hasVoted() then
-      rows[1] = { label = string.format("WAITING %d/%d", voted, total), disabled = true }
-    else
-      rows[1] = { label = voted > 0 and string.format("REMATCH %d/%d", voted, total) or "REMATCH",
-        activate = function() network.voteRematch() end }
-    end
-  end
-  if rm.isOnline() and network.isMatch() then
-    rows[#rows + 1] = { label = "FIND ANOTHER", activate = findAnother }
-  end
-  rows[#rows + 1] = { label = rm.opts().fromEditor and "BACK TO EDITOR" or "QUIT TO MENU", activate = quitRace }
-  ui.list("results", rows, x + 8 * s, y + h - 36 * s, w - 16 * s, 15 * s, 7 * s, s)
+  ui.list("results", rows, x + 8 * s, y + h - buttons + 4 * s, w - 16 * s, buttonH, 7 * s, s)
 end
 
 return menu
