@@ -13,6 +13,7 @@ local garage = {
   require("src/entities/vehicles/quad_turbo"),
   require("src/entities/vehicles/baja_beast"),
   require("src/entities/vehicles/open_wheeler"),
+  require("src/entities/vehicles/formula_kid"),
 }
 
 function garage.byId(id)
