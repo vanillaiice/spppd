@@ -140,6 +140,16 @@ local function tracksOnline()
   ui.focus.tracks = tonumber(os.getenv("SPPPD_FOCUS")) or 12
 end
 
+-- The editor's SEND ONLINE dialog, with a name and an email typed in.
+local function editorSend()
+  local em = require("src.editor_model")
+  local doc = em.fromEntry(catalog.find("highlands"))
+  settings.trackAuthor, settings.trackContact = "BOB", "bob@example.org"
+  require("src.editor").open(doc)
+  require("src.editor").openSend()
+  state.screen = "editor"
+end
+
 local SCENES = {
   tracks = tracksOnline,
   phonetracks = function() phone() tracksOnline() end,
@@ -251,6 +261,8 @@ local SCENES = {
     require("src.editor").openImport()
     state.screen = "editor"
   end,
+  editorsend = editorSend,
+  phoneeditorsend = function() phone() editorSend() end,
   boost = function()
     race({ track = "highlands", time = "day", opponents = 2 })
     autopilot()

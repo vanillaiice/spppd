@@ -47,6 +47,9 @@ local settings = {
   gearbox2 = "auto",
 
   server = SERVER,
+  -- Who sent a track in from the editor, and how to reach them (optional).
+  trackAuthor = "",
+  trackContact = "",
 }
 
 local records = {}

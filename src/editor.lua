@@ -9,6 +9,10 @@ local model = require("src.editor_model")
 local share = require("src.tracks.share")
 local web = require("src.web")
 local input = require("src.input")
+local settings = require("src.settings")
+local account = require("src.account")
+local online = require("src.tracks.online")
+local net = require("src.net_http")
 
 local editor = {}
 
@@ -204,6 +208,47 @@ local function copyCode()
   say("Track code copied. Share it anywhere, or at spppd.xyz/tracks")
 end
 
+-- Sending a track to the server in the settings, where it waits for whoever runs it
+-- to approve it, then shows in TRACKS ONLINE. Without HTTPS in this LÖVE, the page
+-- at spppd.xyz/tracks takes it instead, from a pasted code.
+local sending = { state = nil, message = nil }
+
+function editor.openSend()
+  if not track then
+    say("Fix the layout before sending it")
+    return
+  end
+  if not net.available() then
+    copyCode()
+    love.system.openURL(config.TRACKS_URL)
+    return
+  end
+  local driver = account.driver()
+  if settings.trackAuthor == "" and driver then settings.trackAuthor = driver.name end
+  sending.state, sending.message = nil, nil
+  overlay = "send"
+end
+
+local function sendTrack()
+  ui.commitEditing()
+  if sending.state == "sending" then return end
+  local author = settings.trackAuthor
+  if author ~= "" and account.nameProblem(author) then
+    sending.state, sending.message = "failed", account.nameProblem(author)
+    return
+  end
+  settings.save()
+  sending.state, sending.message = "sending", nil
+  online.send(model.definition(doc), author, settings.trackContact, function(ok, message)
+    sending.state, sending.message = ok and "sent" or "failed", message
+  end)
+end
+
+local function closeSend()
+  if ui.editing then ui.commitEditing() end
+  overlay = nil
+end
+
 -- A track's text, from a file or the clipboard, opened as a new, unsaved track.
 local function importText(text, from)
   local def, why = share.import(text)
@@ -296,6 +341,7 @@ local function toolRows()
     { label = "IMPORT", activate = editor.openImport, sharing = true },
     { label = "EXPORT", activate = exportFile, sharing = true },
     { label = "COPY CODE", activate = copyCode, sharing = true },
+    { label = "SEND ONLINE", activate = editor.openSend, sharing = true },
     { label = "NAME", activate = rename },
     { label = "SCENERY", value = function() return doc.theme:upper() end, activate = cycleTheme },
     { label = "SET START", value = "ENTER", disabled = selected == nil, activate = function()
@@ -431,7 +477,7 @@ end
 
 function editor.keypressed(key)
   if ui.editing or overlay then
-    if (overlay == "open" or overlay == "import") and key == "escape" then
+    if not ui.editing and (overlay == "open" or overlay == "import" or overlay == "send") and key == "escape" then
       overlay = nil
       return
     end
@@ -634,6 +680,57 @@ local function drawImport(sw, sh, s)
   ui.list("editor-import", rows, x + 6 * s, y + 34 * s, w - 18 * s, 14 * s, 6 * s, s)
 end
 
+-- A field in the SEND dialog: what's typed while it's being edited, else its value.
+local function sendField(key, empty)
+  return function()
+    if ui.editing and ui.editing.field == key then return ui.editing.value .. "_" end
+    local value = settings[key]
+    return value ~= "" and value or empty
+  end
+end
+
+local function editSendField(key, pattern, maxLength)
+  return function()
+    ui.commitEditing()
+    local e = ui.startEditing(settings[key], function(value)
+      settings[key] = value:match("^%s*(.-)%s*$")
+      if key == "trackAuthor" then settings[key] = settings[key]:upper() end
+      settings.save()
+    end, pattern, maxLength)
+    e.field = key
+  end
+end
+
+local function drawSend(sw, sh, s)
+  love.graphics.setColor(0, 0, 0, 0.6)
+  love.graphics.rectangle("fill", 0, 0, sw, sh)
+  local w, h = 270 * s, 136 * s
+  local x, y = (sw - w) / 2, (sh - h) / 2
+  ui.panel(x, y, w, h, 0.97)
+  ui.kerb(x, y, w, 3 * s, s)
+  local host = settings.serverAddress()
+  ui.text("SEND " .. doc.title, x + 10 * s, y + 10 * s, 7 * s, colors.marshal, "left", w - 20 * s)
+  ui.text("To " .. host .. ". It shows in TRACKS ONLINE once it's been checked.",
+    x + 10 * s, y + 22 * s, 5 * s, colors.muted, "left", w - 20 * s)
+  local busy = sending.state == "sending"
+  local rows = {
+    { label = "YOUR NAME", value = sendField("trackAuthor", "NONE"),
+      activate = editSendField("trackAuthor", "^[%w_%-]$", 12) },
+    { label = "EMAIL", value = sendField("trackContact", "OPTIONAL"),
+      activate = editSendField("trackContact", "^[%w%.%-_@+]$", 60) },
+    { label = sending.state == "sent" and "SENT" or "SEND", value = busy and "..." or nil,
+      disabled = busy or sending.state == "sent", activate = sendTrack },
+    { label = sending.state == "sent" and "DONE" or "CANCEL", activate = closeSend },
+  }
+  ui.list("editor-send", rows, x + 6 * s, y + 40 * s, w - 18 * s, 14 * s, 6 * s, s)
+  local note = "Your email only goes to whoever runs the server, to reach you about it."
+  local color = colors.muted
+  if sending.message then
+    note, color = sending.message, sending.state == "failed" and colors.kerb or colors.paint
+  end
+  ui.text(note, x + 10 * s, y + h - 26 * s, 5 * s, color, "left", w - 20 * s)
+end
+
 local function drawLeave(sw, sh, s)
   love.graphics.setColor(0, 0, 0, 0.6)
   love.graphics.rectangle("fill", 0, 0, sw, sh)
@@ -679,7 +776,7 @@ function editor.draw(sw, sh)
   ui.list("editor-tools", rows, 2 * s, 28 * s, w - 8 * s, rowH, 5 * s, s)
   if modal then ui.nav, ui.clicked = nav, clicked end
 
-  if ui.editing then
+  if ui.editing and overlay ~= "send" then
     ui.text("NAME: " .. ui.editing.value .. "_", 0, 24 * s, 8 * s, colors.paint, "center", sw + w)
   else
     ui.text("Click adds. Drag moves. Right click deletes. Wheel zooms.",
@@ -689,6 +786,7 @@ function editor.draw(sw, sh)
 
   if overlay == "open" then drawOpen(sw, sh, s)
   elseif overlay == "import" then drawImport(sw, sh, s)
+  elseif overlay == "send" then drawSend(sw, sh, s)
   elseif overlay == "leave" then drawLeave(sw, sh, s) end
 end
 

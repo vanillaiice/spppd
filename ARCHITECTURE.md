@@ -1506,9 +1506,31 @@ keeps its author, and race setup and the editor's OPEN list show it. It's left o
 `catalog.fingerprint` (`wire.encode(def, true)`), so online rooms match tracks by shape
 whoever is credited, and older games skip the line.
 
-IMPORT's BROWSE TRACKS ONLINE opens `config.TRACKS_URL`, the track server's page (see
-The track server). The game never talks to that server itself: a track from it comes
-in as a code or a file like any other.
+On LÖVE 12 the game talks to the track server itself (see The track server).
+TRACKS ONLINE on the main menu, also opened by IMPORT's BROWSE TRACKS ONLINE, lists its
+tracks (`src/tracks/online.lua`), and GET saves one through `share.import` like a pasted
+code. The editor's SEND ONLINE sends the open track in, with an optional name (a
+driver name's shape, the signed-in driver's by default) and email, both remembered in
+the settings. Without lua-https (the browser build, LÖVE 11.x), BROWSE opens
+`config.TRACKS_URL` instead, and SEND copies the code and opens the same page.
+
+Requests run on a thread (`src/https_worker.lua`, driven by `src/net_http.lua`), as
+lua-https blocks until the whole reply is in. The track server is on whichever server
+SETTINGS names, but SERVER is the relay's UDP address, and the web side may be
+elsewhere: on spppd.xyz it's HTTPS on 443 through Caddy, on a relay run at home plain
+HTTP on its `-status` port. So the game first asks the relay, on the same thread:
+`event|web|` padded to 160 bytes, answered `event|web|ADDRESS` (`server/web.go`). The
+address comes from `-web`, or is `http://:PORT` for the `-status` port, where no host
+means the host the game reached the relay at; empty means no track server. A relay that
+doesn't answer in three tries of 0.4 s is from before 4.0, and the game uses
+`https://HOST`. An answer is kept per SERVER for the session.
+
+Plain HTTP is fine for reading the list, which is public. Sending goes over it only to
+a local address (`net.isLocal`: loopback, private, link-local, 100.64/10 and `.local`,
+`.lan`, `.home.arpa` names), since the email would cross the internet readable. For
+plain HTTP to work at all, the Android manifest sets `usesCleartextTraffic`
+(`android/noRecord/AndroidManifest.xml`) and the macOS app `NSAllowsLocalNetworking`
+(`bin/mac-plist`).
 
 ### Catalogue
 

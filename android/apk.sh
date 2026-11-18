@@ -25,11 +25,11 @@ tools="$ANDROID_HOME/build-tools/${BUILD_TOOLS:-36.0.0}"
 
 "$repo/android/prepare.sh" "$game"
 
-# The compiled APK carries the version, and prepare.sh sets the toolchain, so it's
-# rebuilt when either changes.
+# The compiled APK carries the version, prepare.sh sets the toolchain, and the
+# noRecord manifest adds to LÖVE's, so it's rebuilt when any of them changes.
 outputs="$love_android/app/build/outputs/apk"
 stamp="$outputs/spppd-base"
-want="$code $(md5sum "$repo/android/prepare.sh" | cut -c1-12)"
+want="$code $(cat "$repo/android/prepare.sh" "$repo/android/noRecord/AndroidManifest.xml" | md5sum | cut -c1-12)"
 unsigned=$(find "$outputs" -path '*embedNoRecord/release/*.apk' 2>/dev/null | head -1 || true)
 if [ -z "$unsigned" ] || [ "$(cat "$stamp" 2>/dev/null)" != "$want" ]; then
   (cd "$love_android" && ./gradlew --no-daemon --console=plain assembleEmbedNoRecordRelease)

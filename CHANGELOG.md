@@ -2,7 +2,8 @@
 
 ## 4.0.0 (not released yet)
 
-Races 3.0 to 3.7, with no server change: tracks match online as before.
+Races 3.0 to 3.7: tracks match online as before. The server update only tells games
+where its track list is.
 
 ### Tracks online, in the game
 
@@ -11,7 +12,19 @@ Races 3.0 to 3.7, with no server change: tracks match online as before.
   maker. GET saves one to your tracks; then it's in RACE, TIME TRIAL and the editor.
   It works on phones too.
 - The editor's BROWSE TRACKS ONLINE opens the same list, and comes back to the editor.
+- SEND ONLINE in the editor sends your track in, with your name and, if you like, an
+  email for feedback. It shows in TRACKS ONLINE once it's been checked.
+- Both use the server you set. SERVER is now in SETTINGS too, not only on the ONLINE
+  screen. A relay you run yourself serves its tracks over plain HTTP, which works on
+  your own network: see the README.
 - The browser version still opens the page instead.
+
+### Server
+
+- The relay tells games where its track list is. `-web` sets that address, for a relay
+  behind a proxy that does HTTPS; without it, games use plain HTTP on the `-status`
+  port. Update the relay before the games, or each game waits a moment and then tries
+  HTTPS at the relay's address.
 
 ### Quick race
 

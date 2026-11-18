@@ -44,7 +44,8 @@ Questions, or a request to see or delete what's held about you:
 
 ### Tracks
 
-Tracks sent in on [spppd.xyz/tracks](https://spppd.xyz/tracks/) go to the same server.
+Tracks sent in on [spppd.xyz/tracks](https://spppd.xyz/tracks/), or from the game's
+track editor with SEND ONLINE, go to the same server, over HTTPS.
 
 | What | Why | Kept |
 | --- | --- | --- |
@@ -55,7 +56,10 @@ Tracks sent in on [spppd.xyz/tracks](https://spppd.xyz/tracks/) go to the same s
 
 The game's TRACKS ONLINE screen reads the same list the page shows, from
 spppd.xyz over HTTPS (or from the server you set in SETTINGS), only when you open it. It sends nothing but the game's version;
-the proxy logs the request like any page.
+the proxy logs the request like any page. First the game asks the server, in one small
+UDP packet, where its track list is; the server answers and keeps nothing. The name
+and email you type for SEND ONLINE are kept in the game's settings on your device, so
+you needn't type them again.
 
 A line on the admin dashboard and in the log says a track came in, with its title and
 name, but no IP address or email. The proxy in front of the website logs the request, as it does

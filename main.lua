@@ -82,6 +82,11 @@ end
 function love.load(args)
   love.graphics.setDefaultFilter("linear", "linear")
   love.keyboard.setKeyRepeat(false)
+  -- Typed text, on all the time where there's a real keyboard: names, codes, the
+  -- server, and cheat codes typed blind. LÖVE 11 starts with it on, 12 (SDL3) with
+  -- it off. A phone turns it on only while editing (ui.startEditing), as it brings
+  -- up the on-screen keyboard.
+  if not love.keyboard.hasScreenKeyboard() then love.keyboard.setTextInput(true) end
   settings.load()
   require("src.account").load()
   if not input.setBindings(settings.keys, settings.padButtons) then

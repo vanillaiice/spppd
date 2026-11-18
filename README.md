@@ -191,8 +191,13 @@ If you turn them on, tell your players, as `PRIVACY.md` does for the official se
 for a quick match as JSON at `/api/status`, which <https://spppd.xyz/status/> shows for
 the official server. With `-tracks`, off unless you pass it, the same address also
 runs the track server at `/api/tracks`, for <https://spppd.xyz/tracks/>: tracks sent
-in wait on the dashboard until approved. `-quick-fill` (15s) is how long a quick match
-waits for more drivers once a second has joined.
+in wait on the dashboard until approved. The game's TRACKS ONLINE and the editor's SEND
+ONLINE find it by asking the relay, which tells them plain `http://` on the `-status`
+port at your address. Behind a proxy that does HTTPS, say where with
+`-web https://tracks.example.org`. Over plain HTTP the game only sends tracks to an
+address on your own network (localhost, 192.168.x.x, 10.x.x.x and the like).
+`-quick-fill` (15s) is how long a quick match waits for more drivers once a second has
+joined.
 
 `make deploy-relay` deploys the official server, and `make check-relay` checks it answers
 without showing in its stats. See `ARCHITECTURE.md`.

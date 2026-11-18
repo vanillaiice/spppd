@@ -166,6 +166,15 @@ end
 function ui.startEditing(value, done, pattern, maxLength)
   ui.editing = { value = value, done = done, pattern = pattern, max = maxLength }
   if love.keyboard.hasScreenKeyboard() then love.keyboard.setTextInput(true) end
+  return ui.editing
+end
+
+-- Takes what's typed so far, as Enter would.
+function ui.commitEditing()
+  local e = ui.editing
+  if not e then return end
+  stopEditing()
+  e.done(e.value)
 end
 
 -- Clicks and key presses live for one frame only, so changing screen can't

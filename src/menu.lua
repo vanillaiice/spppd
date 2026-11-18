@@ -488,6 +488,16 @@ local function codeRow()
     end }
 end
 
+-- The server for online races and TRACKS ONLINE, on both screens.
+local function serverRow()
+  return { label = "SERVER", value = function()
+      return ui.editing and ui.editing.field == "server" and ui.editing.value .. "_" or settings.server
+    end, activate = function()
+      ui.startEditing(settings.server, function(v) settings.server = v save() end, "^[%w%.:%-]$", 40)
+      ui.editing.field = "server"
+    end }
+end
+
 local function settingsRows()
   local rows = {
     stepper("VOLUME", function() return settings.volume end, function(v)
@@ -523,6 +533,7 @@ local function settingsRows()
     rows[#rows + 1] = { label = "FULLSCREEN", value = function() return settings.fullscreen and "ON" or "OFF" end,
       left = flip, right = flip, activate = flip }
   end
+  rows[#rows + 1] = serverRow()
   rows[#rows + 1] = codeRow()
   rows[#rows + 1] = { label = "BACK", activate = function() menu.go("main") end }
   return rows
@@ -870,12 +881,7 @@ local function onlineRows()
     return rows
   end
   return {
-    { label = "SERVER", value = function()
-        return ui.editing and ui.editing.field == "server" and ui.editing.value .. "_" or settings.server
-      end, activate = function()
-        ui.startEditing(settings.server, function(v) settings.server = v save() end, "^[%w%.:%-]$", 40)
-        ui.editing.field = "server"
-      end },
+    serverRow(),
     carRow(), paintRow(),
     onlineHandlingRow(),
     stepper("GEARBOX", function() return settings.gearbox end, function(v) settings.gearbox = v end,

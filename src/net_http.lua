@@ -1,6 +1,7 @@
--- Fetches web pages over HTTPS on a thread of its own (src/https_worker.lua).
--- Only LÖVE 12 has HTTPS; the browser build (LÖVE 11.4) and 11.x have none, and
--- callers then open the page in the browser instead. update runs every frame.
+-- Talks to web servers on a thread of its own (src/https_worker.lua), over HTTPS,
+-- or plain HTTP where a server run at home has nothing else. Only LÖVE 12 has
+-- lua-https; the browser build (LÖVE 11.4) and 11.x have none, and callers then
+-- open the page in the browser instead. update runs every frame.
 local config = require("src.config")
 
 local net = {}
@@ -17,8 +18,7 @@ function net.available()
   return can
 end
 
--- Calls done(body) for a 200 reply, else done(nil, why). Returns an id to cancel.
-function net.get(url, done)
+local function start(job, done)
   if not net.available() then
     done(nil, "no https")
     return nil
@@ -29,9 +29,31 @@ function net.get(url, done)
     thread:start(requests, replies)
   end
   nextId = nextId + 1
-  pending[nextId] = done
-  requests:push({ id = nextId, url = url, agent = "SPPPD/" .. config.VERSION })
+  job.id = nextId
+  pending[nextId] = { done = done, ask = job.ask }
+  requests:push(job)
   return nextId
+end
+
+-- Calls done(body, nil, code) for a 2xx reply, else done(nil, why, code, body),
+-- with the body a server sent with its refusal. Returns an id to cancel.
+function net.request(url, done, method, body, contentType)
+  return start({ url = url, method = method, body = body, type = contentType,
+    agent = "SPPPD/" .. config.VERSION }, done)
+end
+
+function net.get(url, done)
+  return net.request(url, done)
+end
+
+function net.post(url, body, done)
+  return net.request(url, done, "POST", body, "application/json")
+end
+
+-- Asks the relay at host:port where its web side is: done(address), "" when it has
+-- none, or done(nil, why) when it didn't answer, as relays before 4.0 don't.
+function net.askWeb(host, port, done)
+  return start({ ask = "web", host = host, port = port }, done)
 end
 
 -- The reply is dropped when it comes.
@@ -39,17 +61,41 @@ function net.cancel(id)
   if id then pending[id] = nil end
 end
 
+-- On this computer or its own network, where plain HTTP is all a server run at
+-- home has, and nobody else is on the way: loopback, private and link-local
+-- addresses, shared address space (Tailscale and the like), and home names.
+function net.isLocal(host)
+  host = (host or ""):lower():gsub("^%[(.*)%]$", "%1")
+  if host == "localhost" or host:match("%.localhost$") or host:match("%.local$")
+    or host:match("%.lan$") or host:match("%.home%.arpa$") then
+    return true
+  end
+  local a, b, c, d = host:match("^(%d+)%.(%d+)%.(%d+)%.(%d+)$")
+  if a then
+    a, b = tonumber(a), tonumber(b)
+    if a > 255 or b > 255 or tonumber(c) > 255 or tonumber(d) > 255 then return false end
+    return a == 127 or a == 10 or (a == 172 and b >= 16 and b <= 31) or (a == 192 and b == 168)
+      or (a == 169 and b == 254) or (a == 100 and b >= 64 and b <= 127)
+  end
+  if host:find(":", 1, true) then
+    return host == "::1" or host:match("^f[cd]%x%x?:") ~= nil or host:match("^fe[89ab]%x?:") ~= nil
+  end
+  return false
+end
+
 function net.update()
   if not replies then return end
   local reply = replies:pop()
   while reply do
-    local done = pending[reply.id]
+    local job = pending[reply.id]
     pending[reply.id] = nil
-    if done then
-      if reply.code == 200 then
-        done(reply.body)
+    if job then
+      if job.ask == "web" then
+        job.done(reply.web, reply.err)
+      elseif reply.code and reply.code >= 200 and reply.code < 300 then
+        job.done(reply.body, nil, reply.code)
       else
-        done(nil, reply.err or ("HTTP " .. tostring(reply.code)))
+        job.done(nil, reply.err or ("HTTP " .. tostring(reply.code)), reply.code, reply.body)
       end
     end
     reply = replies:pop()
@@ -58,9 +104,9 @@ function net.update()
   if thread and not thread:isRunning() then
     local why = thread:getError() or "stopped"
     thread = nil
-    for id, done in pairs(pending) do
+    for id, job in pairs(pending) do
       pending[id] = nil
-      done(nil, why)
+      job.done(nil, why)
     end
   end
 end
