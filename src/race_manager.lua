@@ -1,29 +1,29 @@
 -- The running race as the player sees it: owns the session, drives the
 -- simulation at a fixed rate and draws each frame.
-local config = require("src/config")
-local Race = require("src/sim/race")
-local Track = require("src/sim/track")
-local dynamics = require("src/sim/dynamics")
-local world = require("src/world")
-local input = require("src/input")
-local touch = require("src/touch")
-local settings = require("src/settings")
-local vfx = require("src/vfx_manager")
-local skids = require("src/skid_manager")
-local post = require("src/render/post")
-local environment = require("src/render/environment")
-local track_renderer = require("src/render/track_renderer")
-local car_view = require("src/render/car_view")
-local sprites = require("src/render/car_sprites")
-local hud = require("src/hud")
-local ui = require("src/ui")
-local minimap = require("src/minimap")
-local audio = require("src/audio")
-local radio = require("src/radio")
-local colors = require("src/colors")
-local network = require("src/network_manager")
-local rumble = require("src/rumble")
-local cheats = require("src/cheats")
+local config = require("src.config")
+local Race = require("src.sim.race")
+local Track = require("src.sim.track")
+local dynamics = require("src.sim.dynamics")
+local world = require("src.world")
+local input = require("src.input")
+local touch = require("src.touch")
+local settings = require("src.settings")
+local vfx = require("src.vfx_manager")
+local skids = require("src.skid_manager")
+local post = require("src.render.post")
+local environment = require("src.render.environment")
+local track_renderer = require("src.render.track_renderer")
+local car_view = require("src.render.car_view")
+local sprites = require("src.render.car_sprites")
+local hud = require("src.hud")
+local ui = require("src.ui")
+local minimap = require("src.minimap")
+local audio = require("src.audio")
+local radio = require("src.radio")
+local colors = require("src.colors")
+local network = require("src.network_manager")
+local rumble = require("src.rumble")
+local cheats = require("src.cheats")
 
 local rm = {}
 
@@ -212,7 +212,7 @@ function rm.start(opts)
   audio.split(session.split)
 
   if opts.demo then
-    local AI = require("src/ai_controller")
+    local AI = require("src.ai_controller")
     race.player.driver = AI.new(track, race.player, { skill = 0.95 })
     race.player.name = "VOSS"
   elseif session.split then
@@ -265,7 +265,7 @@ function rm.setPaused(paused)
   if paused then
     audio.silence()
     rumble.stop()
-    require("src/ui").focus.pause = 1
+    require("src.ui").focus.pause = 1
     touch.reset()
   end
   radio.pause(paused)

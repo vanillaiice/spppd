@@ -1,5 +1,5 @@
 -- Shared vehicle defaults. A vehicle file only states how it differs.
-local config = require("src/config")
+local config = require("src.config")
 
 local base = {}
 

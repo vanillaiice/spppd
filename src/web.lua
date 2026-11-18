@@ -8,8 +8,8 @@
 -- * love.js keeps the save folder in IndexedDB but only copies it there as the page
 --   closes, which a phone often never says it's doing. So every write here asks the
 --   page to copy it now, once the writes have stopped for a moment.
-local ui = require("src/ui")
-local touch = require("src/touch")
+local ui = require("src.ui")
+local touch = require("src.touch")
 
 local web = {
   on = love.system ~= nil and love.system.getOS() == "Web",

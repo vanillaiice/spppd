@@ -1,7 +1,7 @@
 -- Track editing without any drawing: a document of spline nodes plus undo.
 -- Keeping this apart from the screen code means it can be tested directly.
-local Track = require("src/sim/track")
-local config = require("src/config")
+local Track = require("src.sim.track")
+local config = require("src.config")
 
 local model = {}
 

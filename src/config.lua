@@ -10,6 +10,9 @@ local config = {
   PRIVACY_URL = "https://spppd.xyz/privacy/",
   -- The track server's page: tracks to copy into the editor, and a form to send one.
   TRACKS_URL = "https://spppd.xyz/tracks/",
+  -- Where TRACKS ONLINE reads every approved track, as JSON, on the SERVER the
+  -- settings name (spppd.xyz unless you run your own): https://<host> plus this.
+  TRACKS_API_PATH = "/api/tracks",
 
   -- World units are pixels; the vehicle model works in SI units.
   METER = 12,          -- world px per metre

@@ -1,6 +1,6 @@
 -- Immediate-mode UI: one list widget that works the same with mouse,
 -- keyboard and gamepad, plus text and shape helpers.
-local colors = require("src/colors")
+local colors = require("src.colors")
 
 local ui = {
   mx = 0, my = 0,
@@ -94,6 +94,11 @@ function ui.mousepressed(x, y, button)
   if button == 1 then ui.clicked = true end
 end
 
+-- The mouse wheel, for a long list. Turned into scrolling by the list drawn next.
+function ui.wheelmoved(_, y)
+  ui.wheel = (ui.wheel or 0) + y
+end
+
 function ui.mousemoved(x, y)
   ui.mx, ui.my = x, y
   ui.usingMouse = true
@@ -168,6 +173,7 @@ end
 function ui.endFrame()
   ui.clicked = false
   ui.nav = {}
+  ui.wheel = 0
 end
 
 function ui.consumeBack()
@@ -213,7 +219,22 @@ end
 -- items: { label =, value = string|nil, activate = fn, left = fn, right = fn,
 --          disabled = bool, hint = string }
 -- Returns the focused item so a screen can show context for it.
-function ui.list(id, items, x, y, w, rowH, size, s)
+-- maxRows, if given, is as many rows as there's room for. A longer list scrolls:
+-- with the focus, with the wheel, and with a MORE row at either end to tap.
+ui.scroll = {}
+
+-- The first and last items shown when the list starts at first, and whether a
+-- MORE row stands above or below them.
+local function window(first, count, slots)
+  first = math.max(1, math.min(count, first))
+  local above = first > 1
+  local room = slots - (above and 1 or 0)
+  local below = first + room - 1 < count
+  if below then room = room - 1 end
+  return first, math.min(count, first + room - 1), above, below, room
+end
+
+function ui.list(id, items, x, y, w, rowH, size, s, maxRows)
   local focus = ui.focus[id] or 1
   local count = #items
   focus = math.max(1, math.min(count, focus))
@@ -228,8 +249,50 @@ function ui.list(id, items, x, y, w, rowH, size, s)
   if ui.nav.down then step(1) ui.played = "click" end
   if items[focus].disabled then step(1) end
 
-  for i, item in ipairs(items) do
-    local ry = y + (i - 1) * rowH
+  -- Which rows show, and the MORE rows around them.
+  local first, last, above, below, room = 1, count, false, false, count
+  local scrolls = maxRows and maxRows >= 3 and count > maxRows
+  if scrolls then
+    first = ui.scroll[id] or 1
+    if ui.wheel and ui.wheel ~= 0 then
+      first = first - ui.wheel
+      ui.wheel = 0
+    end
+    first, last, above, below, room = window(first, count, maxRows)
+    -- A tap on a MORE row turns a page.
+    if ui.clicked and ui.usingMouse then
+      if above and inside(x, y, w, rowH) then
+        first, ui.clicked, ui.played = first - room, false, "click"
+      elseif below and inside(x, y + (maxRows - 1) * rowH, w, rowH) then
+        first, ui.clicked, ui.played = first + room, false, "click"
+      end
+    end
+    -- The furthest it goes still fills the window.
+    first = math.min(first, count - maxRows + 2)
+    first, last, above, below, room = window(first, count, maxRows)
+    if not ui.usingMouse then
+      -- The keys and the pad move the focus, and the window follows it.
+      if focus < first then first = focus end
+      first, last, above, below, room = window(first, count, maxRows)
+      if focus > last then
+        first, last, above, below, room = window(focus - room + 1, count, maxRows)
+        if focus > last then first, last, above, below, room = window(first + 1, count, maxRows) end
+      end
+    end
+    ui.scroll[id] = first
+    for slot, more in pairs({ [0] = above, [maxRows - 1] = below }) do
+      if more then
+        local ry = y + slot * rowH
+        local hovered = ui.usingMouse and inside(x, ry, w, rowH)
+        ui.text("- MORE -", x + 14 * s, ry + (rowH - size) / 2, size, hovered and colors.marshal or colors.muted)
+      end
+    end
+  end
+  local offset = above and 1 or 0
+
+  for i = first, last do
+    local item = items[i]
+    local ry = y + (i - first + offset) * rowH
     local hovered = ui.usingMouse and inside(x, ry, w, rowH) and not item.disabled
     if hovered then
       if focus ~= i then ui.played = "click" end

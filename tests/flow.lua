@@ -1,20 +1,20 @@
 -- Plays the real game through its real input handlers, with graphics on:
 -- `love . --visual flow`. Each step presses keys or clicks, then checks the
 -- screen it should have arrived at.
-local state = require("src/state")
-local rm = require("src/race_manager")
-local menu = require("src/menu")
-local settings = require("src/settings")
-local catalog = require("src/tracks/catalog")
-local ui = require("src/ui")
-local touch = require("src/touch")
-local input = require("src/input")
-local audio = require("src/audio")
-local radio = require("src/radio")
-local music = require("src/music")
-local world = require("src/world")
-local config = require("src/config")
-local garage = require("src/entities/garage")
+local state = require("src.state")
+local rm = require("src.race_manager")
+local menu = require("src.menu")
+local settings = require("src.settings")
+local catalog = require("src.tracks.catalog")
+local ui = require("src.ui")
+local touch = require("src.touch")
+local input = require("src.input")
+local audio = require("src.audio")
+local radio = require("src.radio")
+local music = require("src.music")
+local world = require("src.world")
+local config = require("src.config")
+local garage = require("src.entities.garage")
 
 local flow = {}
 
@@ -338,7 +338,9 @@ local function steps()
   step(3, function()
     expect(state.screen == "race", "QUICK RACE starts a race straight away")
     expect(rm.race().mode == "race", "a race, whatever was set up last")
-    expect(rm.race().track == menu.cachedTrack(catalog.find("harbour")).track, "on the last track")
+    local entry, spec = menu.quickPick()
+    expect(rm.race().track == menu.cachedTrack(entry).track, "on its own pick of track")
+    expect(rm.race().player.spec == spec, "in its own pick of car")
     expect(#rm.race().cars == 4, "with the last grid")
     press("escape")
   end)
@@ -348,18 +350,18 @@ local function steps()
   step(4, function()
     expect(menu.screen == "main", "and quits back to the menu")
     settings.mode = "race"
-    -- Mouse: click TRACK EDITOR, the sixth row
+    -- Mouse: click TRACK EDITOR, the seventh row (after ONLINE and TRACKS ONLINE)
     local s = ui.scale()
-    click(100 * s, 62 * s + 15 * s * 5.5)
+    click(100 * s, 62 * s + 15 * s * 6.5)
   end)
   step(4, function()
     expect(state.screen == "editor", "clicking TRACK EDITOR opens it")
     local sw, sh = love.graphics.getDimensions()
-    flow.nodes = #require("src/editor").currentDoc().nodes
+    flow.nodes = #require("src.editor").currentDoc().nodes
     click(sw * 0.72, sh * 0.5)
   end)
   step(3, function()
-    expect(#require("src/editor").currentDoc().nodes == flow.nodes + 1, "clicking adds a node")
+    expect(#require("src.editor").currentDoc().nodes == flow.nodes + 1, "clicking adds a node")
     love.keyboard.isDown = function(...)
       for _, k in ipairs({ ... }) do if k == "lctrl" then return true end end
       return false
@@ -368,12 +370,12 @@ local function steps()
     love.keyboard.isDown = nil
   end)
   step(3, function()
-    expect(#require("src/editor").currentDoc().nodes == flow.nodes, "ctrl+z undoes it")
+    expect(#require("src.editor").currentDoc().nodes == flow.nodes, "ctrl+z undoes it")
     love.system.setClipboardText("")
     -- EXPORT opens the shared folder in a file manager; not during a test.
     flow.openURL, flow.opened = love.system.openURL, nil
     love.system.openURL = function(url) flow.opened = url end
-    flow.exported = require("src/editor").currentDoc()
+    flow.exported = require("src.editor").currentDoc()
     love.filesystem.remove("shared/" .. flow.exported.name .. ".spppd")
     flow.clickTool(6)  -- EXPORT
   end)
@@ -390,7 +392,7 @@ local function steps()
     flow.clickTool(4)  -- NEW
   end)
   local function sameTrack(what)
-    local doc, old = require("src/editor").currentDoc(), flow.exported
+    local doc, old = require("src.editor").currentDoc(), flow.exported
     expect(doc ~= old and doc.title == old.title and #doc.nodes == #old.nodes, what)
     local a, b = doc.nodes[3], old.nodes[3]
     expect(math.abs(a.x - b.x) < 0.01 and math.abs(a.y - b.y) < 0.01 and math.abs(a.wl - b.wl) < 0.01,
@@ -398,7 +400,7 @@ local function steps()
     expect(doc.dirty, "and it waits to be saved")
   end
   step(3, function()
-    expect(require("src/editor").currentDoc() ~= flow.exported, "NEW starts another track")
+    expect(require("src.editor").currentDoc() ~= flow.exported, "NEW starts another track")
     -- As if the file were dragged in from a file manager.
     love.filedropped(love.filesystem.newFile(flow.file))
   end)
@@ -440,7 +442,7 @@ local function steps()
   step(4, function()
     expect(state.screen == "editor", "the test drive returns to the editor")
     expect(not music.isPlaying(), "no music in the editor")
-    expect(require("src/editor").currentDoc() ~= nil, "with the track still open")
+    expect(require("src.editor").currentDoc() ~= nil, "with the track still open")
     press("escape")
   end)
   -- An undone edit still counts as a change, so it should ask first:

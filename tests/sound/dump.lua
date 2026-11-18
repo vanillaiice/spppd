@@ -10,11 +10,11 @@
 -- It then drives the real audio.update through tests/sound/scenes.lua and logs
 -- each frame's volumes and pitches for tests/sound/mix.py. That's the level the
 -- code asks for, from the samples above. It is not a recording of the game.
-local realCache = require("src/sound_cache")
-local garage = require("src/entities/garage")
-local scenes = require("tests/sound/scenes")
+local realCache = require("src.sound_cache")
+local garage = require("src.entities.garage")
+local scenes = require("tests.sound.scenes")
 
-local MODULES = { new = "src/audio", old = "tests/sound/audio_original" }
+local MODULES = { new = "src.audio", old = "tests.sound.audio_original" }
 local FRAME = 1 / 60
 local RATE = 44100
 
@@ -120,7 +120,7 @@ return function(which, folder)
     return data
   end
 
-  package.loaded["src/sound_cache"] = stub
+  package.loaded["src.sound_cache"] = stub
   love.audio = { newSource = function(data) return fakeSource(data, record) end }
   local audio = require(MODULES[which])
   audio.load()
@@ -137,7 +137,7 @@ return function(which, folder)
   -- The menu music, off the load path: it renders over menu frames instead.
   local songs = {}
   if which == "new" then
-    local music = require("src/music")
+    local music = require("src.music")
     for _, id in ipairs(music.ORDER) do
       local started = love.timer.getTime()
       local data = music.render(id)

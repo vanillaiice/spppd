@@ -4,7 +4,7 @@
 --
 -- Body frame: +x forward, +y to the driver's right, +yaw clockwise on screen.
 -- Wheels: 1 front-left, 2 front-right, 3 rear-left, 4 rear-right.
-local config = require("src/config")
+local config = require("src.config")
 
 local dynamics = {}
 

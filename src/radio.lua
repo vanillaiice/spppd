@@ -1,7 +1,7 @@
 -- The player's own music, for freestyle only: one station playing whatever is
 -- in the music folder of the save directory, shuffled and non-stop. Songs are
 -- streamed from disk, because a whole album won't fit in memory decoded.
-local settings = require("src/settings")
+local settings = require("src.settings")
 
 local radio = { tracks = {} }
 

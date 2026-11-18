@@ -9,9 +9,9 @@
 -- blow-off, crashes) are modelled here instead, out of the same parts: stepped noise,
 -- simple filters, slides and short envelopes.
 -- SOUND.md is the style guide: the levels and conventions a new sound has to meet.
-local sfxr = require("src/lib/sfxr")
-local cache = require("src/sound_cache")
-local garage = require("src/entities/garage")
+local sfxr = require("src.lib.sfxr")
+local cache = require("src.sound_cache")
+local garage = require("src.entities.garage")
 local unpack = unpack or table.unpack
 
 local audio = { ready = false, spool = 0, duck = 0 }

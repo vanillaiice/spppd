@@ -1,7 +1,7 @@
 -- Draws each car model once into canvases. Paint is white so the sprite can
 -- be tinted to any colour; glass, lights and details sit on a second layer.
-local plans = require("src/render/car_plans")
-local textures = require("src/render/textures")
+local plans = require("src.render.car_plans")
+local textures = require("src.render.textures")
 
 local sprites = {}
 

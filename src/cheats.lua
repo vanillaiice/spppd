@@ -5,7 +5,7 @@
 -- in SETTINGS > CODE, which is how a phone gets at them. The words use only letters
 -- that no driving key or menu key is bound to, so typing one in a race does nothing
 -- else.
-local settings = require("src/settings")
+local settings = require("src.settings")
 
 local cheats = {
   -- Keyed by the word's hash, so the words aren't spelled out here.

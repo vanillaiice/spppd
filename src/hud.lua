@@ -1,11 +1,11 @@
 -- Race HUD, laid out like a broadcast timing screen: the tower top left,
 -- the dash bottom right, and everything else out of the way of the road.
-local ui = require("src/ui")
-local colors = require("src/colors")
-local settings = require("src/settings")
-local minimap = require("src/minimap")
-local touch = require("src/touch")
-local dynamics = require("src/sim/dynamics")
+local ui = require("src.ui")
+local colors = require("src.colors")
+local settings = require("src.settings")
+local minimap = require("src.minimap")
+local touch = require("src.touch")
+local dynamics = require("src.sim.dynamics")
 
 local hud = {}
 

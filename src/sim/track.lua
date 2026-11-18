@@ -6,7 +6,7 @@
 --   spline:   { nodes = {{x, y, wl, wr}, ...}, startPoint = {x, y, angle} }
 --   boundary: { left = segments, right = segments, startPoint = ... }
 -- Boundary segments are the legacy {type = "line"|"curve", points = {...}}.
-local config = require("src/config")
+local config = require("src.config")
 
 local Track = {}
 Track.__index = Track

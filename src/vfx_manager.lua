@@ -1,7 +1,7 @@
 -- Particle effects. Each one is tuned to read clearly and then get out of
 -- the way: short-lived, soft, and capped so a pile-up can't fill the screen.
-local textures = require("src/render/textures")
-local config = require("src/config")
+local textures = require("src.render.textures")
+local config = require("src.config")
 
 local vfx = {}
 

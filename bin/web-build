@@ -4,9 +4,9 @@
 # installs the site's packages first: love.js is one of them, pinned there.
 #
 # love.js runs LÖVE 11.4 on plain Lua 5.1, in compatibility mode (no threads, so the
-# server needs no cross-origin isolation headers). The game asks for 11.5, which
-# 11.4 would warn about, and asks for a high-DPI window, which a phone's browser
-# would then refuse to size; the web copy asks for neither.
+# server needs no cross-origin isolation headers). conf.lua names the LÖVE it runs
+# on, so 11.4 doesn't warn, but asks for a high-DPI window, which a phone's browser
+# would then refuse to size; the web copy doesn't.
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
@@ -19,15 +19,14 @@ trap 'rm -rf "$work"' EXIT
 
 mkdir "$work/game"
 cp -r main.lua conf.lua LICENSE assets src "$work/game/"
-sed -i 's/t.version = "11.5"/t.version = "11.4"/; s/t.window.highdpi = true/t.window.highdpi = false/' "$work/game/conf.lua"
-grep -q 't.version = "11.4"' "$work/game/conf.lua" || { echo "couldn't patch conf.lua's version" >&2; exit 1; }
+sed -i 's/t.window.highdpi = true/t.window.highdpi = false/' "$work/game/conf.lua"
 grep -q 't.window.highdpi = false' "$work/game/conf.lua" || { echo "couldn't patch conf.lua's highdpi" >&2; exit 1; }
 # The browser has no threads, so a first visit would spend most of a minute on a
 # phone rendering sounds. The build renders them here instead and ships the cache:
 # LÖVE reads a file from the game when the save folder hasn't got it, so the
 # browser finds this complete cache and loads it. Its folder is named after a hash
 # of src/audio.lua and src/lib/sfxr.lua, which the web copy doesn't change.
-folder=$(love . --sound-cache | tail -n 1)
+folder=$(${LOVE:-love} . --sound-cache | tail -n 1)
 [ -f "$folder/complete" ] || { echo "rendering the sound cache failed" >&2; exit 1; }
 mkdir -p "$work/game/soundcache"
 cp -r "$folder" "$work/game/soundcache/"

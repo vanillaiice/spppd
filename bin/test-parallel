@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Runs the headless tests on every core: one love process per shard, each taking
 # every n-th test and saving into its own folder. Takes a filter like love . --test.
-# SPPPD_TEST_SHARDS=n picks how many.
+# SPPPD_TEST_SHARDS=n picks how many, and LOVE which LÖVE runs them (bin/love12).
 set -u
 cd "$(dirname "$0")/.."
 n=${SPPPD_TEST_SHARDS:-$(nproc)}
@@ -11,7 +11,7 @@ trap 'kill $(jobs -p) 2>/dev/null; exit 130' INT TERM
 
 pids=()
 for i in $(seq 1 "$n"); do
-  SPPPD_TEST_SHARD="$i/$n" love . --test "$@" > "$out/$i" 2>&1 &
+  SPPPD_TEST_SHARD="$i/$n" "${LOVE:-./bin/love12}" . --test "$@" > "$out/$i" 2>&1 &
   pids+=($!)
 done
 

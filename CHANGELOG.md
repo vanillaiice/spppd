@@ -1,5 +1,40 @@
 # Changelog
 
+## 4.0.0 (not released yet)
+
+Races 3.0 to 3.7, with no server change: tracks match online as before.
+
+### Tracks online, in the game
+
+- TRACKS ONLINE on the main menu lists the tracks on
+  [spppd.xyz/tracks](https://spppd.xyz/tracks/), with each one's outline, length and
+  maker. GET saves one to your tracks; then it's in RACE, TIME TRIAL and the editor.
+  It works on phones too.
+- The editor's BROWSE TRACKS ONLINE opens the same list, and comes back to the editor.
+- The browser version still opens the page instead.
+
+### Quick race
+
+- QUICK RACE picks its own track and car at random: when the game opens, and again
+  after every race you finish. The laps, grid and time of day are still RACE's, and
+  RACE keeps what you set there.
+
+### New engine
+
+- SPPPD now runs on LÖVE 12, which can fetch over HTTPS. The barriers, the handling
+  and the look are unchanged.
+- Downloads for Linux (an AppImage) and macOS (an app), as LÖVE 12 isn't out on its
+  own yet. The .love file still runs on LÖVE 11.5, without TRACKS ONLINE. These
+  keep their saves in a folder of their own: to bring yours over from the .love,
+  copy `~/.local/share/love/spppd` to `~/.local/share/spppd` on Linux, or
+  `~/Library/Application Support/LOVE/spppd` to `~/Library/Application Support/spppd`
+  on a Mac.
+- No more 32-bit Windows build: LÖVE 12 has none.
+- Android needs 7.0 or later.
+- On a phone, the game goes quiet when you leave it for the home screen or another
+  app, and picks up where it was when you come back.
+- The first launch after updating builds the sounds again, once.
+
 ## 3.7.0 (2026-11-18)
 
 3.7.0 races 3.0 to 3.6. Online races match tracks as before, and older games can

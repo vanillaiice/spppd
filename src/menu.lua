@@ -1,27 +1,29 @@
 -- Menus sit on a pit board down the left of the screen, with a live race
 -- running behind it. Every screen is just a list of rows.
-local ui = require("src/ui")
-local state = require("src/state")
-local colors = require("src/colors")
-local config = require("src/config")
-local settings = require("src/settings")
-local garage = require("src/entities/garage")
-local catalog = require("src/tracks/catalog")
-local Track = require("src/sim/track")
-local rm = require("src/race_manager")
-local minimap = require("src/minimap")
-local sprites = require("src/render/car_sprites")
-local hud = require("src/hud")
-local audio = require("src/audio")
-local radio = require("src/radio")
-local music = require("src/music")
-local network = require("src/network_manager")
-local account = require("src/account")
-local dynamics = require("src/sim/dynamics")
-local carStats = require("src/sim/car_stats")
-local cheats = require("src/cheats")
-local input = require("src/input")
-local web = require("src/web")
+local ui = require("src.ui")
+local state = require("src.state")
+local colors = require("src.colors")
+local config = require("src.config")
+local settings = require("src.settings")
+local garage = require("src.entities.garage")
+local catalog = require("src.tracks.catalog")
+local Track = require("src.sim.track")
+local rm = require("src.race_manager")
+local minimap = require("src.minimap")
+local sprites = require("src.render.car_sprites")
+local hud = require("src.hud")
+local audio = require("src.audio")
+local radio = require("src.radio")
+local music = require("src.music")
+local network = require("src.network_manager")
+local account = require("src.account")
+local dynamics = require("src.sim.dynamics")
+local carStats = require("src.sim.car_stats")
+local cheats = require("src.cheats")
+local input = require("src.input")
+local web = require("src.web")
+local net = require("src.net_http")
+local online = require("src.tracks.online")
 
 local menu = { screen = "main" }
 
@@ -199,9 +201,37 @@ function menu.enter()
   end
 end
 
+-- QUICK RACE's own track and car, picked at random when the game opens and again
+-- after every finished race. The race's laps, grid and time are the setup's.
+-- RACE keeps what you picked there.
+local quick
+
+function menu.rollQuick()
+  local tracks, last = catalog.all(), quick
+  local entry, spec
+  for _ = 1, 4 do
+    entry = tracks[love.math.random(#tracks)]
+    spec = garage[love.math.random(#garage)]
+    -- Not the same race twice in a row, where there's another to have.
+    if not last or #tracks < 2 or entry.name ~= last.track then break end
+  end
+  quick = { track = entry.name, car = spec.id }
+end
+
+function menu.quickPick()
+  if not quick then menu.rollQuick() end
+  local entry = catalog.find(quick.track)
+  -- A saved track deleted since, or one that won't build, gives way to another.
+  if not entry or not pcall(cachedTrack, entry) then
+    menu.rollQuick()
+    entry = catalog.find(quick.track) or catalog.builtin()[1]
+  end
+  return entry, garage.byId(quick.car) or currentCar()
+end
+
 function menu.startRace(extra)
   extra = extra or {}
-  local spec = currentCar()
+  local spec = extra.spec or currentCar()
   menu.demoRunning = false
   local mode = extra.online and "race" or settings.mode
   local entry
@@ -220,7 +250,7 @@ function menu.startRace(extra)
     entry = entry,
     track = entry and cachedTrack(entry).track,
     spec = spec,
-    color = currentColor(spec),
+    color = extra.spec and spec.color or currentColor(spec),
     laps = extra.laps or (mode == "race" and settings.laps or 9999),
     opponents = mode == "race" and settings.opponents or 0,
     difficulty = settings.difficulty,
@@ -234,18 +264,19 @@ end
 
 -- Screens ------------------------------------------------------------------
 
--- What QUICK RACE starts: the race as it was last set up.
+-- What QUICK RACE starts.
 local function quickHint()
-  local entry = currentEntry()
+  local entry, spec = menu.quickPick()
   local laps = settings.laps == 1 and "1 LAP" or settings.laps .. " LAPS"
-  return (entry and entry.title or "") .. "  " .. currentCar().name .. "  " .. laps
+  return (entry and entry.title or "") .. "  " .. spec.name .. "  " .. laps
 end
 
 local function mainRows()
   local rows = {
     { label = "QUICK RACE", activate = function()
         settings.mode = "race"
-        menu.startRace()
+        local entry, spec = menu.quickPick()
+        menu.startRace({ entry = entry, spec = spec })
       end },
     { label = "RACE", activate = function() settings.mode = "race" menu.go("setup") end },
     { label = "TIME TRIAL", activate = function() settings.mode = "trial" menu.go("setup") end },
@@ -259,6 +290,9 @@ local function mainRows()
   if not web.on then
     rows[#rows + 1] = { label = "ONLINE", activate = function() settings.mode = "race" menu.go("online") end }
   end
+  -- Tracks people made, from spppd.xyz/tracks. The browser build can't fetch
+  -- them, so it opens the page instead.
+  rows[#rows + 1] = { label = "TRACKS ONLINE", activate = function() menu.openTracks() end }
   -- The editor needs a keyboard and a right click.
   if not ui.mobile then
     rows[#rows + 1] = { label = "TRACK EDITOR", activate = function() menu.openEditor() end }
@@ -473,7 +507,7 @@ local function settingsRows()
       { "kmh", "mph" }, { kmh = "KM/H", mph = "MPH" }),
     stepper("EFFECTS", function() return settings.quality end, function(v)
       settings.quality = v
-      require("src/render/post").quality = v
+      require("src.render.post").quality = v
     end, QUALITY, { high = "HIGH", low = "LOW" }),
     toggle("PACE NOTES", "paceNotes"),
     toggle("MINIMAP", "minimap"),
@@ -597,6 +631,69 @@ local function startCapture(kind, action)
 end
 
 menu.startCapture = startCapture
+
+-- TRACKS ONLINE ----------------------------------------------------------------
+
+local tracksFromEditor = false
+
+-- From the editor, back goes back there, and a track you have opens in it.
+function menu.openTracks(fromEditor)
+  if not net.available() then
+    love.system.openURL(config.TRACKS_URL)
+    return
+  end
+  if fromEditor then menu.enter() end
+  tracksFromEditor = fromEditor or false
+  online.open()
+  menu.go("tracks")
+end
+
+local function leaveTracks()
+  if tracksFromEditor then menu.openEditor() else menu.go("main") end
+end
+
+local function useTrack(name)
+  if tracksFromEditor then
+    local entry = catalog.find(name)
+    menu.openEditor()
+    if entry then require("src.editor").openEntry(entry) end
+    return
+  end
+  settings.track, settings.mode = name, "race"
+  save()
+  menu.go("setup")
+end
+
+local function tracksRows()
+  local rows = {}
+  if online.status == "ready" then
+    for _, track in ipairs(online.tracks) do
+      rows[#rows + 1] = {
+        label = track.title,
+        track = track,
+        value = function() return online.have(track) and "GOT" or "GET" end,
+        activate = function()
+          local have = online.have(track)
+          if have then
+            useTrack(have.name)
+          elseif online.take(track) then
+            say("SAVED " .. track.title)
+          else
+            say("COULDN'T SAVE IT")
+          end
+        end,
+      }
+    end
+    if #online.tracks == 0 then rows[#rows + 1] = { label = "NO TRACKS YET", disabled = true } end
+    rows[#rows + 1] = { label = "REFRESH", activate = online.fetch }
+  elseif online.status == "error" then
+    rows[#rows + 1] = { label = "TRY AGAIN", activate = online.fetch }
+  else
+    rows[#rows + 1] = { label = "LOADING...", disabled = true }
+  end
+  rows[#rows + 1] = { label = "BACK", activate = leaveTracks }
+  return rows
+end
 
 function menu.capturing()
   return capture
@@ -940,7 +1037,7 @@ function menu.testDrive(doc, track)
 end
 
 function menu.openEditor()
-  require("src/editor").open()
+  require("src.editor").open()
   rm.stop()
   menu.demoRunning = false
   state.screen = "editor"
@@ -958,6 +1055,7 @@ local SCREENS = {
   online = { rows = onlineRows },
   profile = { rows = profileRows },
   host = { rows = hostRows },
+  tracks = { rows = tracksRows },
 }
 
 local function drawBoard(sw, sh, s, title, titleColor)
@@ -1088,6 +1186,45 @@ local function drawSetupPreview(sw, sh, boardW, s, carOnly)
   if withStats then drawCarStats(spec, x + 6 * s, py + 70 * s, w - 12 * s, s) end
 end
 
+local THEME_NAMES = { meadow = "MEADOW", desert = "DESERT", marina = "MARINA" }
+
+-- A track from spppd.xyz: its outline, and who made it.
+local function drawOnlineTrack(track, sw, sh, boardW, s)
+  local x = boardW + 14 * s
+  local w = sw - x - 14 * s
+  if w < 120 * s then return end
+  local size = math.min(w, sh - 80 * s)
+  ui.panel(x, 14 * s, w, size + 46 * s, 0.82)
+  local outline = track.outline
+  if #outline >= 2 then
+    -- The server fits every outline in a 100 x 100 box.
+    local box = size - 20 * s
+    local ox, oy = x + (w - box) / 2, 24 * s
+    local points = {}
+    for _, p in ipairs(outline) do
+      points[#points + 1] = ox + p[1] / 100 * box
+      points[#points + 1] = oy + p[2] / 100 * box
+    end
+    points[#points + 1], points[#points + 2] = points[1], points[2]
+    love.graphics.setLineWidth(3 * s)
+    love.graphics.setLineJoin("bevel")
+    love.graphics.setColor(colors.paint)
+    love.graphics.line(points)
+    love.graphics.setLineWidth(1)
+  end
+  local ty = 14 * s + size + 8 * s
+  ui.text(track.title, x + 6 * s, ty, 8 * s, colors.marshal)
+  if track.metres then
+    ui.text(string.format("%.2f KM", track.metres / 1000), x, ty, 6 * s, colors.paint, "right", w - 6 * s)
+  end
+  ui.text("BY " .. (track.author or "?"), x + 6 * s, ty + 14 * s, 6 * s, colors.muted)
+  local detail = THEME_NAMES[track.theme] or ""
+  if track.added then detail = detail .. "  " .. track.added end
+  ui.text(detail, x, ty + 14 * s, 6 * s, colors.muted, "right", w - 6 * s)
+  ui.text("GET SAVES IT TO YOUR TRACKS", x + 6 * s, ty + 26 * s, 5 * s, colors.muted,
+    "left", w - 12 * s)
+end
+
 -- Who's in the room and what they're racing for, down the side of the lobby.
 local function drawLobby(sw, sh, boardW, s)
   local x = boardW + 14 * s
@@ -1177,6 +1314,11 @@ end
 -- 4 mm tall on a phone, too close for a thumb to pick RACE over TIME TRIAL, so
 -- the main menu spreads out over the whole height there.
 function menu.listLayout(screen, count, sh, s)
+  -- The track list can be long, so it keeps its rows a thumb's height and scrolls.
+  if screen == "tracks" then
+    local y, rowH = 72 * s, 15 * s
+    return y, rowH, math.max(3, math.floor((sh - y - 24 * s) / rowH))
+  end
   if screen == "main" and ui.mobile then
     local y = 52 * s
     return y, (sh - y - 16 * s) / count
@@ -1199,9 +1341,12 @@ function drawScreen(sw, sh)
   local titles = {
     setup = MODES[settings.mode], settings = "SETTINGS", online = "ONLINE", host = "HOST A ROOM", profile = "PROFILE",
     controls = "CONTROLS", buttons = "BUTTON LIST", credits = "CREDITS", keys = "KEYBOARD", pad = "PAD",
+    tracks = "TRACKS ONLINE",
   }
   local title, titleColor = titles[menu.screen], nil
-  if menu.screen == "keys" or menu.screen == "pad" then
+  if menu.screen == "tracks" and note then
+    title, titleColor = note.text, colors.kerb
+  elseif menu.screen == "keys" or menu.screen == "pad" then
     title, titleColor = remapTitle(title)
     -- A click or tap anywhere lets go of a waiting row, and does nothing else.
     if capture and ui.clicked then
@@ -1213,6 +1358,9 @@ function drawScreen(sw, sh)
   local failed = menu.screen == "online" and network.status == "error"
   local w = drawBoard(sw, sh, s, not failed and title or nil, titleColor)
   if failed then ui.text(network.statusText(), 14 * s, 53 * s, 5 * s, colors.kerb, "left", w - 28 * s) end
+  if menu.screen == "tracks" and online.status == "error" then
+    ui.text(online.message, 14 * s, 64 * s, 5 * s, colors.kerb, "left", w - 28 * s)
+  end
   local x = 8 * s
   local listW = w - 22 * s
   local size = 7 * s
@@ -1223,6 +1371,10 @@ function drawScreen(sw, sh)
     else
       if menu.screen == "online" then network.disconnect() end
       if menu.screen == "profile" then account.cancel() end
+      if menu.screen == "tracks" then
+        leaveTracks()
+        return
+      end
       local up = { host = "online", profile = "online", buttons = "controls", keys = "controls", pad = "controls" }
       menu.go(up[menu.screen] or "main")
     end
@@ -1231,14 +1383,16 @@ function drawScreen(sw, sh)
   local def = SCREENS[menu.screen]
   if def then
     local rows = def.rows()
-    local y, rowH = menu.listLayout(menu.screen, #rows, sh, s)
-    local focused = ui.list(menu.screen, rows, x, y, listW, rowH, size, s)
+    local y, rowH, maxRows = menu.listLayout(menu.screen, #rows, sh, s)
+    local focused = ui.list(menu.screen, rows, x, y, listW, rowH, size, s, maxRows)
     if menu.screen == "setup" or menu.screen == "host" then
       drawSetupPreview(sw, sh, w, s)
     elseif menu.screen == "online" and network.slot then
       drawLobby(sw, sh, w, s)
     elseif menu.screen == "online" then
       drawSetupPreview(sw, sh, w, s, true)
+    elseif menu.screen == "tracks" and focused.track then
+      drawOnlineTrack(focused.track, sw, sh, w, s)
     end
     if menu.screen == "main" and focused.label == "QUICK RACE" and not ui.mobile then
       ui.text(quickHint(), 14 * s, sh - 34 * s, 5 * s, colors.muted, "left", w - 28 * s)
@@ -1319,13 +1473,14 @@ local RESULTS_SLIDE = 0.3
 local function quitRace()
   local opts = rm.race() and rm.opts()
   local fromEditor = opts and opts.fromEditor
+  if rm.isFinished() then menu.rollQuick() end
   menu.voting = false
   network.disconnect()
   rm.stop()
   ui.nav = {}
   if fromEditor then
     state.screen = "editor"
-    require("src/editor").open()
+    require("src.editor").open()
   else
     menu.demoRunning = false
     menu.enter()

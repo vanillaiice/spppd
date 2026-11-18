@@ -2,10 +2,10 @@
 -- or left and right buttons in its place, and buttons under the right. The buttons
 -- press the same bindings as the keyboard, so a touch is just another pair of
 -- hands, and button steering winds on as smoothly as the arrow keys.
-local ui = require("src/ui")
-local input = require("src/input")
-local colors = require("src/colors")
-local settings = require("src/settings")
+local ui = require("src.ui")
+local input = require("src.input")
+local colors = require("src.colors")
+local settings = require("src.settings")
 
 local touch = { active = ui.mobile, stick = nil, fingers = {} }
 

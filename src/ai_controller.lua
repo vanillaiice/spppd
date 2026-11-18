@@ -1,7 +1,7 @@
 -- AI driver. Follows the track's racing line through the same input channel
 -- as a human, so it obeys exactly the same physics as the player.
-local config = require("src/config")
-local dynamics = require("src/sim/dynamics")
+local config = require("src.config")
+local dynamics = require("src.sim.dynamics")
 
 local AI = {}
 AI.__index = AI

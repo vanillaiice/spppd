@@ -3,9 +3,9 @@
 -- anything is playing. Both sides are the real modules, each running its own
 -- audio.update on the same fake car, so this compares what the game does and not
 -- only the samples. The old side renders on every start, so opening takes a moment.
-local garage = require("src/entities/garage")
-local audio = require("src/audio")
-local scenes = require("tests/sound/scenes")
+local garage = require("src.entities.garage")
+local audio = require("src.audio")
+local scenes = require("tests.sound.scenes")
 
 local listen = {}
 
@@ -50,14 +50,14 @@ end
 -- The sounds as they stood, from the untouched copy of the old module. It keeps its
 -- samples in memory: writing them to the cache would clear out the current ones.
 local function loadOriginal()
-  local real = package.loaded["src/sound_cache"]
+  local real = package.loaded["src.sound_cache"]
   local function nothing() end
-  package.loaded["src/sound_cache"] = {
+  package.loaded["src.sound_cache"] = {
     open = nothing, finish = nothing,
     get = function(_, render, ...) return render(...) end,
   }
-  local old = require("tests/sound/audio_original")
-  package.loaded["src/sound_cache"] = real
+  local old = require("tests.sound.audio_original")
+  package.loaded["src.sound_cache"] = real
   old.load()
   return old
 end

@@ -1,8 +1,9 @@
 -- Sponsor boards: flat panels laid on the grass just outside the fence, lettered
 -- to face the road. Only drawn; nothing can hit them. Who is on which board is
 -- src/sponsors.lua's business.
-local config = require("src/config")
-local sponsors = require("src/sponsors")
+local config = require("src.config")
+local sponsors = require("src.sponsors")
+local compat = require("src.compat")
 
 local boards = {}
 
@@ -166,7 +167,7 @@ function boards.build(list, trackName, title, env, addRect, rectMesh)
   font = font or love.graphics.newFont("assets/fonts/PressStart2P.ttf", FONT_SIZE)
   local showSpots = os.getenv("SPPPD_SPOTS") == "1"
   local rects = {}
-  local text = love.graphics.newText(font)
+  local text = compat.newTextBatch(font)
   local sx, sy = env.sun[1] * env.shadowLength * 0.6, env.sun[2] * env.shadowLength * 0.6
   local edge = 2
   for _, b in ipairs(list) do

@@ -1,19 +1,19 @@
 -- The selectable cars, in menu order. Settings save a position in this list,
 -- so new cars go on the end.
 local garage = {
-  require("src/entities/vehicles/hot_hatch"),
-  require("src/entities/vehicles/4wd_monster"),
-  require("src/entities/vehicles/rocket"),
-  require("src/entities/vehicles/samurai"),
-  require("src/entities/vehicles/big_bull"),
-  require("src/entities/vehicles/muscle_monster"),
-  require("src/entities/vehicles/cyber"),
-  require("src/entities/vehicles/tofu_runner"),
-  require("src/entities/vehicles/wedge"),
-  require("src/entities/vehicles/quad_turbo"),
-  require("src/entities/vehicles/baja_beast"),
-  require("src/entities/vehicles/open_wheeler"),
-  require("src/entities/vehicles/formula_kid"),
+  require("src.entities.vehicles.hot_hatch"),
+  require("src.entities.vehicles.4wd_monster"),
+  require("src.entities.vehicles.rocket"),
+  require("src.entities.vehicles.samurai"),
+  require("src.entities.vehicles.big_bull"),
+  require("src.entities.vehicles.muscle_monster"),
+  require("src.entities.vehicles.cyber"),
+  require("src.entities.vehicles.tofu_runner"),
+  require("src.entities.vehicles.wedge"),
+  require("src.entities.vehicles.quad_turbo"),
+  require("src.entities.vehicles.baja_beast"),
+  require("src.entities.vehicles.open_wheeler"),
+  require("src.entities.vehicles.formula_kid"),
 }
 
 function garage.byId(id)

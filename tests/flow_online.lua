@@ -1,12 +1,12 @@
 -- The real game online through its real input handlers, with graphics on and a
 -- real relay: `make test-online-visual`. Bots in this process fill the other seats.
-local state = require("src/state")
-local rm = require("src/race_manager")
-local menu = require("src/menu")
-local settings = require("src/settings")
-local ui = require("src/ui")
-local network = require("src/network_manager")
-local flow = require("tests/flow")
+local state = require("src.state")
+local rm = require("src.race_manager")
+local menu = require("src.menu")
+local settings = require("src.settings")
+local ui = require("src.ui")
+local network = require("src.network_manager")
+local flow = require("tests.flow")
 local press, expect = flow.press, flow.expect
 
 local online = {}
@@ -104,7 +104,7 @@ local function steps()
 
   step(1, function()
     if state.screen ~= "menu" then return "again" end
-    local host, port = require("tests/relay").address()
+    local host, port = require("tests.relay").address()
     settings.server = assert(host, port) .. ":" .. port
     settings.track, settings.laps, settings.time = "harbour", 2, "dusk"
     saved = { track = settings.track, laps = settings.laps, time = settings.time }

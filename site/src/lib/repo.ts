@@ -20,7 +20,7 @@ export function gameVersion(): string {
 }
 
 export interface Download {
-  id: 'win64' | 'win32' | 'apk' | 'love';
+  id: 'win64' | 'linux' | 'macos' | 'apk' | 'love';
   file: string;
   href: string;
   bytes: number;
@@ -38,7 +38,8 @@ export function downloads(): Download[] {
   }
   const files: [Download['id'], string][] = [
     ['win64', `spppd-${v}-win64.zip`],
-    ['win32', `spppd-${v}-win32.zip`],
+    ['linux', `spppd-${v}-linux.AppImage`],
+    ['macos', `spppd-${v}-macos.zip`],
     ['apk', `spppd-${v}-android.apk`],
     ['love', `spppd-${v}.love`],
   ];

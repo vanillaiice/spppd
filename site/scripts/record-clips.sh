@@ -11,7 +11,7 @@
 # It works on a copy of the game, so the repository is never changed. The copy's
 # tests/visual.lua is patched to step the game 1/60 s per frame and save every frame
 # of a range, so the clips are smooth at 60 fps however slowly the display renders.
-# Nothing is played aloud (ALSOFT_DRIVERS=null). Needs love 11.5 and ffmpeg.
+# Nothing is played aloud (ALSOFT_DRIVERS=null). Needs ffmpeg; LOVE picks the LÖVE.
 set -euo pipefail
 cd "$(dirname "$0")/../.."
 repo="$PWD"
@@ -70,7 +70,7 @@ clip() {
   wanted "$name" || return 0
   rm -rf "$save/rec"
   run env SPPPD_SIZE=1280x720 REC_DT=0.0166666667 REC_FROM="$from" REC_N="$n" "$@" \
-    timeout 600 love . --visual "$scene" unused.png 99999
+    timeout 600 "${LOVE:-bin/love12}" . --visual "$scene" unused.png 99999
   ffmpeg -loglevel error -y -framerate 60 -i "$save/rec/%05d.png" \
     -c:v libx264 -preset slow -crf "${CRF:-27}" -pix_fmt yuv420p -movflags +faststart -an \
     "$out/$name.mp4"
@@ -83,7 +83,7 @@ still() {
   local name=$1 scene=$2 size=$3
   shift 3
   wanted "$name" || return 0
-  run env SPPPD_SIZE="$size" "$@" timeout 600 love . --visual "$scene" "$name.png" 120
+  run env SPPPD_SIZE="$size" "$@" timeout 600 "${LOVE:-bin/love12}" . --visual "$scene" "$name.png" 120
   ffmpeg -loglevel error -y -i "$save/$name.png" -q:v 3 "$out/$name.jpg"
   echo "$name.jpg"
 }

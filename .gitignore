@@ -20,3 +20,5 @@ kit/
 
 # A go build in server/ writes the relay here.
 server/server
+# LÖVE 12 builds fetched by bin/love12.
+love-binaries/

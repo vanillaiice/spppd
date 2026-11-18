@@ -1,7 +1,7 @@
 -- Freestyle's playground: what stands on the concrete apron. Data only, in world
 -- px: src/world builds the bodies and track_renderer.loadApron draws them.
 -- The car starts at 0,0 facing north (-y). Past this the apron goes on empty.
-local config = require("src/config")
+local config = require("src.config")
 
 local M = config.METER
 

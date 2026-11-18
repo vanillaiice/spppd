@@ -7,19 +7,31 @@ end
 
 function love.conf(t)
   t.identity = "spppd"
-  t.version = "11.5"
+  -- Made for LÖVE 12, and still runs on 11 (src/compat.lua), which the browser
+  -- build is. Naming the other would make 11 stop at a warning box.
+  local v12 = (love._version_major or 11) >= 12
+  t.version = v12 and "12.0" or love._version
   t.window.title = "SPPPD"
   t.window.width = 1280
   t.window.height = 720
   t.window.minwidth = 640
   t.window.minheight = 480
   t.window.resizable = true
-  t.window.highdpi = true
+  -- 12 moved highdpi out of the window table.
+  if v12 then
+    t.highdpi = true
+  else
+    t.window.highdpi = true
+  end
+  -- OpenGL (GLES on phones), as on 11, or Metal on a Mac. 12 would rather have
+  -- Vulkan, which the game isn't tried on, and which hangs at start where it
+  -- can't show a picture.
+  if v12 then t.graphics.excluderenderers = { "vulkan" } end
   t.window.vsync = 1
   t.window.msaa = 0
   t.modules.video = false
-  -- Without this a phone's tilt sensor shows up as a joystick.
-  t.accelerometerjoystick = false
+  -- Without this a phone's tilt sensor shows up as a joystick. 12 leaves it off.
+  if not v12 then t.accelerometerjoystick = false end
   -- SPPPD_SIZE=576x1024 opens a fixed window of that size, e.g. portrait for Shorts.
   local w, h = (os.getenv("SPPPD_SIZE") or ""):match("^(%d+)x(%d+)$")
   if w then

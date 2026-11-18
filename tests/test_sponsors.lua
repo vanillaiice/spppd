@@ -1,9 +1,9 @@
-local h = require("tests/harness")
-local Track = require("src/sim/track")
-local config = require("src/config")
-local catalog = require("src/tracks/catalog")
-local sponsors = require("src/sponsors")
-local renderer = require("src/render/track_renderer")
+local h = require("tests.harness")
+local Track = require("src.sim.track")
+local config = require("src.config")
+local catalog = require("src.tracks.catalog")
+local sponsors = require("src.sponsors")
+local renderer = require("src.render.track_renderer")
 
 local M = config.METER
 

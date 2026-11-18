@@ -1,7 +1,7 @@
 -- The race setup's car stats.
-local h = require("tests/harness")
-local garage = require("src/entities/garage")
-local stats = require("src/sim/car_stats")
+local h = require("tests.harness")
+local garage = require("src.entities.garage")
+local stats = require("src.sim.car_stats")
 
 h.describe("car stats", function()
   h.it("ship for every car, and match how each car drives now (else run make car-stats)", function()

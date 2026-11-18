@@ -1,14 +1,14 @@
-local h = require("tests/harness")
-local settings = require("src/settings")
-local input = require("src/input")
-local catalog = require("src/tracks/catalog")
-local Track = require("src/sim/track")
-local audio = require("src/audio")
-local radio = require("src/radio")
+local h = require("tests.harness")
+local settings = require("src.settings")
+local input = require("src.input")
+local catalog = require("src.tracks.catalog")
+local Track = require("src.sim.track")
+local audio = require("src.audio")
+local radio = require("src.radio")
 
 h.describe("version", function()
   h.it("the Android version code follows the version", function()
-    local config = require("src/config")
+    local config = require("src.config")
     local major, minor, patch = config.VERSION:match("^(%d+)%.(%d+)%.(%d+)$")
     h.assertTrue(major ~= nil, "VERSION is not major.minor.patch: " .. config.VERSION)
     h.assertEq(config.VERSION_CODE, major * 10000 + minor * 100 + patch, "VERSION_CODE")
@@ -17,7 +17,7 @@ end)
 
 h.describe("environment", function()
   h.it("every theme gives the shaders what they need", function()
-    local environment = require("src/render/environment")
+    local environment = require("src.render.environment")
     for name, theme in pairs(environment.THEMES) do
       for _, field in ipairs({ "groundA", "groundB", "road", "gravel", "dust", "barrierA", "barrierB" }) do
         h.assertTrue(type(theme[field]) == "table", name .. " is missing " .. field)
@@ -32,8 +32,8 @@ end)
 
 h.describe("car sprites", function()
   h.it("every car's shapes can be filled and fit on its sprite", function()
-    local sprites = require("src/render/car_sprites")
-    for _, spec in ipairs(require("src/entities/garage")) do
+    local sprites = require("src.render.car_sprites")
+    for _, spec in ipairs(require("src.entities.garage")) do
       local polygons, halfWidth, halfHeight = sprites.polygons(spec)
       for i, coords in ipairs(polygons) do
         local label = spec.id .. " polygon " .. i
@@ -291,7 +291,7 @@ h.describe("catalog", function()
   end)
 
   h.it("builds a saved track's preview once, and again when it's changed", function()
-    local menu = require("src/menu")
+    local menu = require("src.menu")
     local new, builds = Track.new, 0
     Track.new = function(def)
       builds = builds + 1
@@ -311,9 +311,9 @@ h.describe("catalog", function()
 end)
 
 h.describe("midnight", function()
-  local environment = require("src/render/environment")
-  local renderer = require("src/render/track_renderer")
-  local config = require("src/config")
+  local environment = require("src.render.environment")
+  local renderer = require("src.render.track_renderer")
+  local config = require("src.config")
   local midnight, night = environment.time("midnight"), environment.time("night")
 
   h.it("is much darker than floodlit night, but not black", function()
@@ -334,7 +334,7 @@ h.describe("midnight", function()
   end)
 
   h.it("studs run down both edges of the road, on the road", function()
-    local Track = require("src/sim/track")
+    local Track = require("src.sim.track")
     local track = Track.new(catalog.find("mirage").def)
     local spots = renderer.studSpots(track)
     h.assertTrue(#spots > 100, "a whole lap of them")
@@ -356,7 +356,7 @@ h.describe("audio", function()
     return peak
   end
 
-  local garage = require("src/entities/garage")
+  local garage = require("src.entities.garage")
 
   -- The engines the garage uses, one of each.
   local function voices()
@@ -702,8 +702,8 @@ h.describe("audio", function()
   end)
 
   h.it("boost drives what each car already has", function()
-    local audio = require("src/audio")
-    local garage = require("src/entities/garage")
+    local audio = require("src.audio")
+    local garage = require("src.entities.garage")
     local kinds = {}
     for _, spec in ipairs(garage) do kinds[spec.id] = audio.boostKind(spec) end
     h.assertEq(kinds.hot_hatch, "turbo")
@@ -720,8 +720,8 @@ h.describe("audio", function()
   end)
 
   h.it("boost lifts a car's own sound, and more turbos lift it further", function()
-    local audio = require("src/audio")
-    local function spec(id) return require("src/entities/garage").byId(id) end
+    local audio = require("src.audio")
+    local function spec(id) return require("src.entities.garage").byId(id) end
     local function lift(id, part)
       local before = audio.engineMix(spec(id), 0.9, 1, 1)[part]
       local during = audio.engineMix(spec(id), 0.9, 1, 1, 1)[part]
@@ -739,8 +739,8 @@ h.describe("audio", function()
   end)
 
   h.it("a turbo car gets a layer above the exhaust on boost, bigger with more turbos", function()
-    local audio = require("src/audio")
-    local garage = require("src/entities/garage")
+    local audio = require("src.audio")
+    local garage = require("src.entities.garage")
     local function layer(id, boost) return audio.engineMix(garage.byId(id), 0.9, 1, 1, boost).turboBoost end
     h.assertEq(layer("rocket", 0), 0, "silent without boost")
     h.assertTrue(layer("hot_hatch", 1) < layer("rocket", 1) and layer("rocket", 1) < layer("quad_turbo", 1), "more turbos are bigger")
@@ -760,7 +760,7 @@ h.describe("audio", function()
   end)
 
   h.it("boost eases in and out, and sags with the tank", function()
-    local audio = require("src/audio")
+    local audio = require("src.audio")
     h.assertNear(audio.boostStep(0, true, 1, 0.05), 0.5, 0.001, "a swell, not a step")
     h.assertNear(audio.boostStep(1, false, 1, 0.1), 0.7, 0.001, "and a sigh")
     local boost = 0
@@ -1043,7 +1043,7 @@ h.describe("audio", function()
 end)
 
 h.describe("sound cache", function()
-  local cache = require("src/sound_cache")
+  local cache = require("src.sound_cache")
   local FILES = { "src/audio.lua" }
 
   local function tone()
@@ -1119,7 +1119,7 @@ h.describe("sound cache", function()
   end)
 
   h.it("lists every sound once", function()
-    local audio = require("src/audio")
+    local audio = require("src.audio")
     local seen = {}
     for _, job in ipairs(audio.jobs()) do
       h.assertTrue(not seen[job.name], "twice: " .. job.name)
@@ -1132,7 +1132,7 @@ h.describe("sound cache", function()
   end)
 
   h.it("threads share a first launch and render what one would", function()
-    local audio = require("src/audio")
+    local audio = require("src.audio")
     empty()
     cache.open({ "src/audio.lua", "src/lib/sfxr.lua" })
     h.assertEq(audio.prerender(3), 3)
@@ -1156,7 +1156,7 @@ h.describe("sound cache", function()
 end)
 
 h.describe("menu music", function()
-  local music = require("src/music")
+  local music = require("src.music")
   local rendered = {}
   local function render(id)
     rendered[id] = rendered[id] or music.render(id)

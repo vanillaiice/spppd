@@ -3,6 +3,7 @@
 -- makes the sounds, so changing that code renders them afresh. A cache that can't
 -- be read or written only costs time: the sound is rendered as usual.
 local cache = {}
+local compat = require("src.compat")
 
 local ROOT = "soundcache"
 local COMPLETE = "complete"  -- written last, so an interrupted first launch doesn't count
@@ -26,7 +27,7 @@ end
 cache.clear = clear  -- src/music.lua keeps a folder of its own
 
 function cache.key(sources)
-  return love.data.encode("string", "hex", love.data.hash("md5", table.concat(sources, "\0")))
+  return love.data.encode("string", "hex", compat.hash("md5", table.concat(sources, "\0")))
 end
 
 -- files: the source files that decide what the sounds are.

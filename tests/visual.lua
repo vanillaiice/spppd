@@ -1,12 +1,12 @@
 -- Scripted screenshots for checking the look: `love . --visual <scene> <out>`.
-local state = require("src/state")
-local rm = require("src/race_manager")
-local menu = require("src/menu")
-local catalog = require("src/tracks/catalog")
-local garage = require("src/entities/garage")
-local settings = require("src/settings")
-local input = require("src/input")
-local ui = require("src/ui")
+local state = require("src.state")
+local rm = require("src.race_manager")
+local menu = require("src.menu")
+local catalog = require("src.tracks.catalog")
+local garage = require("src.entities.garage")
+local settings = require("src.settings")
+local input = require("src.input")
+local ui = require("src.ui")
 
 local visual = {}
 
@@ -20,7 +20,7 @@ local function race(opts)
 end
 
 local function autopilot()
-  local AI = require("src/ai_controller")
+  local AI = require("src.ai_controller")
   local r = rm.race()
   r.player.driver = AI.new(r.track, r.player, { skill = 0.92 })
 end
@@ -39,7 +39,7 @@ local function phone()
   settings.gearbox = os.getenv("SPPPD_GEARBOX") or "auto"
   settings.touchSize = os.getenv("SPPPD_TOUCHSIZE") or "medium"
   settings.touchOpacity = tonumber(os.getenv("SPPPD_OPACITY")) or 1
-  require("src/touch").active = true
+  require("src.touch").active = true
 end
 
 -- Two at one screen, both on autopilot, with a pretend pad for the second:
@@ -56,7 +56,7 @@ local function split()
     readers = { input.reader(true, nil), input.reader(false, pad) },
   })
   state.screen = "race"
-  local AI = require("src/ai_controller")
+  local AI = require("src.ai_controller")
   local r = rm.race()
   for i, car in ipairs(r.players) do
     if mode == "race" then
@@ -88,7 +88,7 @@ end
 -- (the fullest it gets). Nothing is sent: the driver is written straight to a file
 -- of the scene's own.
 local function profile(signedIn)
-  local account = require("src/account")
+  local account = require("src.account")
   account.FILE = "visual-account.lua"
   love.filesystem.remove(account.FILE)
   if signedIn then
@@ -104,12 +104,50 @@ local function profile(signedIn)
   menu.go("profile")
 end
 
+-- TRACKS ONLINE with a list in it: the built-ins as if sent in (so they show
+-- GOT), and more of them renamed (GET), enough to scroll. Nothing is fetched.
+local function tracksOnline()
+  local online = require("src.tracks.online")
+  local Track = require("src.sim.track")
+  local list = {}
+  for round = 1, 3 do
+    for _, entry in ipairs(catalog.builtin()) do
+      local track = Track.new(entry.def)
+      local minX, minY, maxX, maxY = math.huge, math.huge, -math.huge, -math.huge
+      for _, p in ipairs(track.samples) do
+        minX, minY = math.min(minX, p.x), math.min(minY, p.y)
+        maxX, maxY = math.max(maxX, p.x), math.max(maxY, p.y)
+      end
+      local span = math.max(maxX - minX, maxY - minY)
+      local outline = {}
+      for i = 1, #track.samples, math.max(1, math.floor(#track.samples / 80)) do
+        local p = track.samples[i]
+        outline[#outline + 1] = { 50 + (p.x - (minX + maxX) / 2) / span * 100, 50 + (p.y - (minY + maxY) / 2) / span * 100 }
+      end
+      local _, hash = catalog.fingerprint(entry.def)
+      list[#list + 1] = {
+        id = #list + 1, title = round == 1 and entry.title or (entry.title .. " " .. round),
+        author = round == 1 and "SPPPD" or "XOROZ", theme = entry.def.theme, metres = math.floor(track.length / 12),
+        added = "2026-11-18", outline = outline, def = entry.def, hash = round == 1 and hash or ("x" .. #list),
+      }
+    end
+  end
+  online.tracks, online.status = list, "ready"
+  online.open = function() end
+  require("src.net_http").available = function() return true end
+  menu.enter()
+  menu.openTracks()
+  ui.focus.tracks = tonumber(os.getenv("SPPPD_FOCUS")) or 12
+end
+
 local SCENES = {
+  tracks = tracksOnline,
+  phonetracks = function() phone() tracksOnline() end,
   split = split,
   splitsetup = splitSetup,
   -- The finish with two: P1 home, P2 still out, then both and the results.
   splitfinish = split,
-  menu = function() state.screen = "splash" require("src/splash").timer = 99 end,
+  menu = function() state.screen = "splash" require("src.splash").timer = 99 end,
   setup = function() menu.enter() settings.mode = "race" menu.go("setup") end,
   newestcar = function() settings.car = #garage menu.enter() settings.mode = "race" menu.go("setup") end,
   -- Any one car's panel in race setup: SPPPD_CAR=cyber.
@@ -167,7 +205,7 @@ local SCENES = {
     race({ track = os.getenv("SPPPD_TRACK") or "mirage", time = os.getenv("SPPPD_TIME") or "day", opponents = 0 })
     local r = rm.race()
     r.startDelay = 100
-    local list = require("src/render/track_renderer").boardSpots(r.track)
+    local list = require("src.render.track_renderer").boardSpots(r.track)
     local b = list[math.min(#list, tonumber(os.getenv("SPPPD_BOARD")) or 1)]
     local i = r.track:locate(b.x, b.y)
     local s = r.track.samples[i]
@@ -186,7 +224,7 @@ local SCENES = {
   -- blocks or start, and SPPPD_TIME for the time of day.
   lot = function()
     race({ time = os.getenv("SPPPD_TIME") or "day", mode = "freestyle", opponents = 0 })
-    local M = require("src/config").METER
+    local M = require("src.config").METER
     local spots = {
       start = { 0, 0, -math.pi / 2 }, donut = { -12, -72, -math.pi / 4 }, slalom = { 60, -40, -math.pi / 2 },
       wall = { -66, 10, -math.pi / 2 }, blocks = { 0, 105, math.pi / 2 },
@@ -198,19 +236,19 @@ local SCENES = {
     r.player.driver = { update = function(_, c) c.input.throttle, c.input.handbrake = 0, true end }
   end,
   editor = function()
-    local em = require("src/editor_model")
+    local em = require("src.editor_model")
     local doc = em.fromEntry(catalog.find("highlands"))
-    require("src/editor").open(doc)
+    require("src.editor").open(doc)
     state.screen = "editor"
   end,
   -- The editor's IMPORT dialog, with a file in the shared folder.
   editorimport = function()
-    local em = require("src/editor_model")
+    local em = require("src.editor_model")
     local doc = em.fromEntry(catalog.find("highlands"))
     love.filesystem.createDirectory("shared")
-    love.filesystem.write("shared/highlands.spppd", require("src/tracks/share").text(em.definition(doc)))
-    require("src/editor").open(doc)
-    require("src/editor").openImport()
+    love.filesystem.write("shared/highlands.spppd", require("src.tracks.share").text(em.definition(doc)))
+    require("src.editor").open(doc)
+    require("src.editor").openImport()
     state.screen = "editor"
   end,
   boost = function()
@@ -228,8 +266,8 @@ local SCENES = {
   slipstream = function()
     race({ time = "day", mode = "freestyle", opponents = 0 })
     local r = rm.race()
-    local M = require("src/config").METER
-    local rival = require("src/entities/car").new(garage[1], 0, -12 * M, -math.pi / 2, { name = "RIVAL" })
+    local M = require("src.config").METER
+    local rival = require("src.entities.car").new(garage[1], 0, -12 * M, -math.pi / 2, { name = "RIVAL" })
     r.cars[2] = rival
     r:initProgress(rival)
     for _, car in ipairs(r.cars) do
@@ -240,7 +278,7 @@ local SCENES = {
     phone()
     race({ track = "mirage", time = "day" })
     autopilot()
-    local touch = require("src/touch")
+    local touch = require("src.touch")
     local sw, sh = love.graphics.getDimensions()
     local layout = touch.layout(sw, sh)
     touch.pressed(1, 150, sh * 0.7, sw, sh)
@@ -252,7 +290,7 @@ local SCENES = {
     settings.autoGas = os.getenv("SPPPD_AUTOGAS") ~= "off"
     race({ track = "mirage", time = "day" })
     autopilot()
-    local touch = require("src/touch")
+    local touch = require("src.touch")
     local sw, sh = love.graphics.getDimensions()
     touch.pressed(1, 40, sh - 40, sw, sh)
   end,

@@ -1,4 +1,12 @@
 # The F-Droid build recipe, as sent to fdroiddata (metadata/xyz.spppd.yml).
+# The Builds entry below is the last one sent (3.2.2, LÖVE 11.5). Builds from LÖVE 12
+# on need these instead, as love-android's layout changed:
+#   rm: (none; LÖVE 12's megasource ships no prebuilt mpg123 or Xcode folders)
+#   scandelete:
+#     - android/love-android/app/src/main/cpp/megasource/libs/LuaJIT/android
+#     - android/love-android/app/src/main/cpp/megasource/libs/SDL2/android-project/gradle
+#     - android/love-android/app/src/main/cpp/megasource/libs/SDL3/android-project/gradle
+#   build: ../../luajit.sh $$NDK$$  (unchanged: it rebuilds the LuaJIT above)
 # F-Droid builds each new v* tag from source with it, so a release needs only
 # VERSION and VERSION_CODE bumped together in src/config.lua, and a changelog in
 # fastlane/metadata/android/en-US/changelogs/<VERSION_CODE>.txt. F-Droid's copy is

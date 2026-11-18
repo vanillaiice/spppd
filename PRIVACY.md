@@ -53,6 +53,10 @@ Tracks sent in on [spppd.xyz/tracks](https://spppd.xyz/tracks/) go to the same s
 | Your IP address | To stop one address sending more than 5 tracks an hour | In memory only, never on disk, for an hour. A restart forgets it |
 | Which admin approved or hid it, and when | To run the page | As long as the track |
 
+The game's TRACKS ONLINE screen reads the same list the page shows, from
+spppd.xyz over HTTPS (or from the server you set in SETTINGS), only when you open it. It sends nothing but the game's version;
+the proxy logs the request like any page.
+
 A line on the admin dashboard and in the log says a track came in, with its title and
 name, but no IP address or email. The proxy in front of the website logs the request, as it does
 every page (see below).

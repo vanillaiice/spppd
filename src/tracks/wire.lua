@@ -2,7 +2,7 @@
 -- is fine for your own but can't be run from a stranger: setfenv doesn't stop a
 -- loop that never ends, and LuaJIT loads bytecode. So this is data, and `decode`
 -- refuses anything outside the limits before it can reach Track.new. Pure Lua.
-local config = require("src/config")
+local config = require("src.config")
 
 local wire = {}
 

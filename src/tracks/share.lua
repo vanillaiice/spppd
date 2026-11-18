@@ -2,7 +2,7 @@
 -- (src/tracks/wire.lua), or as a code, one line of that text deflated and base64'd,
 -- for the clipboard. Importing goes through wire.decode, so a code from a stranger is
 -- held to the same limits as a track from another player online.
-local wire = require("src/tracks/wire")
+local wire = require("src.tracks.wire")
 
 local share = {}
 

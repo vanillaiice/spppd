@@ -1,7 +1,8 @@
 -- A car in the world: a Box2D chassis driven by the tyre model.
-local config = require("src/config")
-local dynamics = require("src/sim/dynamics")
-local world = require("src/world")
+local config = require("src.config")
+local dynamics = require("src.sim.dynamics")
+local world = require("src.world")
+local compat = require("src.compat")
 
 local Car = {}
 Car.__index = Car
@@ -14,11 +15,10 @@ local function fit(self, spec)
   self.length, self.width = length, width
   -- Chamfered corners stop cars snagging on each other.
   local hl, hw, ch = length / 2, width / 2, width * 0.2
-  local shape = love.physics.newPolygonShape(
+  self.fixture = compat.attach(self.body, 1, "Polygon",
     hl, -hw + ch, hl - ch, -hw, -hl + ch, -hw, -hl, -hw + ch,
     -hl, hw - ch, -hl + ch, hw, hl - ch, hw, hl, hw - ch
   )
-  self.fixture = love.physics.newFixture(self.body, shape, 1)
   self.fixture:setFriction(0.25)
   self.fixture:setRestitution(0.15)
   self.fixture:setCategory(world.CATEGORY_CAR)

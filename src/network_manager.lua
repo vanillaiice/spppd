@@ -14,10 +14,11 @@
 -- The browser build has no sockets, and no online play.
 local hasSocket, socket = pcall(require, "socket")
 if not hasSocket then socket = nil end
-local config = require("src/config")
-local catalog = require("src/tracks/catalog")
-local wire = require("src/tracks/wire")
-local account = require("src/account")
+local config = require("src.config")
+local compat = require("src.compat")
+local catalog = require("src.tracks.catalog")
+local wire = require("src.tracks.wire")
+local account = require("src.account")
 
 local network = {
   status = "idle",  -- idle | connecting | lobby | loading | racing | error
@@ -820,7 +821,7 @@ local function onChunk(rest)
 
   network.download = nil
   local text = table.concat(download.parts)
-  local digest = love.data.encode("string", "hex", love.data.hash("md5", text)):sub(1, 16)
+  local digest = love.data.encode("string", "hex", compat.hash("md5", text)):sub(1, 16)
   local def = digest == hash and wire.decode(text)
   if not def then
     network.fail("The host's track didn't arrive in one piece")

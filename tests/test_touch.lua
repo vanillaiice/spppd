@@ -1,8 +1,8 @@
-local h = require("tests/harness")
-local touch = require("src/touch")
-local input = require("src/input")
-local settings = require("src/settings")
-local ui = require("src/ui")
+local h = require("tests.harness")
+local touch = require("src.touch")
+local input = require("src.input")
+local settings = require("src.settings")
+local ui = require("src.ui")
 
 local SW, SH = 1280, 720
 -- The middle of the stick's box, set by fresh().
@@ -61,7 +61,7 @@ h.describe("touch", function()
   end)
 
   h.it("a phone's main menu is big enough for a thumb", function()
-    local menu = require("src/menu")
+    local menu = require("src.menu")
     local mobile = ui.mobile
     ui.mobile = true
     -- What LÖVE reports on a 1600x720 phone, in its density-independent units.
@@ -138,8 +138,8 @@ h.describe("touch", function()
   end)
 
   h.it("steering feel winds the arrows on slower or faster, and leaves keys alone", function()
-    local dynamics = require("src/sim/dynamics")
-    local garage = require("src/entities/garage")
+    local dynamics = require("src.sim.dynamics")
+    local garage = require("src.entities.garage")
     local function windOn(feel)
       fresh()
       settings.touchSteer = "buttons"
@@ -341,7 +341,7 @@ h.describe("touch", function()
   -- The minimap moves up under the top row for touch, and the race tower holds
   -- every car there can be offline.
   h.it("buttons stay off the minimap and the race tower", function()
-    local config = require("src/config")
+    local config = require("src.config")
     eachLayout(function(layout, sw, _, name)
       local s = layout.s
       local towerH = 11 * s * (config.OPPONENTS_MAX + 2)

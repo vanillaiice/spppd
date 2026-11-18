@@ -4,8 +4,8 @@
 -- Measuring the garage takes about half a second with the JIT off, as it is on a
 -- phone, so the numbers ship in car_stats_data.lua, written by `make car-stats`.
 -- A test measures again and fails when a car's tuning no longer matches them.
-local dynamics = require("src/sim/dynamics")
-local config = require("src/config")
+local dynamics = require("src.sim.dynamics")
+local config = require("src.config")
 
 local stats = {}
 
@@ -123,7 +123,7 @@ local function score(key, value)
   return math.max(0, math.min(1, (value - lo) / (hi - lo)))
 end
 
-local ok, shipped = pcall(require, "src/sim/car_stats_data")
+local ok, shipped = pcall(require, "src.sim.car_stats_data")
 stats.shipped = ok and type(shipped) == "table" and shipped or {}
 local cache = {}
 

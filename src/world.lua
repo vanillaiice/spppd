@@ -1,6 +1,7 @@
 -- The Box2D world: barriers, collision filtering and impact reporting.
 -- Tyres and engines live in src/sim/dynamics; Box2D only handles contact.
-local config = require("src/config")
+local config = require("src.config")
+local compat = require("src.compat")
 
 local M = config.METER
 local PROP_EVENT = 15  -- N s: a car brushing a cone barely counts
@@ -71,13 +72,21 @@ local function postSolve(a, b, contact, normal1, tangent1, normal2, tangent2)
   }
 end
 
-local function staticFixture(shape)
+local function barrierBody()
   local body = love.physics.newBody(world.physics, 0, 0, "static")
-  local fixture = love.physics.newFixture(body, shape)
+  world.barriers[#world.barriers + 1] = body
+  return body
+end
+
+local function asBarrier(fixture)
   fixture:setFriction(0.15)
   fixture:setRestitution(0.2)
   fixture:setCategory(world.CATEGORY_BARRIER)
-  world.barriers[#world.barriers + 1] = body
+end
+
+local function staticFixture(kind, ...)
+  local body = barrierBody()
+  asBarrier(compat.attach(body, nil, kind, ...))
   return body
 end
 
@@ -92,23 +101,23 @@ local function addBarrier(points, open)
       last = p
     end
   end
-  staticFixture(love.physics.newChainShape(not open, coords))
+  for _, fixture in ipairs(compat.attachChain(barrierBody(), not open, coords)) do asBarrier(fixture) end
 end
 
 -- Freestyle's playground. Returns the cones, which a race puts back in place.
 function world.addLot(layout, coneRadius, coneMass)
   addBarrier(layout.wall, true)
   for _, b in ipairs(layout.blocks) do
-    staticFixture(love.physics.newPolygonShape(b.x, b.y, b.x + b.w, b.y, b.x + b.w, b.y + b.h, b.x, b.y + b.h))
+    staticFixture("Polygon", b.x, b.y, b.x + b.w, b.y, b.x + b.w, b.y + b.h, b.x, b.y + b.h)
   end
   for _, p in ipairs(layout.pillars) do
-    local body = staticFixture(love.physics.newCircleShape(p.r))
+    local body = staticFixture("Circle", p.r)
     body:setPosition(p.x, p.y)
   end
   local cones = {}
   for _, c in ipairs(layout.cones) do
     local body = love.physics.newBody(world.physics, c.x, c.y, "dynamic")
-    local fixture = love.physics.newFixture(body, love.physics.newCircleShape(coneRadius), 1)
+    local fixture = compat.attach(body, 1, "Circle", coneRadius)
     fixture:setFriction(0.4)
     fixture:setRestitution(0.3)
     fixture:setCategory(world.CATEGORY_PROP)

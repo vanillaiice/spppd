@@ -1,10 +1,10 @@
-local h = require("tests/harness")
-local Race = require("src/sim/race")
-local Car = require("src/entities/car")
-local dynamics = require("src/sim/dynamics")
-local slipstream = require("src/sim/slipstream")
-local garage = require("src/entities/garage")
-local config = require("src/config")
+local h = require("tests.harness")
+local Race = require("src.sim.race")
+local Car = require("src.entities.car")
+local dynamics = require("src.sim.dynamics")
+local slipstream = require("src.sim.slipstream")
+local garage = require("src.entities.garage")
+local config = require("src.config")
 
 local DT = config.PHYSICS_DT
 local M = config.METER
@@ -164,9 +164,9 @@ h.describe("slipstream", function()
 end)
 
 h.describe("slipstream traffic", function()
-  local Track = require("src/sim/track")
-  local AI = require("src/ai_controller")
-  local catalog = require("src/tracks/catalog")
+  local Track = require("src.sim.track")
+  local AI = require("src.ai_controller")
+  local catalog = require("src.tracks.catalog")
 
   for _, entry in ipairs(catalog.builtin()) do
     h.it("a full grid races cleanly on " .. entry.name, function()

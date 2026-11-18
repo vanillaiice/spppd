@@ -1,7 +1,7 @@
 -- Slipstream: a car punches a hole in the air, and a car following it through
 -- that hole has less drag to fight. This works out how far into a wake each
 -- car is; the tyre model turns that into speed.
-local config = require("src/config")
+local config = require("src.config")
 
 local slipstream = {}
 

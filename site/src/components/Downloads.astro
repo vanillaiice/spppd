@@ -14,14 +14,18 @@ const { files, version, date } = Astro.props;
 
 const about: Record<Download['id'], { name: string; how: string }> = {
   win64: { name: 'Windows, 64-bit', how: 'Unzip it anywhere, then run spppd.exe.' },
-  win32: { name: 'Windows, 32-bit', how: 'For older PCs. Unzip it anywhere, then run spppd.exe.' },
+  linux: { name: 'Linux', how: 'Make the file executable (chmod +x, or Properties, Allow executing), then run it.' },
+  macos: {
+    name: 'macOS',
+    how: 'Unzip it and move SPPPD to Applications. The first time, right-click it and pick Open: it isn\'t signed with Apple.',
+  },
   apk: {
     name: 'Android',
     how: 'Open the file on your phone. Android asks you to allow installs from your browser the first time.',
   },
   love: {
-    name: 'Linux, macOS and others',
-    how: 'Needs LÖVE 11.5 from love2d.org. Open the file with it.',
+    name: 'The game file, for LÖVE',
+    how: 'For other systems: open it with LÖVE 12, or with LÖVE 11.5 without TRACKS ONLINE.',
   },
 };
 ---

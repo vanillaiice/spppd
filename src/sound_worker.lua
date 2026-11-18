@@ -8,8 +8,8 @@ require("love.math")
 require("love.timer")
 
 local folder, queue, done = ...
-local cache = require("src/sound_cache")
-local audio = require("src/audio")
+local cache = require("src.sound_cache")
+local audio = require("src.audio")
 local unpack = unpack or table.unpack
 
 cache.folder, cache.complete = folder, false

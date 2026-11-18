@@ -1,6 +1,6 @@
-local h = require("tests/harness")
-local account = require("src/account")
-local settings = require("src/settings")
+local h = require("tests.harness")
+local account = require("src.account")
+local settings = require("src.settings")
 local socket = require("socket")
 
 local KEY = string.char(0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15)
@@ -59,7 +59,7 @@ h.describe("account", function()
   end)
 
   h.it("a copied recovery code fills the field on the other device", function()
-    local menu, ui = require("src/menu"), require("src/ui")
+    local menu, ui = require("src.menu"), require("src.ui")
     local get, set = love.system.getClipboardText, love.system.setClipboardText
     local clipboard = ""
     love.system.getClipboardText = function() return clipboard end
@@ -149,7 +149,7 @@ end)
 -- sign-ups an hour from one address, so these make two.
 h.describe("network drivers", function()
   local function relay()
-    local host, port = require("tests/relay").address()
+    local host, port = require("tests.relay").address()
     if not host then
       print("        skipped: " .. port)
       return nil
@@ -232,7 +232,7 @@ h.describe("network drivers", function()
       local a = love.filesystem.load("src/network_manager.lua")()
       local code = "D" .. love.math.random(1000, 9999)
       a.connect(host, port, "host", code, { car = "rocket", paint = 1 },
-        { def = require("src/tracks/catalog").builtin()[1].def, title = "T", laps = 1, time = "day" })
+        { def = require("src.tracks.catalog").builtin()[1].def, title = "T", laps = 1, time = "day" })
       -- The joiner has no driver: the account module is shared, so it signs out first.
       local deadline = socket.gettime() + 3
       while a.status ~= "lobby" and socket.gettime() < deadline do
@@ -268,11 +268,11 @@ h.describe("bit fallback", function()
   h.it("does what LuaJIT's bit does, for the numbers the game gives it", function()
     local real = require("bit")
     -- Load src/lib/bit as the browser does, with no `bit` to find.
-    package.loaded["src/lib/bit"], package.loaded.bit = nil, nil
+    package.loaded["src.lib.bit"], package.loaded.bit = nil, nil
     local preload = package.preload.bit
     package.preload.bit = function() error("no bit here") end
-    local ok, fallback = pcall(require, "src/lib/bit")
-    package.preload.bit, package.loaded.bit, package.loaded["src/lib/bit"] = preload, real, nil
+    local ok, fallback = pcall(require, "src.lib.bit")
+    package.preload.bit, package.loaded.bit, package.loaded["src.lib.bit"] = preload, real, nil
     h.assertTrue(ok and fallback ~= real, "got the fallback")
     local function same(a, b) return a % 2 ^ 32 == b % 2 ^ 32 end
     local rng = love.math.newRandomGenerator(7)

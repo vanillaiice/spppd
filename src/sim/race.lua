@@ -1,14 +1,14 @@
 -- Race rules: grid, start lights, laps, standings and finishing. Steps at a
 -- fixed rate and draws nothing, so whole races can run headless in tests.
-local config = require("src/config")
-local Car = require("src/entities/car")
-local AI = require("src/ai_controller")
-local dynamics = require("src/sim/dynamics")
-local RemoteDriver = require("src/sim/remote_driver")
-local slipstream = require("src/sim/slipstream")
-local garage = require("src/entities/garage")
-local world = require("src/world")
-local lot = require("src/sim/lot")
+local config = require("src.config")
+local Car = require("src.entities.car")
+local AI = require("src.ai_controller")
+local dynamics = require("src.sim.dynamics")
+local RemoteDriver = require("src.sim.remote_driver")
+local slipstream = require("src.sim.slipstream")
+local garage = require("src.entities.garage")
+local world = require("src.world")
+local lot = require("src.sim.lot")
 
 local Race = {}
 Race.__index = Race

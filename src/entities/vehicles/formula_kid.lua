@@ -1,4 +1,4 @@
-local base = require("src/entities/vehicles/base")
+local base = require("src.entities.vehicles.base")
 
 -- A junior single-seater: a small turbo four, slicks and short gears. It keeps
 -- huge speed through the corners and runs out of puff on the straights.

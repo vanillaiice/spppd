@@ -11,8 +11,9 @@
 -- The browser build has no sockets, and no online play.
 local hasSocket, socket = pcall(require, "socket")
 if not hasSocket then socket = nil end
-local bit = require("src/lib/bit")
-local settings = require("src/settings")
+local bit = require("src.lib.bit")
+local settings = require("src.settings")
+local compat = require("src.compat")
 
 local account = {
   FILE = "account.lua",
@@ -92,7 +93,7 @@ end
 -- tests share a vector.
 function account.hmac(key, message)
   local block = 64
-  if #key > block then key = love.data.hash("sha256", key) end
+  if #key > block then key = compat.hash("sha256", key) end
   key = key .. string.rep("\0", block - #key)
   local inner, outer = {}, {}
   for i = 1, block do
@@ -100,8 +101,8 @@ function account.hmac(key, message)
     inner[i] = string.char(bit.bxor(b, 0x36))
     outer[i] = string.char(bit.bxor(b, 0x5c))
   end
-  local first = love.data.hash("sha256", table.concat(inner) .. message)
-  return love.data.hash("sha256", table.concat(outer) .. first)
+  local first = compat.hash("sha256", table.concat(inner) .. message)
+  return compat.hash("sha256", table.concat(outer) .. first)
 end
 
 function account.proofOf(key, message)
@@ -128,7 +129,7 @@ local function randomBytes(n)
   local seed = table.concat(parts, "|")
   local raw = ""
   while #raw < n do
-    seed = love.data.hash("sha256", seed .. #raw)
+    seed = compat.hash("sha256", seed .. #raw)
     raw = raw .. seed
   end
   return raw:sub(1, n)

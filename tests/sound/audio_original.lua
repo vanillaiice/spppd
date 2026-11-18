@@ -7,9 +7,9 @@
 -- Most of the rest is built with sfxr, an
 -- arcade effects synth, from the settings below. The sounds that have to feel
 -- mechanical (startup, gear change, blow-off) are modelled here instead.
-local sfxr = require("src/lib/sfxr")
-local cache = require("src/sound_cache")
-local garage = require("src/entities/garage")
+local sfxr = require("src.lib.sfxr")
+local cache = require("src.sound_cache")
+local garage = require("src.entities.garage")
 
 local audio = { ready = false, spool = 0 }
 local voices = {}  -- audio.voiceOf's results, by key

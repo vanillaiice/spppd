@@ -1,10 +1,10 @@
-local h = require("tests/harness")
-local network = require("src/network_manager")
-local wire = require("src/tracks/wire")
-local Race = require("src/sim/race")
-local Track = require("src/sim/track")
-local catalog = require("src/tracks/catalog")
-local garage = require("src/entities/garage")
+local h = require("tests.harness")
+local network = require("src.network_manager")
+local wire = require("src.tracks.wire")
+local Race = require("src.sim.race")
+local Track = require("src.sim.track")
+local catalog = require("src.tracks.catalog")
+local garage = require("src.entities.garage")
 local socket = require("socket")
 
 -- Independent clients for the live relay tests.
@@ -13,7 +13,7 @@ local function freshClient()
 end
 
 local function relayAddress()
-  local host, port = require("tests/relay").address()
+  local host, port = require("tests.relay").address()
   if not host then
     print("        skipped: " .. port)
     return nil
@@ -309,7 +309,7 @@ h.describe("network", function()
   end)
 
   h.it("hosting always makes a new room code, and joining uses the one entered", function()
-    local menu = require("src/menu")
+    local menu = require("src.menu")
     local connect = network.connect
     local sent
     network.connect = function(_, _, role, code, me, race) sent = { role = role, code = code, me = me, race = race } end
@@ -318,7 +318,7 @@ h.describe("network", function()
     h.assertEq(sent.role, "host")
     h.assertEq(#sent.code, 6)
     h.assertTrue(sent.code ~= "OLD123", "a stale code was reused")
-    h.assertEq(sent.race.def, catalog.find(require("src/settings").track).def)
+    h.assertEq(sent.race.def, catalog.find(require("src.settings").track).def)
     network.roomCode = "FRIEND"
     menu.connect("join")
     h.assertEq(sent.code, "FRIEND")
@@ -328,7 +328,7 @@ h.describe("network", function()
   end)
 
   h.it("only the host sets the race, and everyone picks a car", function()
-    local menu = require("src/menu")
+    local menu = require("src.menu")
     local function labels(rows)
       local found = {}
       for _, row in ipairs(rows) do found[row.label] = row end
@@ -362,7 +362,7 @@ h.describe("network", function()
   end)
 
   h.it("quick match is one press, with the handling and gearbox that count online", function()
-    local menu = require("src/menu")
+    local menu = require("src.menu")
     local function labels(rows)
       local found = {}
       for _, row in ipairs(rows) do found[row.label] = row end
@@ -402,16 +402,16 @@ h.describe("network", function()
   end)
 
   h.it("warns players about what online can't do", function()
-    local notes = table.concat(require("src/menu").ONLINE_NOTES, " ")
+    local notes = table.concat(require("src.menu").ONLINE_NOTES, " ")
     for _, word in ipairs({ "new", "way back in", "cheat", "connection", "same version", "IP address", "own handling" }) do
       h.assertTrue(notes:find(word, 1, true), "the notes should mention " .. word)
     end
   end)
 
   h.it("online doesn't touch the player's saved race", function()
-    local menu = require("src/menu")
-    local settings = require("src/settings")
-    local rm = require("src/race_manager")
+    local menu = require("src.menu")
+    local settings = require("src.settings")
+    local rm = require("src.race_manager")
     local before = { settings.track, settings.laps, settings.time, settings.mode }
     local start, raceConfig, loaded = rm.start, network.raceConfig, network.raceLoaded
     local got
@@ -435,7 +435,7 @@ h.describe("network", function()
   end)
 
   h.it("a track that won't build reports it rather than throwing", function()
-    local menu = require("src/menu")
+    local menu = require("src.menu")
     local raceConfig = network.raceConfig
     local message
     local fail = network.fail

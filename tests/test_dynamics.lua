@@ -1,7 +1,7 @@
-local h = require("tests/harness")
-local dynamics = require("src/sim/dynamics")
-local garage = require("src/entities/garage")
-local config = require("src/config")
+local h = require("tests.harness")
+local dynamics = require("src.sim.dynamics")
+local garage = require("src.entities.garage")
+local config = require("src.config")
 
 local DT = config.PHYSICS_DT
 local G = config.GRAVITY
@@ -508,7 +508,7 @@ h.describe("dynamics", function()
   end)
 
   h.it("rear-drive car with no assists breaks traction; assists stop it", function()
-    local spec = require("src/entities/vehicles/muscle_monster")
+    local spec = require("src.entities.vehicles.muscle_monster")
     local raw = sim(spec, "sim")
     local tamed = sim(spec, "full")
     raw.vx, tamed.vx = 12, 12

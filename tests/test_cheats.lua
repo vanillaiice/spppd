@@ -1,7 +1,7 @@
-local h = require("tests/harness")
-local cheats = require("src/cheats")
-local settings = require("src/settings")
-local audio = require("src/audio")
+local h = require("tests.harness")
+local cheats = require("src.cheats")
+local settings = require("src.settings")
+local audio = require("src.audio")
 
 local function typeWord(word)
   local effect
@@ -112,7 +112,7 @@ h.describe("cheats", function()
   end)
 
   h.it("other drivers learn about the cheats, and older games ignore it", function()
-    local network = require("src/network_manager")
+    local network = require("src.network_manager")
     local packet = network.packLook({ round = 4, neon = true, tune = false, flames = 2, flameLeft = 2.5 })
     local look = network.unpackLook(packet)
     h.assertEq(look.round, 4)

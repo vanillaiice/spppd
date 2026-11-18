@@ -2,27 +2,27 @@
 -- real circuit and prints one PERF line. GPU work doesn't show in these timers: it
 -- appears as waiting in present, and as frames taking longer than the vsync. Any
 -- touch during a case adds the time from reaching the game to leaving for the screen.
-local state = require("src/state")
-local rm = require("src/race_manager")
-local catalog = require("src/tracks/catalog")
-local garage = require("src/entities/garage")
-local settings = require("src/settings")
-local AI = require("src/ai_controller")
-local hud = require("src/hud")
-local post = require("src/render/post")
-local renderer = require("src/render/track_renderer")
-local vfx = require("src/vfx_manager")
-local input = require("src/input")
-local ui = require("src/ui")
-local touch = require("src/touch")
-local minimap = require("src/minimap")
-local Race = require("src/sim/race")
-local Car = require("src/entities/car")
-local world = require("src/world")
-local dynamics = require("src/sim/dynamics")
-local slipstream = require("src/sim/slipstream")
-local audio = require("src/audio")
-local car_view = require("src/render/car_view")
+local state = require("src.state")
+local rm = require("src.race_manager")
+local catalog = require("src.tracks.catalog")
+local garage = require("src.entities.garage")
+local settings = require("src.settings")
+local AI = require("src.ai_controller")
+local hud = require("src.hud")
+local post = require("src.render.post")
+local renderer = require("src.render.track_renderer")
+local vfx = require("src.vfx_manager")
+local input = require("src.input")
+local ui = require("src.ui")
+local touch = require("src.touch")
+local minimap = require("src.minimap")
+local Race = require("src.sim.race")
+local Car = require("src.entities.car")
+local world = require("src.world")
+local dynamics = require("src.sim.dynamics")
+local slipstream = require("src.sim.slipstream")
+local audio = require("src.audio")
+local car_view = require("src.render.car_view")
 
 local perf = {}
 
@@ -175,7 +175,7 @@ function perf.start()
     state.screen = "race"
     local race = rm.race()
     if case.lot then
-      local M = require("src/config").METER
+      local M = require("src.config").METER
       race.player:teleport(40 * M, -50 * M, -math.pi / 2)
       race.player.driver = { update = function(_, c) c.input.throttle, c.input.steer = 0.75, 0.3 end }
     else

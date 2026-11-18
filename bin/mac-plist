@@ -1,0 +1,22 @@
+#!/usr/bin/env python3
+"""Turns LÖVE's macOS app into SPPPD's: its name, id and version, and no claim to
+open .love files (that's for LÖVE itself). Run by make macos.
+
+    bin/mac-plist path/to/Info.plist VERSION
+"""
+import plistlib
+import sys
+
+path, version = sys.argv[1], sys.argv[2]
+with open(path, "rb") as f:
+    info = plistlib.load(f)
+info["CFBundleName"] = "SPPPD"
+info["CFBundleDisplayName"] = "SPPPD"
+info["CFBundleIdentifier"] = "xyz.spppd"
+info["CFBundleShortVersionString"] = version
+info["CFBundleVersion"] = version
+info["NSHumanReadableCopyright"] = "SPPPD, GPLv3. Made with LÖVE."
+info.pop("CFBundleDocumentTypes", None)
+info.pop("UTExportedTypeDeclarations", None)
+with open(path, "wb") as f:
+    plistlib.dump(info, f)

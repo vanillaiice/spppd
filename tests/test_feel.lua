@@ -1,14 +1,14 @@
-local h = require("tests/harness")
-local dynamics = require("src/sim/dynamics")
-local rumble = require("src/rumble")
-local Race = require("src/sim/race")
-local Track = require("src/sim/track")
-local catalog = require("src/tracks/catalog")
-local garage = require("src/entities/garage")
-local settings = require("src/settings")
-local input = require("src/input")
-local ui = require("src/ui")
-local config = require("src/config")
+local h = require("tests.harness")
+local dynamics = require("src.sim.dynamics")
+local rumble = require("src.rumble")
+local Race = require("src.sim.race")
+local Track = require("src.sim.track")
+local catalog = require("src.tracks.catalog")
+local garage = require("src.entities.garage")
+local settings = require("src.settings")
+local input = require("src.input")
+local ui = require("src.ui")
+local config = require("src.config")
 
 local DT = config.PHYSICS_DT
 
@@ -58,7 +58,7 @@ h.describe("drift boost", function()
   end)
 
   h.it("driving the racing line isn't a slide", function()
-    local AI = require("src/ai_controller")
+    local AI = require("src.ai_controller")
     for _, spec in ipairs(garage) do
       local track = Track.new(catalog.find("mirage").def)
       local race = Race.new({ mode = "race", track = track, laps = 1, opponents = 0, spec = spec,

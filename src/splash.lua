@@ -1,6 +1,6 @@
-local ui = require("src/ui")
-local colors = require("src/colors")
-local audio = require("src/audio")
+local ui = require("src.ui")
+local colors = require("src.colors")
+local audio = require("src.audio")
 
 local splash = { timer = 0, length = audio.STARTUP_LENGTH }
 

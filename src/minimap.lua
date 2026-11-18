@@ -1,5 +1,5 @@
 -- North-up map of the lap, with every car on it.
-local colors = require("src/colors")
+local colors = require("src.colors")
 
 local minimap = {}
 

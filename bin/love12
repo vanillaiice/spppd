@@ -1,0 +1,38 @@
+#!/usr/bin/env bash
+# Runs the LÖVE 12 build SPPPD is made for, fetching it the first time.
+#
+#   bin/love12 . --test        runs the Linux build, like love
+#   bin/love12 --fetch NAME    prints the folder holding the build NAME, fetched once
+#
+# LÖVE 12 has no release yet, so the builds come from one run of love2d/love's
+# GitHub Actions (fetching them needs gh, logged in). android/love-android is
+# pinned to the same LÖVE commit, so every platform runs the same engine. GitHub
+# keeps a run's builds for 90 days (this one's go on 2027-01-24), so they're kept
+# in love-binaries/, which make clean leaves alone.
+set -euo pipefail
+RUN=40249789777
+COMMIT=ef388d4371f5932491fbdcdd65ac7240e11c31a8  # the LÖVE commit that run built
+repo=$(cd "$(dirname "$0")/.." && pwd)
+store="$repo/love-binaries/12-$RUN"
+
+fetch() {
+  local dir="$store/$1"
+  if [ ! -d "$dir" ]; then
+    command -v gh > /dev/null || { echo "bin/love12 needs gh, logged in, to fetch LÖVE 12 ($1)" >&2; exit 1; }
+    rm -rf "$dir.part"
+    gh run download -R love2d/love "$RUN" -n "$1" -D "$dir.part" >&2
+    mv "$dir.part" "$dir"
+  fi
+  echo "$dir"
+}
+
+if [ "${1:-}" = "--fetch" ]; then
+  fetch "$2"
+  exit
+fi
+# Unpacked once, so it runs without FUSE and starts quickly for parallel tests.
+dir=$(fetch love-linux-X64.AppImage)
+if [ ! -x "$dir/squashfs-root/AppRun" ]; then
+  (cd "$dir" && chmod +x love-*.AppImage && ./love-*.AppImage --appimage-extract > /dev/null)
+fi
+exec "$dir/squashfs-root/AppRun" "$@"

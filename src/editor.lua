@@ -1,14 +1,14 @@
 -- The track editor screen. Click to add nodes, drag to shape the circuit, and
 -- press T to drive it. All edits go through src/editor_model.
-local ui = require("src/ui")
-local state = require("src/state")
-local colors = require("src/colors")
-local config = require("src/config")
-local catalog = require("src/tracks/catalog")
-local model = require("src/editor_model")
-local share = require("src/tracks/share")
-local web = require("src/web")
-local input = require("src/input")
+local ui = require("src.ui")
+local state = require("src.state")
+local colors = require("src.colors")
+local config = require("src.config")
+local catalog = require("src.tracks.catalog")
+local model = require("src.editor_model")
+local share = require("src.tracks.share")
+local web = require("src.web")
+local input = require("src.input")
 
 local editor = {}
 
@@ -148,7 +148,7 @@ local function testDrive()
     say("Fix the layout before driving it")
     return
   end
-  require("src/menu").testDrive(doc, track)
+  require("src.menu").testDrive(doc, track)
 end
 
 local function undo()
@@ -211,13 +211,7 @@ local function importText(text, from)
     say("No track in " .. from .. " (" .. (why or "?") .. ")")
     return false
   end
-  local name = def.title:lower():gsub("[^%w]+", "_"):gsub("^_+", ""):gsub("_+$", "")
-  if name == "" then name = "shared_track" end
-  local base, n = name, 1
-  while catalog.find(name) do
-    n = n + 1
-    name = base .. "_" .. n
-  end
+  local name = catalog.uniqueName(def.title)
   local ok, imported = pcall(model.fromEntry, { name = name, title = def.title, def = def })
   if not ok then
     say("That track can't be opened")
@@ -240,6 +234,12 @@ local function sharedFiles()
   end
   table.sort(out, function(a, b) return a.time > b.time end)
   return out
+end
+
+-- A saved or built-in track, opened for editing.
+function editor.openEntry(entry)
+  setDocument(model.fromEntry(entry))
+  say("Opened " .. entry.title)
 end
 
 function editor.openImport()
@@ -265,8 +265,8 @@ end
 local function goBack()
   overlay = nil
   state.screen = "menu"
-  require("src/menu").demoRunning = false
-  require("src/menu").enter()
+  require("src.menu").demoRunning = false
+  require("src.menu").enter()
 end
 
 local function requestBack()
@@ -624,8 +624,11 @@ local function drawImport(sw, sh, s)
   rows[#rows + 1] = { label = "PASTE FROM CLIPBOARD", activate = function()
       if importText(love.system.getClipboardText(), "the clipboard") then overlay = nil end
     end }
-  -- spppd.xyz/tracks: copy a track's code there, then PASTE FROM CLIPBOARD here.
-  rows[#rows + 1] = { label = "BROWSE TRACKS ONLINE", activate = function() love.system.openURL(config.TRACKS_URL) end }
+  -- spppd.xyz/tracks: in the game where it can fetch them (LÖVE 12), else the page.
+  rows[#rows + 1] = { label = "BROWSE TRACKS ONLINE", activate = function()
+      overlay = nil
+      require("src.menu").openTracks(true)
+    end }
   rows[#rows + 1] = { label = "OPEN SHARED FOLDER", activate = openShared }
   rows[#rows + 1] = { label = "CANCEL", activate = function() overlay = nil end }
   ui.list("editor-import", rows, x + 6 * s, y + 34 * s, w - 18 * s, 14 * s, 6 * s, s)

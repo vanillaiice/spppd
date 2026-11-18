@@ -10,7 +10,7 @@
 --   arp    1 2 3 are the chord's notes, 4 and 5 the first two an octave up
 --   drums  one string per drum, "x" hits
 -- The last bar's tails wrap round into the first, so the loop has no seam.
-local cache = require("src/sound_cache")
+local cache = require("src.sound_cache")
 
 local music = {}
 

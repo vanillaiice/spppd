@@ -16,7 +16,7 @@ ver=$(sed -n 's/.*VERSION = "\(.*\)".*/\1/p' "$repo/src/config.lua")
 code=$(sed -n 's/.*VERSION_CODE = \([0-9]*\).*/\1/p' "$repo/src/config.lua")
 [ -n "$ver" ] && [ -n "$code" ] || { echo "No VERSION or VERSION_CODE in src/config.lua"; exit 1; }
 
-if [ ! -f "$love/love/src/jni/love/Android.mk" ]; then
+if [ ! -f "$love/app/src/main/cpp/love/CMakeLists.txt" ]; then
   git -C "$repo" submodule update --init --recursive --depth 1 android/love-android
 fi
 
@@ -27,33 +27,28 @@ sed -i -e 's/^app\.name\(_byte_array\)\?=.*/app.name=SPPPD/' \
 
 cp -r "$repo/android/res/." "$love/app/src/main/res/"
 
-# Google Play wants a recent target API and native code built for 16 KB memory
-# pages. NDK r27 builds that, but no lower than Android 5.0 (API 21), and a newer
-# Android Gradle Plugin knows API 36 and aligns the libraries in the package.
-sed -i -e "s/ndkVersion '[^']*'/ndkVersion '$NDK_VERSION'/" -e 's/minSdk [0-9]*/minSdk 21/' \
-  -e 's/compileSdk [0-9]*/compileSdk 36/' -e 's/targetSdk [0-9]*/targetSdk 36/' \
-  "$love/app/build.gradle" "$love/love/build.gradle"
-sed -i 's/com\.android\.tools\.build:gradle:[0-9.]*/com.android.tools.build:gradle:8.10.1/' "$love/build.gradle"
-sed -i 's/gradle-[0-9.]*-bin\.zip/gradle-8.11.1-bin.zip/' "$love/gradle/wrapper/gradle-wrapper.properties"
-mk="$love/love/src/jni/Application.mk"
-sed -i 's/^APP_PLATFORM := .*/APP_PLATFORM := 21/' "$mk"
-grep -q FLEXIBLE_PAGE_SIZES "$mk" || printf 'APP_SUPPORT_FLEXIBLE_PAGE_SIZES := true\n' >> "$mk"
-# r27 compiles C++17, where libmodplug's old `register` keyword is an error.
-grep -q Wno-register "$mk" || printf 'APP_CPPFLAGS += -Wno-register\n' >> "$mk"
-# r27 also drops ALooper_pollAll. SDL itself moved to ALooper_pollOnce, which acts
-# the same for a check that doesn't wait.
-{ grep -rl ALooper_pollAll "$love/love/src/jni/SDL2/src" || true; } | xargs -r sed -i 's/ALooper_pollAll(/ALooper_pollOnce(/g'
-# The love library shrinks itself with no rules, and the newer R8 then strips the
-# constructor Android needs to start GameActivity. Keep what the app keeps.
-rules="$love/love/proguard-rules.pro"
-grep -q 'org.love2d.android' "$rules" || printf '%s\n' '-keep class org.love2d.android.** { *; }' \
-  '-keep class org.libsdl.app.** { *; }' >> "$rules"
+# Gradle's default 512 MB ran out packaging the APK once.
+grep -q '^org.gradle.jvmargs=' "$love/gradle.properties" ||
+  printf 'org.gradle.jvmargs=-Xmx2g\n' >> "$love/gradle.properties"
 
-# The noRecord flavour drops the microphone permission with this manifest, but
-# love-android keeps it in src/norecord, which Gradle only finds on a filesystem
-# that ignores case. SPPPD never records.
+# LÖVE 12's love-android asks for NDK r30 and API 37. The NDK every SPPPD build
+# uses (and F-Droid's recipe names) is r27, which builds it as well, and API 36 is
+# what Google Play asks for now. Both build native code for 16 KB memory pages.
+sed -i -e "s/ndkVersion '[^']*'/ndkVersion '$NDK_VERSION'/" \
+  -e 's/compileSdk [0-9]*/compileSdk 36/' -e 's/targetSdk [0-9]*/targetSdk 36/' "$love/app/build.gradle"
+
+# Phones only (x86_64 is for emulators), and the libraries compressed in the APK
+# as in 3.x: stored plain, as Android 7.0 and up would take them, the APK is seven
+# times the size to download.
+sed -i "s/abiFilters 'armeabi-v7a', 'arm64-v8a', 'x86_64'/abiFilters 'armeabi-v7a', 'arm64-v8a'/" "$love/app/build.gradle"
+grep -q "abiFilters 'armeabi-v7a', 'arm64-v8a'$" "$love/app/build.gradle"
+grep -q useLegacyPackaging "$love/app/build.gradle" ||
+  printf '\nandroid.packaging.jniLibs.useLegacyPackaging = true\n' >> "$love/app/build.gradle"
+
+# SPPPD never records, so the noRecord flavour drops the microphone permission
+# LÖVE's manifest asks for.
 mkdir -p "$love/app/src/noRecord"
-cp "$love/app/src/norecord/AndroidManifest.xml" "$love/app/src/noRecord/"
+cp "$repo/android/noRecord/AndroidManifest.xml" "$love/app/src/noRecord/"
 
 assets="$love/app/src/embed/assets"
 mkdir -p "$assets"

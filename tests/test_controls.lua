@@ -1,7 +1,7 @@
-local h = require("tests/harness")
-local input = require("src/input")
-local settings = require("src/settings")
-local menu = require("src/menu")
+local h = require("tests.harness")
+local input = require("src.input")
+local settings = require("src.settings")
+local menu = require("src.menu")
 
 -- Back to the defaults, with nothing held, whatever a test did.
 local function fresh()

@@ -1,5 +1,5 @@
-local h = require("tests/harness")
-local damage = require("src/render/car_damage")
+local h = require("tests.harness")
+local damage = require("src.render.car_damage")
 
 h.describe("crash damage", function()
   h.it("a dent folds the body in towards the middle where it hit", function()

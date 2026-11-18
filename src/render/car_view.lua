@@ -1,10 +1,10 @@
 -- Draws a car and spawns what it leaves behind: smoke, dust, marks, backfires.
-local config = require("src/config")
-local sprites = require("src/render/car_sprites")
-local textures = require("src/render/textures")
-local vfx = require("src/vfx_manager")
-local skids = require("src/skid_manager")
-local damage = require("src/render/car_damage")
+local config = require("src.config")
+local sprites = require("src.render.car_sprites")
+local textures = require("src.render.textures")
+local vfx = require("src.vfx_manager")
+local skids = require("src.skid_manager")
+local damage = require("src.render.car_damage")
 
 local view = {}
 

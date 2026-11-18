@@ -1,7 +1,7 @@
 -- Moves the other player's car from network updates. Packets arrive 20 times
 -- a second, so the car is steered towards where it should be by now.
-local dynamics = require("src/sim/dynamics")
-local config = require("src/config")
+local dynamics = require("src.sim.dynamics")
+local config = require("src.config")
 
 local RemoteDriver = {}
 RemoteDriver.__index = RemoteDriver

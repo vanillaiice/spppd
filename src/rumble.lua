@@ -1,9 +1,9 @@
 -- What the driver feels: a pad's motors and a phone's buzzer. A pad gets the
 -- road as well as the hits. A phone only has one crude buzzer, so it keeps to
 -- the moments that matter.
-local settings = require("src/settings")
-local input = require("src/input")
-local ui = require("src/ui")
+local settings = require("src.settings")
+local input = require("src.input")
+local ui = require("src.ui")
 
 local rumble = { thump = 0, tick = 0 }
 
